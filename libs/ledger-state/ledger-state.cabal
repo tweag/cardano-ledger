@@ -82,6 +82,40 @@ executable ledger-state
     optparse-applicative,
     text,
 
+executable canonical-ledger
+  main-is: Main.hs
+  hs-source-dirs: app-canonical
+  default-language: Haskell2010
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Wincomplete-record-updates
+    -Wincomplete-uni-patterns
+    -Wredundant-constraints
+    -O2
+    -threaded
+    -rtsopts
+
+  build-depends:
+    base,
+    bytestring,
+    cardano-ledger-shelley:{cardano-ledger-shelley},
+    cardano-ledger-babbage:{cardano-ledger-babbage},
+    cardano-ledger-byron:{cardano-ledger-byron},
+    cardano-ledger-conway:{scls-export,cardano-ledger-conway},
+    cardano-ledger-mary:{cardano-ledger-mary},
+    cardano-ledger-api,
+    cardano-ledger-binary,
+    cardano-ledger-core,
+    -- cardano-ledger-core,
+    -- ledger-state,
+    base16-bytestring,
+    containers,
+    optparse-applicative,
+    streaming,
+    scls-format,
+    text,
+
 benchmark memory
   type: exitcode-stdio-1.0
   main-is: Memory.hs

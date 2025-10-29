@@ -118,6 +118,9 @@ readNewEpochState = do
       case Plain.decodeFullDecoder lbl fromCBOR lazyBytes of
         Left err -> error (show err)
         Right (nes :: NewEpochState CurrentEra) -> pure nes
+      -- case Aeson.eitherDecode lazyBytes of
+      --   Left err -> error (show err)
+      --   Right (nes :: NewEpochState CurrentEra) -> pure nes
     Nothing ->
       bogusNewEpochState <$ do
         putStrLn $

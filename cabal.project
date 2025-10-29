@@ -96,16 +96,16 @@ source-repository-package
   type: git
   location: https://github.com/tweag/cardano-canonical-ledger.git
   subdir: scls-cbor
-  tag: 7e0344dad0ff156d4a3932f1c73dc54379a50c51
+  tag: 09f2b80d6d0c7419053e3f9e70ff57acbcff0eec
 
 source-repository-package
   type: git
   location: https://github.com/tweag/cardano-canonical-ledger.git
   subdir: scls-format
-  tag: 7e0344dad0ff156d4a3932f1c73dc54379a50c51
+  tag: 09f2b80d6d0c7419053e3f9e70ff57acbcff0eec
 
 source-repository-package
   type: git
   location: https://github.com/tweag/cardano-canonical-ledger.git
   subdir: merkle-tree-incremental
-  tag: 7e0344dad0ff156d4a3932f1c73dc54379a50c51
+  tag: 09f2b80d6d0c7419053e3f9e70ff57acbcff0eec
