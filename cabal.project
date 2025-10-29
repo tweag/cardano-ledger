@@ -99,18 +99,34 @@ if impl(ghc >=9.12)
 
 source-repository-package
   type: git
-  location: https://github.com/tweag/cardano-canonical-ledger.git
   subdir: scls-cbor
-  tag: 7e0344dad0ff156d4a3932f1c73dc54379a50c51
+  -- location: https://github.com/tweag/cardano-canonical-ledger.git
+  tag: HEAD
+  location: /Users/qnikst/workspace/cardano-canonical-ledger/cardano-canonical-ledger
+  -- tag: aac51d19937b238e380053ea96a73ded13f4aaee
 
 source-repository-package
   type: git
-  location: https://github.com/tweag/cardano-canonical-ledger.git
   subdir: scls-format
-  tag: 7e0344dad0ff156d4a3932f1c73dc54379a50c51
+  tag: HEAD
+  -- location: https://github.com/tweag/cardano-canonical-ledger.git
+  location: /Users/qnikst/workspace/cardano-canonical-ledger/cardano-canonical-ledger
+  -- tag: aac51d19937b238e380053ea96a73ded13f4aaee
 
 source-repository-package
   type: git
-  location: https://github.com/tweag/cardano-canonical-ledger.git
   subdir: merkle-tree-incremental
-  tag: 7e0344dad0ff156d4a3932f1c73dc54379a50c51
+  location: /Users/qnikst/workspace/cardano-canonical-ledger/cardano-canonical-ledger
+  tag: HEAD
+  -- tag: aac51d19937b238e380053ea96a73ded13f4aaee
+  -- location: https://github.com/tweag/cardano-canonical-ledger.git
+  -- tag: aac51d19937b238e380053ea96a73ded13f4aaee
+
+source-repository-package
+  type: git
+  subdir: scls-cddl
+  -- location: https://github.com/tweag/cardano-canonical-ledger.git
+  -- tag: dea60dd515336a15a1e3eedb0bc123c2c9a00142
+  location: /Users/qnikst/workspace/cardano-canonical-ledger/cardano-canonical-ledger
+  tag: HEAD
+  -- aac51d19937b238e380053ea96a73ded13f4aaee

@@ -77,6 +77,7 @@ data KeyRole
   | HotCommitteeRole
   | ColdCommitteeRole
   deriving (Show)
+  deriving Typeable
 
 class HasKeyRole (a :: KeyRole -> Type) where
   -- | General coercion of key roles.
