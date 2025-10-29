@@ -79,6 +79,7 @@ main = do
         )
         (header "ledger-state - Tool for analyzing ledger state")
   forM_ (optsNewEpochStateBinaryFile opts) $ \binFp -> do
+    putStrLn $ "Reading NewEpochState from " ++ binFp
     nes <- readNewEpochState binFp
     case optsSqliteDbFile opts of
       Nothing -> printNewEpochStateStats $ countNewEpochStateStats nes
