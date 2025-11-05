@@ -15,6 +15,8 @@ module Main where
 import Control.Exception (throwIO)
 import Data.Bifunctor (first)
 import Control.Monad
+import Data.Function ((&))
+import Cardano.SCLS.Internal.Serializer.Dump.Plan
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text as T
 import Cardano.Ledger.Mary (MaryEra)
@@ -112,16 +114,16 @@ main = do
           fileName
           Mainnet
           (SlotNo 1)
-          $ S.each
-              [ "utxo" S.:>
-                  S.each
-                    [ ChunkEntry
-                        (UtxoKeyIn txin)
-                        (RawBytes $ toStrictByteString $ toCanonicalCBOR (Proxy :: Proxy V1) $ txout
-                        )
-                    | (txin, txout) <- Map.toList utxo
-                    ]
-              ]
+          (defaultSerializationPlan & addChunks
+              (S.each
+                [ "utxo/v0" S.:>
+                    (S.each
+                      [ ChunkEntry
+                          (UtxoKeyIn txin)
+                          (RawBytes $ toStrictByteString $ toCanonicalCBOR (Proxy :: Proxy V1) $ UtxoOutBabbage txout)
+                      | (txin, txout) <- Map.toList utxo
+                      ])
+                ]))
 
 data TxIn' = TxIn' TxId Word16
 
