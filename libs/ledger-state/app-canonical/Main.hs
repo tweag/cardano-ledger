@@ -8,11 +8,14 @@
 {-# OPTIONS_GHC -fno-warn-deprecations #-}
 module Main where
 
--- import Cardano.Ledger.Shelley.LedgerState
+import Cardano.Ledger.Shelley.LedgerState
 -- import Cardano.Ledger.State.Query
--- import Cardano.Ledger.State.UTxO
+import Cardano.Ledger.State.UTxO
 
 import Control.Exception (throwIO)
+import qualified Data.Aeson  as Aeson
+import qualified Cardano.Ledger.Shelley.LedgerState as Shelley
+import Data.Aeson.Types (Value)
 import Data.Bifunctor (first)
 import Control.Monad
 import Data.Function ((&))
@@ -79,15 +82,20 @@ data Opts = Opts
 
 data Cmd
     = CmdCreateFile FilePath FilePath
+    | CmdCreateStateFile FilePath FilePath
     deriving (Show)
 
 optsParser :: Parser Cmd
 optsParser = hsubparser
-  (command "create" (info createCommand (progDesc "Create canonical file"))
+  (command "create" (info createCommand (progDesc "Create canonical file for utxo"))
+  <> command "create-state" (info createStateCommand (progDesc "Create canonical file for ledger state"))
   )
   where
     createCommand = CmdCreateFile
       <$> argument str (metavar "UTXO_HEX_FILE")
+      <*> argument str (metavar "SCLS_FILE")
+    createStateCommand = CmdCreateStateFile
+      <$> argument str (metavar "STATE_JSON_FILE")
       <*> argument str (metavar "SCLS_FILE")
 
 main :: IO ()
@@ -103,17 +111,31 @@ main = do
         )
         (header "canonical-state - Tool for working with canonical ledger state representation")
   case cmd of
-    CmdCreateFile utxoFilePath _outputFile -> do
+    -- cabal run canonical-ledger -- create ~/iohk/chain/mainnet/utxo.hex 1.scls
+    CmdCreateFile utxoFilePath fileName -> do
         putStrLn "Creating file..."
         putStrLn $ "Reading UTxO from " ++ utxoFilePath
         UTxO utxo <- localReadDecCBORHex utxoFilePath
-
-        let fileName = "scls-utxo.scls"
 
         External.serialize
           fileName
           Mainnet
           (SlotNo 1)
+<<<<<<< Updated upstream
+=======
+<<<<<<< Updated upstream
+          $ S.each
+              [ "utxo" S.:>
+                  S.each
+                    [ ChunkEntry
+                        (UtxoKeyIn txin)
+                        (RawBytes $ toStrictByteString $ toCanonicalCBOR (Proxy :: Proxy V1) $ txout
+                        )
+                    | (txin, txout) <- Map.toList utxo
+                    ]
+              ]
+=======
+>>>>>>> Stashed changes
           (defaultSerializationPlan & addChunks
               (S.each
                 [ "utxo/v0" S.:>
@@ -124,6 +146,32 @@ main = do
                       | (txin, txout) <- Map.toList utxo
                       ])
                 ]))
+<<<<<<< Updated upstream
+=======
+    CmdCreateStateFile stateFilePath _fileName -> do
+        putStrLn "Creating state file..."
+        putStrLn $ "Reading State from " ++ stateFilePath
+        _nes <- readNewEpochState stateFilePath
+        putStrLn "hohohoho"
+        -- val <- Aeson.decodeFileStrict stateFilePath
+        -- print (val :: Maybe (Serialised (Shelley.NewEpochState ConwayEra)))
+
+        -- External.serialize
+        --   fileName
+        --   Mainnet
+        --   (SlotNo 1)
+        --   (defaultSerializationPlan & addChunks
+        --       (S.each
+        --         [ "utxo-state/v0" S.:>
+        --             (S.each
+        --               [ ChunkEntry
+        --                   (UtxoKeyIn txin)
+        --                   (RawBytes $ toStrictByteString $ toCanonicalCBOR (Proxy :: Proxy V1) $ UtxoOutBabbage txout)
+        --               | (txin, txout) <- Map.toList utxo
+        --               ])
+        --         ]))
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
 
 data TxIn' = TxIn' TxId Word16
 

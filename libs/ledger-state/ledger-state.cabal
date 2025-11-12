@@ -98,6 +98,7 @@ executable canonical-ledger
 
   build-depends:
     base,
+    aeson,
     bytestring,
     cardano-ledger-shelley:{cardano-ledger-shelley},
     cardano-ledger-babbage:{cardano-ledger-babbage},
@@ -108,7 +109,7 @@ executable canonical-ledger
     cardano-ledger-binary,
     cardano-ledger-core,
     -- cardano-ledger-core,
-    -- ledger-state,
+    ledger-state,
     base16-bytestring,
     containers,
     optparse-applicative,
