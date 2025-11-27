@@ -129,6 +129,8 @@ main = do
   case cmd of
     Cat fileName -> do
         putStrLn $ "Reading canonical state from " ++ fileName
+        withKnownNamespacedData fileName (Proxy @"utxo/v0") $ \stream ->
+          S.print stream
         withKnownNamespacedData fileName (Proxy @"blocks/v0") $ \stream ->
           S.print stream
         withKnownNamespacedData fileName (Proxy @"gov/committee/v0") $ \stream ->
@@ -144,8 +146,6 @@ main = do
         withKnownNamespacedData fileName (Proxy @"pots/v0") $ \stream ->
           S.print stream
         withKnownNamespacedData fileName (Proxy @"snapshots/v0") $ \stream ->
-          S.print stream
-        withKnownNamespacedData fileName (Proxy @"utxo/v0") $ \stream ->
           S.print stream
     CmdCreateStateFile stateFilePath utxoFilePath fileName -> do
         putStrLn "Creating state file..."
@@ -258,12 +258,14 @@ main = do
                 ])
           )
 
+{-
 data TxIn' = TxIn' TxId Word16
 
 instance FromCBOR TxIn' where
   fromCBOR = decodeRecordNamed "TxIn"
     (const 2)
     (TxIn' <$> fromCBOR <*> fromCBOR)
+-}
 
 localReadDecCBORHex :: FilePath -> IO (UTxO ConwayEra)
 localReadDecCBORHex = either throwIO pure . decodeFullHex <=< LBS.readFile

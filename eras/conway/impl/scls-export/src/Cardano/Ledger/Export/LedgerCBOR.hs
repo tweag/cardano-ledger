@@ -2,7 +2,10 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 module Cardano.Ledger.Export.LedgerCBOR
   ( LedgerCBOR(..)
   ) where

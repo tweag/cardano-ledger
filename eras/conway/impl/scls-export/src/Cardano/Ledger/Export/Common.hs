@@ -1,6 +1,8 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DerivingVia #-}
 -- | Common namespace utilities and types for SCLS export.
 {-# LANGUAGE FlexibleInstances #-}
@@ -11,12 +13,14 @@ module Cardano.Ledger.Export.Common () where
 import Cardano.Ledger.Coin (Coin, CompactForm)
 import qualified Cardano.Ledger.Coin as Coin
 import qualified Codec.CBOR.Encoding as E
-import Cardano.Slotting.Slot (EpochInterval)
+import Cardano.Slotting.Slot (EpochInterval, SlotNo(..))
 import Cardano.Ledger.Credential
 import Cardano.Ledger.Keys
 import Cardano.Ledger.Hashes
 import Cardano.Ledger.Plutus.ExUnits (Prices)
 import Data.Maybe.Strict
+import Data.Sequence.Strict (StrictSeq)
+import qualified Data.Sequence.Strict as StrictSeq
 import qualified Codec.CBOR.Decoding as D
 import Cardano.SCLS.CBOR.Canonical.Encoder
 import Cardano.SCLS.CBOR.Canonical.Decoder
@@ -85,3 +89,19 @@ deriving via (LedgerCBOR v (Anchor)) instance ToCanonicalCBOR v (Anchor)
 deriving via (LedgerCBOR v (Anchor)) instance FromCanonicalCBOR v (Anchor)
 deriving via (LedgerCBOR v (EpochNo)) instance ToCanonicalCBOR v (EpochNo)
 deriving via (LedgerCBOR v (EpochNo)) instance FromCanonicalCBOR v (EpochNo)
+deriving newtype instance ToCanonicalCBOR v (SlotNo)
+deriving newtype instance FromCanonicalCBOR v (SlotNo)
+
+
+-- deriving via (LedgerCBOR v (StrictSeq a)) instance EncCBOR a => ToCanonicalCBOR v (StrictSeq a)
+
+instance FromCanonicalCBOR v a =>  FromCanonicalCBOR v (StrictSeq a) where
+    fromCanonicalCBOR = do
+        len_or_indef <- D.decodeListLenOrIndef
+        case len_or_indef of
+          Nothing ->
+              Versioned <$>
+                D.decodeSequenceLenIndef (\l (Versioned a) -> a:l) [] (StrictSeq.fromList . reverse) (fromCanonicalCBOR @v)
+          Just len -> do
+              Versioned <$>
+                D.decodeSequenceLenN (\l (Versioned a) -> a:l) [] (StrictSeq.fromList . reverse) len (fromCanonicalCBOR @v)
