@@ -24,7 +24,7 @@ import Data.Proxy
 import Data.MemPack
 import Data.MemPack.ByteOrdered
 
-newtype BlockIn = BlockIn (KeyHash 'StakePool, EpochNo)
+newtype BlockIn = BlockIn (KeyHash StakePool, EpochNo)
   deriving (Eq, Ord, Show)
 
 newtype BlockOut = BlockOut Natural

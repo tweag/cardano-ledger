@@ -33,7 +33,7 @@ import Cardano.SCLS.Internal.NamespaceCodec
 import Data.Proxy
 import Data.MemPack
 
-newtype PoolStakeIn = PoolStakeIn (KeyHash 'StakePool)
+newtype PoolStakeIn = PoolStakeIn (KeyHash StakePool)
   deriving (Eq, Ord, Show)
 
 
@@ -44,7 +44,7 @@ instance IsKey PoolStakeIn where
 
 data PoolStakeOut = PoolStakeOut
   { total :: !Coin
-  , vrf :: (VRFVerKeyHash 'StakePoolVRF)
+  , vrf :: !(VRFVerKeyHash StakePoolVRF)
   }
   deriving (Eq, Show)
 

@@ -41,7 +41,7 @@ instance {-# OVERLAPPING #-} ToCanonicalCBOR v (Coin) where
 instance {-# OVERLAPPING #-} FromCanonicalCBOR v (Coin) where
     fromCanonicalCBOR = Versioned . Coin.Coin <$> D.decodeInteger
 
-instance Typeable kr => ToCanonicalCBOR v (Credential kr) where
+instance ToCanonicalCBOR v (Credential kr) where
     toCanonicalCBOR v (ScriptHashObj sh) = toCanonicalCBOR v (0::Word8, sh)
     toCanonicalCBOR v (KeyHashObj kh) = toCanonicalCBOR v (1::Word8, kh)
 
@@ -57,7 +57,7 @@ instance Typeable kr => FromCanonicalCBOR v (Credential kr) where
 -- deriving via (LedgerCBOR v (ScriptHash)) instance FromCanonicalCBOR v ScriptHash
 deriving via (LedgerCBOR v (ScriptHash)) instance ToCanonicalCBOR v ScriptHash
 deriving via (LedgerCBOR v (ScriptHash)) instance FromCanonicalCBOR v ScriptHash
-deriving via (LedgerCBOR v (KeyHash kr)) instance Typeable kr => ToCanonicalCBOR v (KeyHash kr)
+deriving via (LedgerCBOR v (KeyHash kr)) instance ToCanonicalCBOR v (KeyHash kr)
 deriving via (LedgerCBOR v (KeyHash kr)) instance Typeable kr => FromCanonicalCBOR v (KeyHash kr)
 
 
@@ -73,7 +73,7 @@ instance FromCanonicalCBOR v a => FromCanonicalCBOR v (StrictMaybe a) where
             _ -> fmap SJust <$> fromCanonicalCBOR
 
 
-deriving via (LedgerCBOR v (VRFVerKeyHash kr)) instance Typeable kr => ToCanonicalCBOR v (VRFVerKeyHash kr)
+deriving via (LedgerCBOR v (VRFVerKeyHash kr)) instance ToCanonicalCBOR v (VRFVerKeyHash kr)
 deriving via (LedgerCBOR v (VRFVerKeyHash kr)) instance Typeable kr => FromCanonicalCBOR v (VRFVerKeyHash kr)
 deriving via (LedgerCBOR v (NonNegativeInterval)) instance ToCanonicalCBOR v (NonNegativeInterval)
 deriving via (LedgerCBOR v (NonNegativeInterval)) instance FromCanonicalCBOR v (NonNegativeInterval)

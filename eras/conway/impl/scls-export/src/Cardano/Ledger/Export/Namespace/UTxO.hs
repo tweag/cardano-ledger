@@ -203,7 +203,7 @@ instance FromCanonicalCBOR v (AlonzoScript ConwayEra) where
         D.decodeListLenCanonicalOf 2
         w <- D.decodeWord8Canonical
         case w of
-            0 -> fmap (TimelockScript) <$> fromCanonicalCBOR
+            0 -> fmap (NativeScript) <$> fromCanonicalCBOR
             1 -> Versioned . PlutusScript <$> {-decode-} toPlainDecoder Nothing (natVersion @9) (decodePlutusScript @ConwayEra SPlutusV1)
             2 -> Versioned . PlutusScript <$> {-decode-} toPlainDecoder Nothing (natVersion @9) (decodePlutusScript @ConwayEra SPlutusV2)
             3 -> Versioned . PlutusScript <$> {-decode-} toPlainDecoder Nothing (natVersion @9) (decodePlutusScript @ConwayEra SPlutusV3)
@@ -221,15 +221,15 @@ instance FromCanonicalCBOR v (TimelockRaw ConwayEra) where
         n <- D.decodeWord8Canonical
         traceM $ show n
         case n of
-            0 -> fmap Signature <$> fromCanonicalCBOR
-            1 -> fmap AllOf <$> fromCanonicalCBOR
-            2 -> fmap AnyOf <$> fromCanonicalCBOR
+            0 -> fmap TimelockSignature <$> fromCanonicalCBOR
+            1 -> fmap TimelockAllOf <$> fromCanonicalCBOR
+            2 -> fmap TimelockAnyOf <$> fromCanonicalCBOR
             3 | k == 3 -> do
                 Versioned f <- fromCanonicalCBOR
                 Versioned g <- fromCanonicalCBOR
-                return $ Versioned $ MOfN f g
-            4 -> fmap TimeStart <$> fromCanonicalCBOR
-            5 -> fmap TimeExpire <$> fromCanonicalCBOR
+                return $ Versioned $ TimelockMOf f g
+            4 -> fmap TimelockTimeStart <$> fromCanonicalCBOR
+            5 -> fmap TimelockTimeExpire <$> fromCanonicalCBOR
             m -> fail $ "Invalid tag: " <> show m
 
 deriving via (LedgerCBOR v MaryValue) instance ToCanonicalCBOR v MaryValue

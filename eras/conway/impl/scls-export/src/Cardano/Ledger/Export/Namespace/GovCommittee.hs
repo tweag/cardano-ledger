@@ -16,7 +16,7 @@ module Cardano.Ledger.Export.Namespace.GovCommittee
     ) where
 
 import Cardano.Ledger.BaseTypes (EpochNo (..))
-import Cardano.Ledger.CertState
+import Cardano.Ledger.State
 import Cardano.Ledger.Export.Common ()
 import qualified Codec.CBOR.Decoding as D
 import Cardano.SCLS.CBOR.Canonical.Encoder

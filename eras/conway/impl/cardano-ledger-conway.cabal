@@ -248,66 +248,7 @@ library scls-export
     cardano-ledger-core,
     cardano-slotting:{cardano-slotting},
     cardano-strict-containers,
-    cborg,
-    containers,
-    -- cuddle >=0.4,
-    -- data-default,
-    -- deepseq,
-    -- generic-random,
-    -- heredoc,
-    -- kmicrolens,
-    bytestring,
-    mempack,
-    scls-format:{scls-format, mempack},
-    text,
-    -- microlens-mtl,
-    -- mtl,
-    -- plutus-ledger-api,
-    -- prettyprinter,
-    -- small-steps >=1.1,
-    base,
-    scls-cbor,
-    -- time
-
-library scls-export
-  exposed-modules:
-    Cardano.Ledger.Export.Namespace.Blocks
-    Cardano.Ledger.Export.Namespace.UTxO
-    Cardano.Ledger.Export.Namespace.Pots
-    Cardano.Ledger.Export.Namespace.PoolStake
-    Cardano.Ledger.Export.Namespace.Snapshots
-    Cardano.Ledger.Export.Namespace.GovCommittee
-    Cardano.Ledger.Export.Namespace.GovConstitution
-    Cardano.Ledger.Export.Namespace.GovProposals
-    Cardano.Ledger.Export.Namespace.GovPParams
-    Cardano.Ledger.Export.Common
-    Cardano.Ledger.Export.LedgerCBOR
-  visibility: public
-  hs-source-dirs: scls-export/src
-  default-language: Haskell2010
-  ghc-options:
-    -Wall
-    -Wcompat
-    -Wincomplete-record-updates
-    -Wincomplete-uni-patterns
-    -Wpartial-fields
-    -Wredundant-constraints
-    -- -Wunused-packages
-
-  build-depends:
-    -- cardano-data:{cardano-data},
-    cardano-ledger-allegra,
-    cardano-ledger-alonzo:{cardano-ledger-alonzo},
-    cardano-ledger-babbage:{cardano-ledger-babbage},
-    cardano-ledger-binary:{cardano-ledger-binary},
-    -- cardano-ledger-byron:{cardano-ledger-byron},
-    cardano-ledger-conway:{cardano-ledger-conway},
-    cardano-ledger-core:{cardano-ledger-core},
-    cardano-ledger-mary:{cardano-ledger-mary},
-    cardano-ledger-shelley:{cardano-ledger-shelley},
     cardano-ledger-core,
-    cardano-slotting:{cardano-slotting},
-    cardano-strict-containers,
     cborg,
     containers,
     -- cuddle >=0.4,
@@ -328,6 +269,7 @@ library scls-export
     base,
     scls-cbor,
     -- time
+
 
 executable huddle-cddl
   main-is: Main.hs

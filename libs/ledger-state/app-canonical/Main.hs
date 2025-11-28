@@ -11,7 +11,7 @@
 module Main where
 
 import Cardano.Ledger.Api.Era
-import Cardano.Ledger.Api.State.Query (queryConstitution,queryProposals, queryCommitteeState)
+import Cardano.Ledger.Api.State.Query (queryConstitution,queryProposals,queryCommitteeMembersState)
 import Cardano.Ledger.BaseTypes (BlocksMade (..))
 import Cardano.Ledger.Binary.Plain as Plain
 import Cardano.Ledger.Compactible
@@ -40,7 +40,7 @@ import Data.Foldable (toList)
 import Data.Proxy (Proxy(..))
 import Lens.Micro
 import Options.Applicative
-import Test.Cardano.Ledger.Constrained.Vars
+-- import Test.Cardano.Ledger.Constrained.Vars
 import qualified Cardano.Ledger.Shelley.TxOut as Shelley ()
 import qualified Cardano.SCLS.Internal.Serializer.External.Impl as External (serialize)
 import qualified Data.ByteString.Base16.Lazy as Base16
@@ -252,7 +252,7 @@ main = do
             & addNamespacedChunks (Proxy @"gov/committee/v0")
               (S.each
                 [ ChunkEntry (GovCommitteeIn epoch) (GovCommitteeOut cms)
-                | let cms = nes & queryCommitteeState
+                | let cms = nes & queryCommitteeMembersState mempty mempty mempty
                 ])
           )
 

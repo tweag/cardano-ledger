@@ -95,9 +95,9 @@ toWire :: GovActionState ConwayEra -> GovActionState'
 toWire GovActionState{..} = GovActionState' {..}
 
 data GovActionState' = GovActionState'
-  { gasCommitteeVotes :: !(Map (Credential 'HotCommitteeRole) Vote)
-  , gasDRepVotes :: !(Map (Credential 'DRepRole) Vote)
-  , gasStakePoolVotes :: !(Map (KeyHash 'StakePool) Vote)
+  { gasCommitteeVotes :: !(Map (Credential HotCommitteeRole) Vote)
+  , gasDRepVotes :: !(Map (Credential DRepRole) Vote)
+  , gasStakePoolVotes :: !(Map (KeyHash StakePool) Vote)
   , gasProposalProcedure :: !(ProposalProcedure ConwayEra)
   , gasProposedIn :: !EpochNo
   , gasExpiresAfter :: !EpochNo
@@ -186,8 +186,8 @@ instance FromCanonicalCBOR v (GovAction ConwayEra) where
             _ -> fail $ "Unknown GovAction tag: " ++ show tag
 
 
-deriving via (LedgerCBOR v (GovPurposeId purpose ConwayEra)) instance Typeable purpose => ToCanonicalCBOR v (GovPurposeId purpose ConwayEra)
-deriving via (LedgerCBOR v (GovPurposeId purpose ConwayEra)) instance Typeable purpose => FromCanonicalCBOR v (GovPurposeId purpose ConwayEra)
+deriving via (LedgerCBOR v (GovPurposeId purpose)) instance ToCanonicalCBOR v (GovPurposeId purpose)
+deriving via (LedgerCBOR v (GovPurposeId purpose)) instance Typeable purpose => FromCanonicalCBOR v (GovPurposeId purpose)
 deriving via (LedgerCBOR v (Vote)) instance ToCanonicalCBOR v (Vote)
 deriving via (LedgerCBOR v (Vote)) instance FromCanonicalCBOR v (Vote)
 

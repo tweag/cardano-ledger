@@ -29,7 +29,7 @@ import Cardano.Ledger.Credential
 import Cardano.SCLS.CBOR.Canonical.Encoder
 import Cardano.SCLS.CBOR.Canonical.Decoder
 import Cardano.Ledger.Address (RewardAccount)
-import Cardano.Ledger.PoolParams (PoolParams (..), PoolMetadata (..), StakePoolRelay (..))
+import Cardano.Ledger.State (StakePoolParams (..), PoolMetadata (..), StakePoolRelay (..))
 import qualified Codec.CBOR.Encoding as E
 import qualified Codec.CBOR.Decoding as D
 import Cardano.Ledger.Keys
@@ -84,8 +84,8 @@ instance MemPack SnapShotValueType where
             _ -> fail "Invalid SnapShotValueType tag"
 
 data SnapShotIn where
-    SnapShotInCred :: SnapshotStage -> Credential 'Staking -> SnapShotValueType -> SnapShotIn
-    SnapShotInKey  :: SnapshotStage -> KeyHash 'StakePool -> SnapShotValueType -> SnapShotIn
+    SnapShotInCred :: SnapshotStage -> Credential Staking -> SnapShotValueType -> SnapShotIn
+    SnapShotInKey  :: SnapshotStage -> KeyHash StakePool -> SnapShotValueType -> SnapShotIn
     deriving (Eq, Ord, Show, Typeable)
 
 instance IsKey SnapShotIn where
@@ -118,8 +118,8 @@ instance IsKey SnapShotIn where
 
 data SnapShotOut where
     SnapShotOutCoin :: Coin -> SnapShotOut
-    SnapShotOutAddress :: KeyHash 'StakePool -> SnapShotOut
-    SnapShotOutPoolParams :: PoolParams -> SnapShotOut
+    SnapShotOutAddress :: KeyHash StakePool -> SnapShotOut
+    SnapShotOutPoolParams :: StakePoolParams -> SnapShotOut
     deriving (Show)
 
 
@@ -138,34 +138,33 @@ instance FromCanonicalCBOR v SnapShotOut where
             2 -> fmap SnapShotOutPoolParams <$> fromCanonicalCBOR
             _ -> fail "Invalid SnapShotOut tag"
 
-instance ToCanonicalCBOR v (PoolParams) where
-    toCanonicalCBOR v PoolParams{..} =
+instance ToCanonicalCBOR v (StakePoolParams) where
+    toCanonicalCBOR v StakePoolParams{..} =
         E.encodeMapLen 9
-           <> E.encodeString "cost" <> toCanonicalCBOR v ppCost
-           <> E.encodeString "pledge" <> toCanonicalCBOR v ppPledge
-           <> E.encodeString "margin" <> toCanonicalCBOR v ppMargin
-           <> E.encodeString "relays" <> toCanonicalCBOR v (toList ppRelays)
-           <> E.encodeString "operator" <> toCanonicalCBOR v ppId
-           <> E.encodeString "pool_owners" <> toCanonicalCBOR v (Set.toList ppOwners)
-           <> E.encodeString "vrf_keyhash" <> toCanonicalCBOR v ppVrf
-           <> E.encodeString "pool_metadata" <> toCanonicalCBOR v ppMetadata
-           <> E.encodeString "reward_account" <> toCanonicalCBOR v ppRewardAccount
+           <> E.encodeString "cost" <> toCanonicalCBOR v sppCost
+           <> E.encodeString "margin" <> toCanonicalCBOR v sppMargin
+           <> E.encodeString "relays" <> toCanonicalCBOR v (toList sppRelays)
+           <> E.encodeString "operator" <> toCanonicalCBOR v sppId
+           <> E.encodeString "pool_owners" <> toCanonicalCBOR v (Set.toList sppOwners)
+           <> E.encodeString "vrf_keyhash" <> toCanonicalCBOR v sppVrf
+           <> E.encodeString "pool_metadata" <> toCanonicalCBOR v sppMetadata
+           <> E.encodeString "reward_account" <> toCanonicalCBOR v sppRewardAccount
 
-instance FromCanonicalCBOR v (PoolParams) where
+instance FromCanonicalCBOR v (StakePoolParams) where
     fromCanonicalCBOR = do
         9 <- D.decodeMapLenCanonical
-        Versioned ppCost <- decodeField "cost"
-        Versioned ppPledge <- decodeField "pledge"
-        Versioned ppMargin <- decodeField "margin"
+        Versioned sppCost <- decodeField "cost"
+        Versioned sppPledge <- decodeField "pledge"
+        Versioned sppMargin <- decodeField "margin"
         Versioned relaysList <- decodeField "relays"
-        let ppRelays = StrictSeq.fromList relaysList
-        Versioned ppId <- decodeField "operator"
+        let sppRelays = StrictSeq.fromList relaysList
+        Versioned sppId <- decodeField "operator"
         Versioned ownersList <- decodeField "pool_owners"
-        let ppOwners = Set.fromList ownersList
-        Versioned ppVrf <- decodeField "vrf_keyhash"
-        Versioned ppMetadata <- decodeField "pool_metadata"
-        Versioned ppRewardAccount <- decodeField "reward_account"
-        pure $ Versioned PoolParams{..}
+        let sppOwners = Set.fromList ownersList
+        Versioned sppVrf <- decodeField "vrf_keyhash"
+        Versioned sppMetadata <- decodeField "pool_metadata"
+        Versioned sppRewardAccount <- decodeField "reward_account"
+        pure $ Versioned StakePoolParams{..}
 
 decodeField :: forall s v a. FromCanonicalCBOR v a => T.Text -> D.Decoder s (Versioned v a)
 decodeField fieldName = do
