@@ -7,36 +7,40 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -fno-warn-deprecations #-}
 module Main where
 
 import Cardano.Ledger.Api.Era
--- import Cardano.Ledger.Api.State.Query (queryConstitution,queryProposals,queryCommitteeMembersState)
--- import Cardano.Ledger.BaseTypes (BlocksMade (..))
-import Cardano.Ledger.Binary.Plain as Plain
--- import Cardano.Ledger.Compactible
--- import Cardano.Ledger.Conway.Governance
-import Cardano.Ledger.Export.Namespace.Blocks ()
-import Cardano.Ledger.Export.Namespace.GovCommittee ()
-import Cardano.Ledger.Export.Namespace.GovConstitution ()
-import Cardano.Ledger.Export.Namespace.GovPParams ()
-import Cardano.Ledger.Export.Namespace.GovProposals as Proposals ()
-import Cardano.Ledger.Export.Namespace.PoolStake ()
-import Cardano.Ledger.Export.Namespace.Pots ()
-import Cardano.Ledger.Export.Namespace.Snapshots ()
-import Cardano.Ledger.Export.Namespace.UTxO ()
+import Cardano.Ledger.Api.State.Query (queryConstitution,queryProposals)
+import Cardano.Ledger.BaseTypes (BlocksMade (..))
 import Cardano.Ledger.Shelley.LedgerState
+import Cardano.Ledger.Binary.Plain as Plain
+import Cardano.Ledger.Compactible
+import Cardano.Ledger.Conway.Governance
+import Cardano.Ledger.Export.Namespace.Blocks
+import Cardano.Ledger.Export.Namespace.GovCommittee
+import Cardano.Ledger.Export.Namespace.GovConstitution
+import Cardano.Ledger.Export.Namespace.GovPParams
+import Cardano.Ledger.Export.Namespace.GovProposals as Proposals
+import Cardano.Ledger.Export.Namespace.PoolStake
+import Cardano.Ledger.Export.Namespace.Pots
+import Cardano.Ledger.Export.Namespace.Snapshots
+import Cardano.Ledger.Export.Namespace.UTxO
+import Cardano.Ledger.Conway.State
+-- import Cardano.Ledger.Shelley.LedgerState
 -- import Cardano.Ledger.State -- Core (UTxO (..))
--- import Cardano.Ledger.State.UTxO
--- import Cardano.SCLS.Internal.Entry.ChunkEntry
+import Cardano.Ledger.State.UTxO
+import Cardano.SCLS.Internal.Entry.ChunkEntry
 import Cardano.SCLS.Internal.Reader
 import Cardano.SCLS.Internal.Serializer.Dump.Plan
 import Cardano.Types.Network (NetworkId (..))
 import Cardano.Types.SlotNo (SlotNo (..))
 import Control.Exception (throwIO)
 import Control.Monad
+import qualified Data.VMap as VMap
 import Data.Bifunctor (first)
--- import Data.Foldable (toList)
+import Data.Foldable (toList)
 import Data.Proxy (Proxy(..))
 import Lens.Micro
 import Options.Applicative
@@ -45,8 +49,8 @@ import qualified Cardano.Ledger.Shelley.TxOut as Shelley ()
 import qualified Cardano.SCLS.Internal.Serializer.External.Impl as External (serialize)
 import qualified Data.ByteString.Base16.Lazy as Base16
 import qualified Data.ByteString.Lazy as LBS
--- import qualified Data.Map as Map
--- import qualified Data.Set as Set
+import qualified Data.Map as Map
+import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Streaming.Prelude as S
 
@@ -144,15 +148,12 @@ main = do
                & (let p = (Proxy @"pots/v0") in addNamespacedChunks p (knownNamespacedData hdl p & S.duplicate & S.print))
                & (let p = (Proxy @"snapshots/v0") in addNamespacedChunks p (knownNamespacedData hdl p & S.duplicate & S.print))
             )
-    CmdCreateStateFile stateFilePath _utxoFilePath _fileName -> do
+    CmdCreateStateFile stateFilePath utxoFilePath fileName -> do
         putStrLn "Creating state file..."
         putStrLn $ "Reading State from " ++ stateFilePath
-{-
         nes <- readNewEpochState stateFilePath
         UTxO utxo0 <- localReadDecCBORHex utxoFilePath
         let epoch = nesEL nes
-
-
         print epoch
         External.serialize
           fileName
@@ -177,54 +178,63 @@ main = do
                 ])
             & addNamespacedChunks (Proxy @"pots/v0")
               (S.each [ ChunkEntry (PotsIn epoch) PotsOut
-                          { poFee = nes ^. feesL
-                          , poDeposit =  nes ^. depositsL
-                          , poDonation = nes ^. donationL
-                          , poReserves = nes ^. reservesL
-                          , poTreasury = nes ^. treasuryL
+                          { poFee = nes ^. nesEsL . esLStateL . lsUTxOStateL . utxosFeesL
+                          , poDeposit =  nes ^. nesEsL . esLStateL . lsUTxOStateL . utxosDepositedL
+                          , poDonation = nes ^. nesEsL . esLStateL . lsUTxOStateL . utxosDonationL
+                          , poReserves = nes ^. nesEsL . to(esChainAccountState) . casReservesL
+                          , poTreasury = nes ^. nesEsL . to(esChainAccountState) . casReservesL
                           }
                       ])
             & addNamespacedChunks (Proxy @"snapshots/v0")
               ( S.each
                 [ ChunkEntry (SnapShotInCred SnapShotStageSet cred SnapShotValueAddress) (SnapShotOutAddress stakeHash)
-                | (cred, stakeHash) <- nes ^. setDelegsL . to(Map.toList)
+                | (cred, stakeHash)
+                    <- nes ^. nesEsL .  esSnapshotsL . ssStakeSetL .  ssDelegationsL . to(VMap.toList)
                 ]
               <> S.each
                 [ ChunkEntry (SnapShotInKey SnapShotStageSet poolHash SnapShotValuePoolParams) (SnapShotOutPoolParams poolParams)
-                | (poolHash, poolParams) <- nes ^. setPoolsL . to(Map.toList)
+                | (poolHash, poolParams)
+                    <- nes ^. nesEsL .  esSnapshotsL . ssStakeSetL .  ssPoolParamsL . to(VMap.toList)
                 ]
               <> S.each
                 [ ChunkEntry (SnapShotInCred SnapShotStageSet poolHash SnapShotValueCoin) (SnapShotOutCoin coin)
-                | (poolHash, coin) <- nes ^. setStakeL . to(Map.toList)
+                | (poolHash, fromCompact -> coin)
+                    <- nes ^. nesEsL .  esSnapshotsL . ssStakeSetL .  ssStakeDistrL . to(VMap.toList)
                 ]
               <> S.each
                 [ ChunkEntry (SnapShotInCred SnapshotStageMark cred SnapShotValueAddress) (SnapShotOutAddress stakeHash)
-                | (cred, stakeHash) <- nes ^. markDelegsL . to(Map.toList)
+                | (cred, stakeHash)
+                    <- nes ^. nesEsL .  esSnapshotsL . ssStakeMarkL .  ssDelegationsL . to(VMap.toList)
                 ]
               <> S.each
                 [ ChunkEntry (SnapShotInKey SnapshotStageMark poolHash SnapShotValuePoolParams) (SnapShotOutPoolParams poolParams)
-                | (poolHash, poolParams) <- nes ^. markPoolsL . to(Map.toList)
+                | (poolHash, poolParams)
+                    <- nes ^. nesEsL .  esSnapshotsL . ssStakeMarkL .  ssPoolParamsL . to(VMap.toList)
+                ]
+              <> S.each
+                [ ChunkEntry (SnapShotInCred SnapshotStageMark poolHash SnapShotValueCoin) (SnapShotOutCoin coin)
+                | (poolHash, fromCompact -> coin)
+                    <- nes ^. nesEsL .  esSnapshotsL . ssStakeMarkL .  ssStakeDistrL . to(VMap.toList)
                 ]
               <> S.each
                 [ ChunkEntry (SnapShotInCred SnapshotStageGo poolHash SnapShotValueCoin) (SnapShotOutCoin coin)
-                | (poolHash, coin) <- nes ^. goStakeL . to(Map.toList)
+                | (poolHash, fromCompact -> coin)
+                    <- nes ^. nesEsL .  esSnapshotsL . ssStakeGoL .  ssStakeDistrL . to(VMap.toList)
                 ]
               <> S.each
                 [ ChunkEntry (SnapShotInCred SnapshotStageGo cred SnapShotValueAddress) (SnapShotOutAddress stakeHash)
-                | (cred, stakeHash) <- nes ^. goDelegsL . to(Map.toList)
-                ]
-              <> S.each
-                [ ChunkEntry (SnapShotInKey SnapshotStageGo poolHash SnapShotValuePoolParams) (SnapShotOutPoolParams poolParams)
-                | (poolHash, poolParams) <- nes ^. goPoolsL . to(Map.toList)
+                | (cred, stakeHash)
+                    <- nes ^. nesEsL .  esSnapshotsL . ssStakeGoL .  ssDelegationsL . to(VMap.toList)
                 ]
               <> S.each
                 [ ChunkEntry (SnapShotInCred SnapshotStageGo poolHash SnapShotValueCoin) (SnapShotOutCoin coin)
-                | (poolHash, coin) <- nes ^. goStakeL . to(Map.toList)
+                | (poolHash, fromCompact -> coin)
+                    <- nes ^. nesEsL .  esSnapshotsL . ssStakeGoL .  ssStakeDistrL . to(VMap.toList)
                 ])
             & addNamespacedChunks (Proxy @"pool_stake/v0")
               (S.each
                 [ ChunkEntry (PoolStakeIn cred) (PoolStakeOut (fromCompact individualTotalPoolStake) individualPoolStakeVrf)
-                | (cred, IndividualPoolStake{..}) <- nes ^. markPoolDistrL . to(Map.toList)
+                | (cred, IndividualPoolStake{..}) <- nes ^. nesPdL . poolDistrDistrL . to(Map.toList)
                 ])
             & addNamespacedChunks (Proxy @"gov/pparams/v0")
               (S.each
@@ -252,9 +262,50 @@ main = do
             & addNamespacedChunks (Proxy @"gov/committee/v0")
               (S.each
                 [ ChunkEntry (GovCommitteeIn epoch) (GovCommitteeOut cms)
-                | let cms = nes & queryCommitteeMembersState mempty mempty mempty
+                | let cms {- CommitteeMembersState{..} -} = nes ^. nesEpochStateL . esLStateL . lsCertStateL . certVStateL . {- lsCertStateL . -} vsCommitteeStateL
                 ])
           )
+
+
+{-
+data CommitteeAuthorization
+  = -- | Member authorized with a Hot credential acting on behalf of their Cold credential
+    CommitteeHotCredential !(Credential HotCommitteeRole)
+  | -- | Member resigned with a potential explanation in Anchor
+    CommitteeMemberResigned !(StrictMaybe Anchor)
+  deriving (Eq, Ord, Show, Generic)
+-}
+
+{-
+
+newtype CommitteeState era = CommitteeState
+  { csCommitteeCreds :: Map (Credential ColdCommitteeRole) CommitteeAuthorization
+  }
+  deriving (Eq, Ord, Show, Generic, EncCBOR, NFData, Default, NoThunks)
+
+
+data CommitteeMemberState = CommitteeMemberState
+  { cmsHotCredAuthStatus :: !HotCredAuthStatus
+  , cmsStatus :: !MemberStatus
+  , cmsExpiration :: !(Maybe EpochNo)
+  -- ^ Absolute epoch number when the member expires
+  , cmsNextEpochChange :: !NextEpochChange
+  -- ^ Changes to the member at the next epoch
+  }
+  deriving (Show, Eq, Generic)
+  deriving (ToJSON) via KeyValuePairs CommitteeMemberState
+
+data MemberStatus
+  = -- Votes of this member will count during ratification
+    Active
+  | Expired
+  | -- | This can happen when a hot credential for an unknown cold credential exists.
+    -- Such Committee member will be either removed from the state at the next
+    -- epoch boundary or enacted as a new member.
+    Unrecognized
+
+
+csCommittee :: !(Map (Credential ColdCommitteeRole) CommitteeMemberState)
 -}
 
 localReadDecCBORHex :: FilePath -> IO (UTxO ConwayEra)

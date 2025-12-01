@@ -109,7 +109,7 @@ executable canonical-ledger
     cardano-ledger-core,
     cardano-ledger-test,
     microlens,
-    -- cardano-ledger-core,
+    cardano-ledger-core,
     ledger-state,
     base16-bytestring,
     containers,
@@ -117,6 +117,7 @@ executable canonical-ledger
     streaming,
     scls-format:{scls-format,mempack},
     text,
+    vector-map,
 
 benchmark memory
   type: exitcode-stdio-1.0
