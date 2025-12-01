@@ -270,7 +270,6 @@ library scls-export
     scls-cbor,
     -- time
 
-
 executable huddle-cddl
   main-is: Main.hs
   hs-source-dirs: huddle-cddl

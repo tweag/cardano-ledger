@@ -4,10 +4,10 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DerivingVia #-}
--- | Common namespace utilities and types for SCLS export.
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+-- | Common namespace utilities and types for SCLS export.
 module Cardano.Ledger.Export.Common () where
 
 import Cardano.Ledger.Coin (Coin, CompactForm)

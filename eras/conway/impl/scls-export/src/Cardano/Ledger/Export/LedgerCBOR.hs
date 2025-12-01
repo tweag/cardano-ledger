@@ -6,6 +6,7 @@
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 module Cardano.Ledger.Export.LedgerCBOR
   ( LedgerCBOR(..)
   ) where

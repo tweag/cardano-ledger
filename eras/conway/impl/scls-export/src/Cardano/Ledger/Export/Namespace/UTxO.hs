@@ -98,6 +98,10 @@ data UtxoOut
    | UtxoOutBabbage (Babbage.BabbageTxOut ConwayEra)
    deriving (Show)
 
+instance ToCanonicalCBOR V1 UtxoKey where
+    toCanonicalCBOR v (UtxoKeyIn txIn) = E.encodeInt 0 <> toCanonicalCBOR v txIn
+
+
 instance ToCanonicalCBOR V1 UtxoOut where
     toCanonicalCBOR v (UtxoOutShelley shelleyOut) = toCanonicalCBOR v (E.encodeInt 0, toCanonicalCBOR v shelleyOut)
     toCanonicalCBOR v (UtxoOutBabbage babbageOut) = toCanonicalCBOR v (E.encodeInt 1, toCanonicalCBOR v babbageOut)

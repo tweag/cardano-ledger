@@ -11,24 +11,24 @@
 module Main where
 
 import Cardano.Ledger.Api.Era
-import Cardano.Ledger.Api.State.Query (queryConstitution,queryProposals,queryCommitteeMembersState)
-import Cardano.Ledger.BaseTypes (BlocksMade (..))
+-- import Cardano.Ledger.Api.State.Query (queryConstitution,queryProposals,queryCommitteeMembersState)
+-- import Cardano.Ledger.BaseTypes (BlocksMade (..))
 import Cardano.Ledger.Binary.Plain as Plain
-import Cardano.Ledger.Compactible
-import Cardano.Ledger.Conway.Governance
-import Cardano.Ledger.Export.Namespace.Blocks
-import Cardano.Ledger.Export.Namespace.GovCommittee
-import Cardano.Ledger.Export.Namespace.GovConstitution
-import Cardano.Ledger.Export.Namespace.GovPParams
-import Cardano.Ledger.Export.Namespace.GovProposals as Proposals
-import Cardano.Ledger.Export.Namespace.PoolStake
-import Cardano.Ledger.Export.Namespace.Pots
-import Cardano.Ledger.Export.Namespace.Snapshots
-import Cardano.Ledger.Export.Namespace.UTxO
+-- import Cardano.Ledger.Compactible
+-- import Cardano.Ledger.Conway.Governance
+import Cardano.Ledger.Export.Namespace.Blocks ()
+import Cardano.Ledger.Export.Namespace.GovCommittee ()
+import Cardano.Ledger.Export.Namespace.GovConstitution ()
+import Cardano.Ledger.Export.Namespace.GovPParams ()
+import Cardano.Ledger.Export.Namespace.GovProposals as Proposals ()
+import Cardano.Ledger.Export.Namespace.PoolStake ()
+import Cardano.Ledger.Export.Namespace.Pots ()
+import Cardano.Ledger.Export.Namespace.Snapshots ()
+import Cardano.Ledger.Export.Namespace.UTxO ()
 import Cardano.Ledger.Shelley.LedgerState
-import Cardano.Ledger.State -- Core (UTxO (..))
-import Cardano.Ledger.State.UTxO
-import Cardano.SCLS.Internal.Entry.ChunkEntry
+-- import Cardano.Ledger.State -- Core (UTxO (..))
+-- import Cardano.Ledger.State.UTxO
+-- import Cardano.SCLS.Internal.Entry.ChunkEntry
 import Cardano.SCLS.Internal.Reader
 import Cardano.SCLS.Internal.Serializer.Dump.Plan
 import Cardano.Types.Network (NetworkId (..))
@@ -36,7 +36,7 @@ import Cardano.Types.SlotNo (SlotNo (..))
 import Control.Exception (throwIO)
 import Control.Monad
 import Data.Bifunctor (first)
-import Data.Foldable (toList)
+-- import Data.Foldable (toList)
 import Data.Proxy (Proxy(..))
 import Lens.Micro
 import Options.Applicative
@@ -45,8 +45,8 @@ import qualified Cardano.Ledger.Shelley.TxOut as Shelley ()
 import qualified Cardano.SCLS.Internal.Serializer.External.Impl as External (serialize)
 import qualified Data.ByteString.Base16.Lazy as Base16
 import qualified Data.ByteString.Lazy as LBS
-import qualified Data.Map as Map
-import qualified Data.Set as Set
+-- import qualified Data.Map as Map
+-- import qualified Data.Set as Set
 import qualified Data.Text as T
 import qualified Streaming.Prelude as S
 
@@ -144,10 +144,10 @@ main = do
                & (let p = (Proxy @"pots/v0") in addNamespacedChunks p (knownNamespacedData hdl p & S.duplicate & S.print))
                & (let p = (Proxy @"snapshots/v0") in addNamespacedChunks p (knownNamespacedData hdl p & S.duplicate & S.print))
             )
-
-    CmdCreateStateFile stateFilePath utxoFilePath fileName -> do
+    CmdCreateStateFile stateFilePath _utxoFilePath _fileName -> do
         putStrLn "Creating state file..."
         putStrLn $ "Reading State from " ++ stateFilePath
+{-
         nes <- readNewEpochState stateFilePath
         UTxO utxo0 <- localReadDecCBORHex utxoFilePath
         let epoch = nesEL nes
@@ -255,6 +255,7 @@ main = do
                 | let cms = nes & queryCommitteeMembersState mempty mempty mempty
                 ])
           )
+-}
 
 localReadDecCBORHex :: FilePath -> IO (UTxO ConwayEra)
 localReadDecCBORHex = either throwIO pure . decodeFullHex <=< LBS.readFile
