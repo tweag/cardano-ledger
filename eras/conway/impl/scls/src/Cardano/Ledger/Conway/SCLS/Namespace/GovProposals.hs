@@ -1,50 +1,50 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module Cardano.Ledger.Export.Namespace.GovProposals
+module Cardano.Ledger.Conway.SCLS.Namespace.GovProposals
     ( GovProposalIn(..)
     , GovProposalOut(..)
+    , GovActionState'(..)
     , toWire
     ) where
 
-import Control.Monad (unless)
-import Cardano.Ledger.Conway.Governance (GovActionState(..), GovActionId(..), GovAction(..), ProposalProcedure(..), GovPurposeId(..), GovActionIx(..), Vote(..))
 import Cardano.Ledger.BaseTypes (EpochNo (..))
 import Cardano.Ledger.Conway (ConwayEra)
+import Cardano.Ledger.Conway.Governance (GovActionState(..), GovActionId(..), GovAction(..), ProposalProcedure(..), GovPurposeId(..), GovActionIx(..), Vote(..))
+import Cardano.Ledger.Conway.SCLS.Common ()
+import Cardano.Ledger.Conway.SCLS.LedgerCBOR
+import Cardano.Ledger.Conway.SCLS.Namespace.GovConstitution ()
+import Cardano.Ledger.Conway.SCLS.Namespace.GovPParams ()
+import Cardano.Ledger.Conway.SCLS.Namespace.Snapshots ()
 import Cardano.Ledger.Credential
 import Cardano.Ledger.Keys
-import Cardano.Ledger.Export.Common ()
-import Cardano.SCLS.CBOR.Canonical.Encoder
-import Cardano.Ledger.Export.Namespace.GovConstitution ()
-import Cardano.Ledger.Export.Namespace.GovPParams ()
-import Cardano.Ledger.Export.Namespace.Snapshots ()
-import qualified Codec.CBOR.Encoding as E
-import qualified Codec.CBOR.Decoding as D
 import Cardano.SCLS.CBOR.Canonical.Decoder
-import qualified Data.Text as T
-import Data.Word (Word8)
-import Data.Map (Map)
--- import Cardano.SCLS.Internal.Entry
+import Cardano.SCLS.CBOR.Canonical.Encoder
 import Cardano.SCLS.Internal.Entry.IsKey
-import qualified Data.Set as Set
-import Cardano.SCLS.Internal.Version
 import Cardano.SCLS.Internal.NamespaceCodec
-import Data.Proxy
--- import qualified Data.Map as Map
+import Codec.CBOR.Decoding qualified as D
+import Codec.CBOR.Encoding qualified as E
+import Control.Monad (unless)
+import Data.Map (Map)
 import Data.MemPack
 import Data.MemPack.ByteOrdered
-import Cardano.Ledger.Export.LedgerCBOR
+import Data.Proxy
+import Data.Set qualified as Set
+import Data.Text qualified as T
 import Data.Typeable (Typeable)
+import Data.Word (Word8)
+import GHC.Generics (Generic)
 
 
 data GovProposalIn = GovProposalIn GovActionId
@@ -103,6 +103,8 @@ data GovActionState' = GovActionState'
   , gasExpiresAfter :: !EpochNo
   }
   deriving (Eq, Show)
+  deriving (Generic)
+
 
 instance FromCanonicalCBOR v (GovActionState') where
     fromCanonicalCBOR = do
@@ -144,7 +146,7 @@ instance ToCanonicalCBOR v (GovAction ConwayEra) where
     toCanonicalCBOR v (UpdateCommittee purposeId removedMembers addedMembers newThreshold) =
         toCanonicalCBOR v (4::Word8, purposeId, Set.toList removedMembers, addedMembers, newThreshold)
     toCanonicalCBOR v (NewConstitution purposeId constitution) =
-        toCanonicalCBOR v (5::Word8, purposeId,  constitution)
+        toCanonicalCBOR v (5::Word8, purposeId, constitution)
     toCanonicalCBOR v (InfoAction) =
         toCanonicalCBOR v (6::Word8, E.encodeNull)
 
@@ -198,7 +200,7 @@ instance KnownNamespace "gov/proposals/v0" where
   type NamespaceEntry "gov/proposals/v0" = GovProposalOut
 
 instance CanonicalCBOREntryEncoder "gov/proposals/v0" GovProposalOut where
-  encodeEntry n = toCanonicalCBOR (Proxy @V1) n
+  encodeEntry n = toCanonicalCBOR (Proxy @"gov/proposals/v0") n
 
 instance CanonicalCBOREntryDecoder "gov/proposals/v0" GovProposalOut where
-  decodeEntry = VersionedNS . unVer @V1 <$> fromCanonicalCBOR
+  decodeEntry = fromCanonicalCBOR

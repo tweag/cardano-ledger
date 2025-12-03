@@ -18,18 +18,9 @@ import Cardano.Ledger.Shelley.LedgerState
 import Cardano.Ledger.Binary.Plain as Plain
 import Cardano.Ledger.Compactible
 import Cardano.Ledger.Conway.Governance
-import Cardano.Ledger.Export.Namespace.Blocks
-import Cardano.Ledger.Export.Namespace.GovCommittee
-import Cardano.Ledger.Export.Namespace.GovConstitution
-import Cardano.Ledger.Export.Namespace.GovPParams
-import Cardano.Ledger.Export.Namespace.GovProposals as Proposals
-import Cardano.Ledger.Export.Namespace.PoolStake
-import Cardano.Ledger.Export.Namespace.Pots
-import Cardano.Ledger.Export.Namespace.Snapshots
-import Cardano.Ledger.Export.Namespace.UTxO
+import Cardano.Ledger.Conway.SCLS
+import Cardano.Ledger.Conway.SCLS.Namespace.GovProposals as Proposals
 import Cardano.Ledger.Conway.State
--- import Cardano.Ledger.Shelley.LedgerState
--- import Cardano.Ledger.State -- Core (UTxO (..))
 import Cardano.Ledger.State.UTxO
 import Cardano.SCLS.Internal.Entry.ChunkEntry
 import Cardano.SCLS.Internal.Reader
@@ -44,7 +35,6 @@ import Data.Foldable (toList)
 import Data.Proxy (Proxy(..))
 import Lens.Micro
 import Options.Applicative
--- import Test.Cardano.Ledger.Constrained.Vars
 import qualified Cardano.Ledger.Shelley.TxOut as Shelley ()
 import qualified Cardano.SCLS.Internal.Serializer.External.Impl as External (serialize)
 import qualified Data.ByteString.Base16.Lazy as Base16
@@ -262,51 +252,9 @@ main = do
             & addNamespacedChunks (Proxy @"gov/committee/v0")
               (S.each
                 [ ChunkEntry (GovCommitteeIn epoch) (GovCommitteeOut cms)
-                | let cms {- CommitteeMembersState{..} -} = nes ^. nesEpochStateL . esLStateL . lsCertStateL . certVStateL . {- lsCertStateL . -} vsCommitteeStateL
+                | let cms = nes ^. nesEpochStateL . esLStateL . lsCertStateL . certVStateL . vsCommitteeStateL
                 ])
           )
-
-
-{-
-data CommitteeAuthorization
-  = -- | Member authorized with a Hot credential acting on behalf of their Cold credential
-    CommitteeHotCredential !(Credential HotCommitteeRole)
-  | -- | Member resigned with a potential explanation in Anchor
-    CommitteeMemberResigned !(StrictMaybe Anchor)
-  deriving (Eq, Ord, Show, Generic)
--}
-
-{-
-
-newtype CommitteeState era = CommitteeState
-  { csCommitteeCreds :: Map (Credential ColdCommitteeRole) CommitteeAuthorization
-  }
-  deriving (Eq, Ord, Show, Generic, EncCBOR, NFData, Default, NoThunks)
-
-
-data CommitteeMemberState = CommitteeMemberState
-  { cmsHotCredAuthStatus :: !HotCredAuthStatus
-  , cmsStatus :: !MemberStatus
-  , cmsExpiration :: !(Maybe EpochNo)
-  -- ^ Absolute epoch number when the member expires
-  , cmsNextEpochChange :: !NextEpochChange
-  -- ^ Changes to the member at the next epoch
-  }
-  deriving (Show, Eq, Generic)
-  deriving (ToJSON) via KeyValuePairs CommitteeMemberState
-
-data MemberStatus
-  = -- Votes of this member will count during ratification
-    Active
-  | Expired
-  | -- | This can happen when a hot credential for an unknown cold credential exists.
-    -- Such Committee member will be either removed from the state at the next
-    -- epoch boundary or enacted as a new member.
-    Unrecognized
-
-
-csCommittee :: !(Map (Credential ColdCommitteeRole) CommitteeMemberState)
--}
 
 localReadDecCBORHex :: FilePath -> IO (UTxO ConwayEra)
 localReadDecCBORHex = either throwIO pure . decodeFullHex <=< LBS.readFile

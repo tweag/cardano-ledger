@@ -102,7 +102,7 @@ executable canonical-ledger
     cardano-ledger-shelley:{cardano-ledger-shelley},
     cardano-ledger-babbage:{cardano-ledger-babbage},
     cardano-ledger-byron:{cardano-ledger-byron},
-    cardano-ledger-conway:{scls-export,cardano-ledger-conway},
+    cardano-ledger-conway:{scls,cardano-ledger-conway},
     cardano-ledger-mary:{cardano-ledger-mary},
     cardano-ledger-api,
     cardano-ledger-binary,
