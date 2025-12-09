@@ -13,7 +13,6 @@
 module Cardano.Ledger.Conway.SCLS.Namespace.UTxO
   ( UtxoKey(..)
   , UtxoOut(..)
-  , Version(..)
   , ToCanonicalCBOR(..)
   , FromCanonicalCBOR(..)
   ) where
@@ -39,9 +38,8 @@ import Cardano.Ledger.Shelley.TxOut qualified as Shelley
 import Cardano.Ledger.TxIn (TxIn(..), TxId(..))
 import Cardano.SCLS.CBOR.Canonical.Decoder
 import Cardano.SCLS.CBOR.Canonical.Encoder
-import Cardano.SCLS.Internal.Entry.IsKey
-import Cardano.SCLS.Internal.NamespaceCodec
-import Cardano.SCLS.Internal.Version
+import Cardano.SCLS.Entry.IsKey
+import Cardano.SCLS.NamespaceCodec
 import Codec.CBOR.Decoding qualified as D
 import Codec.CBOR.Encoding qualified as E
 import Data.Maybe.Strict

@@ -32,8 +32,8 @@ import Codec.CBOR.Decoding qualified as D
 import Cardano.Ledger.Keys
 import Cardano.Ledger.Conway.SCLS.Common ()
 import Cardano.Ledger.Coin (Coin)
-import Cardano.SCLS.Internal.Entry.IsKey
-import Cardano.SCLS.Internal.NamespaceCodec
+import Cardano.SCLS.Entry.IsKey
+import Cardano.SCLS.NamespaceCodec
 import Data.Proxy
 import Cardano.Ledger.Conway.SCLS.LedgerCBOR
 import Data.Foldable (toList)

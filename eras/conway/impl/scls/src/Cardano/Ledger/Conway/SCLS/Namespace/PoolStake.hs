@@ -19,8 +19,8 @@ import Cardano.Ledger.Conway.SCLS.Common ()
 import Cardano.Ledger.Keys
 import Cardano.SCLS.CBOR.Canonical.Decoder
 import Cardano.SCLS.CBOR.Canonical.Encoder
-import Cardano.SCLS.Internal.Entry.IsKey
-import Cardano.SCLS.Internal.NamespaceCodec
+import Cardano.SCLS.Entry.IsKey
+import Cardano.SCLS.NamespaceCodec
 import Codec.CBOR.Decoding qualified as D
 import Codec.CBOR.Encoding qualified as E
 import Data.MemPack

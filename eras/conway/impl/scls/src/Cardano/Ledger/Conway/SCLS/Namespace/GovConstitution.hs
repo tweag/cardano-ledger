@@ -22,8 +22,8 @@ import Cardano.Ledger.Conway.Governance (Constitution(..))
 import Cardano.Ledger.Conway.SCLS.Common ()
 import Cardano.SCLS.CBOR.Canonical.Decoder
 import Cardano.SCLS.CBOR.Canonical.Encoder
-import Cardano.SCLS.Internal.Entry.IsKey
-import Cardano.SCLS.Internal.NamespaceCodec
+import Cardano.SCLS.Entry.IsKey
+import Cardano.SCLS.NamespaceCodec
 import Data.MemPack.ByteOrdered
 import Data.Proxy
 

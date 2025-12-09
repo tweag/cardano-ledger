@@ -15,8 +15,8 @@ import Cardano.Ledger.BaseTypes (EpochNo (..))
 import Cardano.Ledger.Keys
 import Cardano.SCLS.CBOR.Canonical.Decoder as D
 import Cardano.SCLS.CBOR.Canonical.Encoder
-import Cardano.SCLS.Internal.Entry.IsKey
-import Cardano.SCLS.Internal.NamespaceCodec
+import Cardano.SCLS.Entry.IsKey
+import Cardano.SCLS.NamespaceCodec
 import Codec.CBOR.Encoding qualified as E
 import Data.MemPack
 import Data.MemPack.ByteOrdered
