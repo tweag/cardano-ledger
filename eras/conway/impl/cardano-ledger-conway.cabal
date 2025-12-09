@@ -253,12 +253,12 @@ library scls
     containers,
     bytestring,
     mempack,
-    scls-format:{scls-format, mempack},
     text,
     base,
-    scls-core,
+    scls-cardano,
     scls-cbor,
-    scls-cddl,
+    scls-core,
+    mempack-scls,
 
 library scls-testlib
   exposed-modules:
@@ -360,7 +360,7 @@ test-suite testtestss
     cardano-ledger-conway:{cardano-ledger-conway,scls,scls-testlib, testlib},
     cardano-ledger-core:{cardano-ledger-core, testlib},
     cardano-ledger-shelley:testlib,
-    scls-format:testlib,
+    scls-cardano:testlib,
     testlib,
     --
     -- containers

@@ -115,7 +115,8 @@ executable canonical-ledger
     containers,
     optparse-applicative,
     streaming,
-    scls-format:{scls-format,mempack},
+    mempack-scls,
+    scls-format:{scls-format},
     text,
     vector-map,
 
