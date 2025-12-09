@@ -40,7 +40,6 @@ import Data.Foldable (toList)
 import Data.MemPack
 import Data.Sequence.Strict qualified as StrictSeq
 import Data.Text qualified as T
-import Data.Set qualified as Set
 import Data.Typeable (Typeable)
 import Data.Word (Word8)
 import GHC.Generics (Generic)
@@ -144,7 +143,7 @@ instance ToCanonicalCBOR v (StakePoolParams) where
        <> E.encodeString "margin" <> toCanonicalCBOR v sppMargin
        <> E.encodeString "relays" <> toCanonicalCBOR v (toList sppRelays)
        <> E.encodeString "operator" <> toCanonicalCBOR v sppId
-       <> E.encodeString "pool_owners" <> toCanonicalCBOR v (Set.toList sppOwners)
+       <> E.encodeString "pool_owners" <> toCanonicalCBOR v sppOwners
        <> E.encodeString "vrf_keyhash" <> toCanonicalCBOR v sppVrf
        <> E.encodeString "pool_metadata" <> toCanonicalCBOR v sppMetadata
        <> E.encodeString "reward_account" <> toCanonicalCBOR v sppRewardAccount
@@ -158,8 +157,7 @@ instance FromCanonicalCBOR v (StakePoolParams) where
     Versioned relaysList <- decodeField "relays"
     let sppRelays = StrictSeq.fromList relaysList
     Versioned sppId <- decodeField "operator"
-    Versioned ownersList <- decodeField "pool_owners"
-    let sppOwners = Set.fromList ownersList
+    Versioned sppOwners <- decodeField "pool_owners"
     Versioned sppVrf <- decodeField "vrf_keyhash"
     Versioned sppMetadata <- decodeField "pool_metadata"
     Versioned sppRewardAccount <- decodeField "reward_account"

@@ -40,7 +40,6 @@ import Data.Map (Map)
 import Data.MemPack
 import Data.MemPack.ByteOrdered
 import Data.Proxy
-import Data.Set qualified as Set
 import Data.Text qualified as T
 import Data.Typeable (Typeable)
 import Data.Word (Word8)
@@ -144,7 +143,7 @@ instance ToCanonicalCBOR v (GovAction ConwayEra) where
     toCanonicalCBOR v (NoConfidence purposeId) =
         toCanonicalCBOR v (3::Word8, purposeId)
     toCanonicalCBOR v (UpdateCommittee purposeId removedMembers addedMembers newThreshold) =
-        toCanonicalCBOR v (4::Word8, purposeId, Set.toList removedMembers, addedMembers, newThreshold)
+        toCanonicalCBOR v (4::Word8, purposeId, removedMembers, addedMembers, newThreshold)
     toCanonicalCBOR v (NewConstitution purposeId constitution) =
         toCanonicalCBOR v (5::Word8, purposeId, constitution)
     toCanonicalCBOR v (InfoAction) =
@@ -173,8 +172,7 @@ instance FromCanonicalCBOR v (GovAction ConwayEra) where
                 pure $ Versioned $ NoConfidence purposeId
             4 | l == 5 -> do
                 Versioned purposeId <- fromCanonicalCBOR
-                Versioned removedMembersList <- fromCanonicalCBOR
-                let removedMembers = Set.fromList removedMembersList
+                Versioned removedMembers <- fromCanonicalCBOR
                 Versioned addedMembers <- fromCanonicalCBOR
                 Versioned newThreshold <- fromCanonicalCBOR
                 pure $ Versioned $ UpdateCommittee purposeId removedMembers addedMembers newThreshold
