@@ -6,22 +6,31 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module Cardano.Ledger.Conway.SCLS.Namespace.GovProposals
-    ( GovProposalIn(..)
-    , GovProposalOut(..)
-    , GovActionState'(..)
-    , toWire
-    ) where
+
+module Cardano.Ledger.Conway.SCLS.Namespace.GovProposals (
+  GovProposalIn (..),
+  GovProposalOut (..),
+  GovActionState' (..),
+  toWire,
+) where
 
 import Cardano.Ledger.BaseTypes (EpochNo (..))
 import Cardano.Ledger.Conway (ConwayEra)
-import Cardano.Ledger.Conway.Governance (GovActionState(..), GovActionId(..), GovAction(..), ProposalProcedure(..), GovPurposeId(..), GovActionIx(..), Vote(..))
+import Cardano.Ledger.Conway.Governance (
+  GovAction (..),
+  GovActionId (..),
+  GovActionIx (..),
+  GovActionState (..),
+  GovPurposeId (..),
+  ProposalProcedure (..),
+  Vote (..),
+ )
 import Cardano.Ledger.Conway.SCLS.Common ()
 import Cardano.Ledger.Conway.SCLS.LedgerCBOR
 import Cardano.Ledger.Conway.SCLS.Namespace.GovConstitution ()
@@ -33,65 +42,67 @@ import Cardano.SCLS.CBOR.Canonical.Decoder
 import Cardano.SCLS.CBOR.Canonical.Encoder
 import Cardano.SCLS.Entry.IsKey
 import Cardano.SCLS.NamespaceCodec
-import Codec.CBOR.Decoding qualified as D
-import Codec.CBOR.Encoding qualified as E
 import Control.Monad (unless)
 import Data.Map (Map)
 import Data.MemPack
 import Data.MemPack.ByteOrdered
 import Data.Proxy
+import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Typeable (Typeable)
 import Data.Word (Word8)
 import GHC.Generics (Generic)
 
-
 data GovProposalIn = GovProposalIn GovActionId
   deriving (Eq, Ord, Show)
 
 instance MemPack GovActionIx where
-    packedByteCount _ = 2
-    packM (GovActionIx g) = do
-        packWord16beM g
-    unpackM = do
-        g <- unpackBigEndianM
-        return (GovActionIx g)
+  packedByteCount _ = 2
+  packM (GovActionIx g) = do
+    packWord16beM g
+  unpackM = do
+    g <- unpackBigEndianM
+    return (GovActionIx g)
 
 instance IsKey GovProposalIn where
-    keySize = namespaceKeySize @"gov/proposals/v0"
-    packKeyM (GovProposalIn GovActionId {..}) = do
-        packM gaidTxId
-        packM gaidGovActionIx
-    unpackKeyM = do
-        gaidTxId <- unpackM
-        gaidGovActionIx <- unpackM
-        return $ GovProposalIn GovActionId{..}
+  keySize = namespaceKeySize @"gov/proposals/v0"
+  packKeyM (GovProposalIn GovActionId {..}) = do
+    packM gaidTxId
+    packM gaidGovActionIx
+  unpackKeyM = do
+    gaidTxId <- unpackM
+    gaidGovActionIx <- unpackM
+    return $ GovProposalIn GovActionId {..}
 
 newtype GovProposalOut = GovProposalOut (GovActionState')
   deriving (Eq, Show)
 
 deriving newtype instance ToCanonicalCBOR v (GovProposalOut)
+
 deriving newtype instance FromCanonicalCBOR v (GovProposalOut)
 
 instance ToCanonicalCBOR v (GovActionState') where
-    toCanonicalCBOR v GovActionState'{..} =
-        E.encodeMapLen 6
-            <> E.encodeString "drep_votes" <> toCanonicalCBOR v gasDRepVotes
-            <> E.encodeString "proposed_in" <> toCanonicalCBOR v gasProposedIn
-            <> E.encodeString "expires_after" <> toCanonicalCBOR v gasExpiresAfter
-            <> E.encodeString "committee_votes" <> toCanonicalCBOR v gasCommitteeVotes
-            <> E.encodeString "stake_pool_votes" <> toCanonicalCBOR v gasStakePoolVotes
-            <> E.encodeString "proposal_procedure" <> toCanonicalCBOR v gasProposalProcedure
+  toCanonicalCBOR v GovActionState' {..} =
+    encodeAsMap
+      [ SomeEncodablePair v ("drep_votes" :: Text) gasDRepVotes
+      , SomeEncodablePair v ("proposed_in" :: Text) gasProposedIn
+      , SomeEncodablePair v ("expires_after" :: Text) gasExpiresAfter
+      , SomeEncodablePair v ("committee_votes" :: Text) gasCommitteeVotes
+      , SomeEncodablePair v ("stake_pool_votes" :: Text) gasStakePoolVotes
+      , SomeEncodablePair v ("proposal_procedure" :: Text) gasProposalProcedure
+      ]
 
-decodeField :: forall s v a. FromCanonicalCBOR v a => T.Text -> D.Decoder s (Versioned v a)
+decodeField :: forall s v a. FromCanonicalCBOR v a => T.Text -> CanonicalDecoder s (Versioned v a)
 decodeField fieldName = do
-    s <- D.decodeStringCanonical
-    unless (s == fieldName) $
-      fail $ T.unpack $ "Expected field name " <> fieldName <> " but got " <> s
-    fromCanonicalCBOR
+  Versioned s <- fromCanonicalCBOR
+  unless (s == fieldName) $
+    fail $
+      T.unpack $
+        "Expected field name " <> fieldName <> " but got " <> s
+  fromCanonicalCBOR
 
 toWire :: GovActionState ConwayEra -> GovActionState'
-toWire GovActionState{..} = GovActionState' {..}
+toWire GovActionState {..} = GovActionState' {..}
 
 data GovActionState' = GovActionState'
   { gasCommitteeVotes :: !(Map (Credential HotCommitteeRole) Vote)
@@ -104,91 +115,96 @@ data GovActionState' = GovActionState'
   deriving (Eq, Show)
   deriving (Generic)
 
-
 instance FromCanonicalCBOR v (GovActionState') where
-    fromCanonicalCBOR = do
-        6 <- D.decodeMapLenCanonical
-        Versioned gasDRepVotes <- decodeField "drep_votes"
-        Versioned gasProposedIn <- decodeField "proposed_in"
-        Versioned gasExpiresAfter <- decodeField "expires_after"
-        Versioned gasCommitteeVotes <- decodeField "committee_votes"
-        Versioned gasStakePoolVotes <- decodeField "stake_pool_votes"
-        Versioned gasProposalProcedure <- decodeField "proposal_procedure"
-        pure $ Versioned GovActionState'{..}
+  fromCanonicalCBOR = do
+    decodeMapLenCanonicalOf 6
+    Versioned gasDRepVotes <- decodeField "drep_votes"
+    Versioned gasProposedIn <- decodeField "proposed_in"
+    Versioned gasExpiresAfter <- decodeField "expires_after"
+    Versioned gasCommitteeVotes <- decodeField "committee_votes"
+    Versioned gasStakePoolVotes <- decodeField "stake_pool_votes"
+    Versioned gasProposalProcedure <- decodeField "proposal_procedure"
+    pure $ Versioned GovActionState' {..}
 
 instance ToCanonicalCBOR v (ProposalProcedure ConwayEra) where
-    toCanonicalCBOR v ProposalProcedure{..} =
-        E.encodeMapLen 4
-            <> E.encodeString "anchor" <> toCanonicalCBOR v pProcAnchor
-            <> E.encodeString "deposit" <> toCanonicalCBOR v pProcDeposit
-            <> E.encodeString "gov_action" <> toCanonicalCBOR v pProcGovAction
-            <> E.encodeString "return_address" <> toCanonicalCBOR v pProcReturnAddr
+  toCanonicalCBOR v ProposalProcedure {..} =
+    encodeAsMap
+      [ SomeEncodablePair v ("anchor" :: Text) pProcAnchor
+      , SomeEncodablePair v ("deposit" :: Text) pProcDeposit
+      , SomeEncodablePair v ("gov_action" :: Text) pProcGovAction
+      , SomeEncodablePair v ("return_address" :: Text) pProcReturnAddr
+      ]
 
 instance FromCanonicalCBOR v (ProposalProcedure ConwayEra) where
-    fromCanonicalCBOR = do
-        4 <- D.decodeMapLenCanonical
-        Versioned pProcAnchor <- decodeField "anchor"
-        Versioned pProcDeposit <- decodeField "deposit"
-        Versioned pProcGovAction <- decodeField "gov_action"
-        Versioned pProcReturnAddr <- decodeField "return_address"
-        pure $ Versioned ProposalProcedure{..}
+  fromCanonicalCBOR = do
+    decodeMapLenCanonicalOf 4
+    Versioned pProcAnchor <- decodeField "anchor"
+    Versioned pProcDeposit <- decodeField "deposit"
+    Versioned pProcGovAction <- decodeField "gov_action"
+    Versioned pProcReturnAddr <- decodeField "return_address"
+    pure $ Versioned ProposalProcedure {..}
 
 instance ToCanonicalCBOR v (GovAction ConwayEra) where
-    toCanonicalCBOR v (ParameterChange purposeId pparamsUpdate mScriptHash) =
-        toCanonicalCBOR v (0::Word8, purposeId, pparamsUpdate, mScriptHash)
-    toCanonicalCBOR v (HardForkInitiation purposeId protVer) =
-        toCanonicalCBOR v (1::Word8, toCanonicalCBOR v purposeId, toCanonicalCBOR v protVer)
-    toCanonicalCBOR v (TreasuryWithdrawals withdrawals mScriptHash) =
-        toCanonicalCBOR v (2::Word8, withdrawals, mScriptHash)
-    toCanonicalCBOR v (NoConfidence purposeId) =
-        toCanonicalCBOR v (3::Word8, purposeId)
-    toCanonicalCBOR v (UpdateCommittee purposeId removedMembers addedMembers newThreshold) =
-        toCanonicalCBOR v (4::Word8, purposeId, removedMembers, addedMembers, newThreshold)
-    toCanonicalCBOR v (NewConstitution purposeId constitution) =
-        toCanonicalCBOR v (5::Word8, purposeId, constitution)
-    toCanonicalCBOR v (InfoAction) =
-        toCanonicalCBOR v (6::Word8, E.encodeNull)
+  toCanonicalCBOR v (ParameterChange purposeId pparamsUpdate mScriptHash) =
+    toCanonicalCBOR v (0 :: Word8, purposeId, pparamsUpdate, mScriptHash)
+  toCanonicalCBOR v (HardForkInitiation purposeId protVer) =
+    toCanonicalCBOR v (1 :: Word8, purposeId, protVer)
+  toCanonicalCBOR v (TreasuryWithdrawals withdrawals mScriptHash) =
+    toCanonicalCBOR v (2 :: Word8, withdrawals, mScriptHash)
+  toCanonicalCBOR v (NoConfidence purposeId) =
+    toCanonicalCBOR v (3 :: Word8, purposeId)
+  toCanonicalCBOR v (UpdateCommittee purposeId removedMembers addedMembers newThreshold) =
+    toCanonicalCBOR v (4 :: Word8, purposeId, removedMembers, addedMembers, newThreshold)
+  toCanonicalCBOR v (NewConstitution purposeId constitution) =
+    toCanonicalCBOR v (5 :: Word8, purposeId, constitution)
+  toCanonicalCBOR v (InfoAction) =
+    toCanonicalCBOR v (6 :: Word8, ())
 
 instance FromCanonicalCBOR v (GovAction ConwayEra) where
-    fromCanonicalCBOR = do
-        l <- D.decodeListLenCanonical
-        tag <- D.decodeWord8Canonical
-        case tag of
-            0 | l == 4 -> do
-                Versioned purposeId <- fromCanonicalCBOR
-                Versioned pparamsUpdate <- fromCanonicalCBOR
-                Versioned mScriptHash <- fromCanonicalCBOR
-                pure $ Versioned $ ParameterChange purposeId pparamsUpdate mScriptHash
-            1 | l == 3 -> do
-                Versioned purposeId <- fromCanonicalCBOR
-                Versioned protVer <- fromCanonicalCBOR
-                pure $ Versioned $ HardForkInitiation purposeId protVer
-            2 | l == 3 -> do
-                Versioned withdrawals <- fromCanonicalCBOR
-                Versioned mScriptHash <- fromCanonicalCBOR
-                pure $ Versioned $ TreasuryWithdrawals withdrawals mScriptHash
-            3 | l == 2 -> do
-                Versioned purposeId <- fromCanonicalCBOR
-                pure $ Versioned $ NoConfidence purposeId
-            4 | l == 5 -> do
-                Versioned purposeId <- fromCanonicalCBOR
-                Versioned removedMembers <- fromCanonicalCBOR
-                Versioned addedMembers <- fromCanonicalCBOR
-                Versioned newThreshold <- fromCanonicalCBOR
-                pure $ Versioned $ UpdateCommittee purposeId removedMembers addedMembers newThreshold
-            5 | l == 3 -> do
-                Versioned purposeId <- fromCanonicalCBOR
-                Versioned constitution <- fromCanonicalCBOR
-                pure $ Versioned $ NewConstitution purposeId constitution
-            6 | l == 2 -> do
-                _ <- D.decodeNull
-                pure $ Versioned InfoAction
-            _ -> fail $ "Unknown GovAction tag: " ++ show tag
-
+  fromCanonicalCBOR = do
+    l <- decodeListLenCanonical
+    tag <- decodeWord8Canonical
+    case tag of
+      0 | l == 4 -> do
+        Versioned purposeId <- fromCanonicalCBOR
+        Versioned pparamsUpdate <- fromCanonicalCBOR
+        Versioned mScriptHash <- fromCanonicalCBOR
+        pure $ Versioned $ ParameterChange purposeId pparamsUpdate mScriptHash
+      1 | l == 3 -> do
+        Versioned purposeId <- fromCanonicalCBOR
+        Versioned protVer <- fromCanonicalCBOR
+        pure $ Versioned $ HardForkInitiation purposeId protVer
+      2 | l == 3 -> do
+        Versioned withdrawals <- fromCanonicalCBOR
+        Versioned mScriptHash <- fromCanonicalCBOR
+        pure $ Versioned $ TreasuryWithdrawals withdrawals mScriptHash
+      3 | l == 2 -> do
+        Versioned purposeId <- fromCanonicalCBOR
+        pure $ Versioned $ NoConfidence purposeId
+      4 | l == 5 -> do
+        Versioned purposeId <- fromCanonicalCBOR
+        Versioned removedMembers <- fromCanonicalCBOR
+        Versioned addedMembers <- fromCanonicalCBOR
+        Versioned newThreshold <- fromCanonicalCBOR
+        pure $ Versioned $ UpdateCommittee purposeId removedMembers addedMembers newThreshold
+      5 | l == 3 -> do
+        Versioned purposeId <- fromCanonicalCBOR
+        Versioned constitution <- fromCanonicalCBOR
+        pure $ Versioned $ NewConstitution purposeId constitution
+      6 | l == 2 -> do
+        Versioned () <- fromCanonicalCBOR
+        pure $ Versioned InfoAction
+      _ -> fail $ "Unknown GovAction tag: " ++ show tag
 
 deriving via (LedgerCBOR v (GovPurposeId purpose)) instance ToCanonicalCBOR v (GovPurposeId purpose)
-deriving via (LedgerCBOR v (GovPurposeId purpose)) instance Typeable purpose => FromCanonicalCBOR v (GovPurposeId purpose)
+
+deriving via
+  (LedgerCBOR v (GovPurposeId purpose))
+  instance
+    Typeable purpose => FromCanonicalCBOR v (GovPurposeId purpose)
+
 deriving via (LedgerCBOR v (Vote)) instance ToCanonicalCBOR v (Vote)
+
 deriving via (LedgerCBOR v (Vote)) instance FromCanonicalCBOR v (Vote)
 
 type instance NamespaceKeySize "gov/proposals/v0" = 34

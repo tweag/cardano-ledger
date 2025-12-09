@@ -10,10 +10,11 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module Cardano.Ledger.Conway.SCLS.Namespace.GovCommittee
-  ( GovCommitteeIn(..)
-  , GovCommitteeOut(..)
-  ) where
+
+module Cardano.Ledger.Conway.SCLS.Namespace.GovCommittee (
+  GovCommitteeIn (..),
+  GovCommitteeOut (..),
+) where
 
 import Cardano.Ledger.BaseTypes (EpochNo (..))
 import Cardano.Ledger.Conway (ConwayEra)
@@ -26,7 +27,6 @@ import Cardano.SCLS.CBOR.Canonical.Decoder
 import Cardano.SCLS.CBOR.Canonical.Encoder
 import Cardano.SCLS.Entry.IsKey
 import Cardano.SCLS.NamespaceCodec
-import Codec.CBOR.Decoding qualified as D
 import Data.MemPack.ByteOrdered
 import Data.Proxy
 import Data.Word (Word8)
@@ -56,6 +56,7 @@ newtype GovCommitteeOut = GovCommitteeOut (CommitteeState ConwayEra)
   deriving (Eq, Show)
 
 deriving newtype instance ToCanonicalCBOR v GovCommitteeOut
+
 deriving newtype instance FromCanonicalCBOR v GovCommitteeOut
 
 instance ToCanonicalCBOR v (CommitteeState ConwayEra) where
@@ -67,14 +68,14 @@ instance FromCanonicalCBOR v (CommitteeState ConwayEra) where
     return $ CommitteeState <$> st_
 
 instance ToCanonicalCBOR v CommitteeAuthorization where
-  toCanonicalCBOR v (CommitteeHotCredential cred)
-    = toCanonicalCBOR v (0::Word8, cred)
-  toCanonicalCBOR v (CommitteeMemberResigned ma)
-    = toCanonicalCBOR v (1::Word8, ma)
+  toCanonicalCBOR v (CommitteeHotCredential cred) =
+    toCanonicalCBOR v (0 :: Word8, cred)
+  toCanonicalCBOR v (CommitteeMemberResigned ma) =
+    toCanonicalCBOR v (1 :: Word8, ma)
 
 instance FromCanonicalCBOR v CommitteeAuthorization where
   fromCanonicalCBOR = do
-    D.decodeListLenCanonicalOf 2
+    decodeListLenCanonicalOf 2
     Versioned (tag :: Word8) <- fromCanonicalCBOR
     case tag of
       0 -> fmap CommitteeHotCredential <$> fromCanonicalCBOR

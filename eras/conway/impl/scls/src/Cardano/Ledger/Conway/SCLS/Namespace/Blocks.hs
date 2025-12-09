@@ -5,19 +5,19 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module Cardano.Ledger.Conway.SCLS.Namespace.Blocks
-  ( BlockIn(..)
-  , BlockOut(..)
-  ) where
 
-import Cardano.Ledger.Conway.SCLS.Common ()
+module Cardano.Ledger.Conway.SCLS.Namespace.Blocks (
+  BlockIn (..),
+  BlockOut (..),
+) where
+
 import Cardano.Ledger.BaseTypes (EpochNo (..))
+import Cardano.Ledger.Conway.SCLS.Common ()
 import Cardano.Ledger.Keys
 import Cardano.SCLS.CBOR.Canonical.Decoder as D
 import Cardano.SCLS.CBOR.Canonical.Encoder
 import Cardano.SCLS.Entry.IsKey
 import Cardano.SCLS.NamespaceCodec
-import Codec.CBOR.Encoding qualified as E
 import Data.MemPack
 import Data.MemPack.ByteOrdered
 import Data.Proxy
@@ -44,13 +44,13 @@ instance IsKey BlockIn where
   unpackKeyM = do
     a <- unpackM
     epochNo <- unpackBigEndianM
-    return $ BlockIn  (a, EpochNo epochNo)
+    return $ BlockIn (a, EpochNo epochNo)
 
 newtype BlockOut = BlockOut Natural
   deriving (Eq, Ord, Show)
 
 instance ToCanonicalCBOR v BlockOut where
-  toCanonicalCBOR _ (BlockOut n) = E.encodeInteger (fromIntegral n)
+  toCanonicalCBOR v (BlockOut n) = toCanonicalCBOR v (fromIntegral n :: Integer)
 
 instance FromCanonicalCBOR v BlockOut where
   fromCanonicalCBOR = fmap (BlockOut . fromIntegral @Integer) <$> fromCanonicalCBOR

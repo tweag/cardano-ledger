@@ -191,7 +191,6 @@ library testlib
     cardano-ledger-mary:{cardano-ledger-mary, testlib},
     cardano-ledger-shelley:{cardano-ledger-shelley, testlib},
     cardano-slotting:{cardano-slotting, testlib},
-    cardano-ledger-core,
     cardano-strict-containers,
     containers,
     cuddle >=0.4,
@@ -223,6 +222,7 @@ library scls
     Cardano.Ledger.Conway.SCLS.Namespace.Pots
     Cardano.Ledger.Conway.SCLS.Namespace.Snapshots
     Cardano.Ledger.Conway.SCLS.Namespace.UTxO
+
   visibility: public
   hs-source-dirs: scls/src
   default-language: Haskell2010
@@ -237,32 +237,31 @@ library scls
     -Werror
 
   build-depends:
+    base,
+    bytestring,
     cardano-ledger-allegra,
-    cardano-ledger-alonzo:{cardano-ledger-alonzo},
-    cardano-ledger-babbage:{cardano-ledger-babbage},
-    cardano-ledger-binary:{cardano-ledger-binary},
-    cardano-ledger-conway:{cardano-ledger-conway},
-    cardano-ledger-core:{cardano-ledger-core},
-    cardano-ledger-mary:{cardano-ledger-mary},
-    cardano-ledger-shelley:{cardano-ledger-shelley},
+    cardano-ledger-alonzo,
+    cardano-ledger-babbage,
+    cardano-ledger-binary,
+    cardano-ledger-conway,
     cardano-ledger-core,
-    cardano-slotting:{cardano-slotting},
+    cardano-ledger-mary,
+    cardano-ledger-shelley,
+    cardano-slotting,
     cardano-strict-containers,
-    cardano-ledger-core:{cardano-ledger-core},
     cborg,
     containers,
-    bytestring,
     mempack,
-    text,
-    base,
+    mempack-scls,
     scls-cardano,
     scls-cbor,
     scls-core,
-    mempack-scls,
+    text,
 
 library scls-testlib
   exposed-modules:
     Cardano.Ledger.Conway.SCLS.Arbitrary
+
   visibility: public
   hs-source-dirs: scls/testlib
   default-language: Haskell2010
@@ -277,13 +276,12 @@ library scls-testlib
     -Werror
 
   build-depends:
-    base,
-    cardano-ledger-babbage:{testlib},
-    cardano-ledger-conway:{scls, testlib},
-    cardano-ledger-core:{testlib},
-    generic-random,
-    generic-random,
     QuickCheck,
+    base,
+    cardano-ledger-babbage:testlib,
+    cardano-ledger-conway:{scls, testlib},
+    cardano-ledger-core:testlib,
+    generic-random,
 
 executable huddle-cddl
   main-is: Main.hs
@@ -357,7 +355,7 @@ test-suite testtestss
     cardano-ledger-allegra,
     cardano-ledger-alonzo:{cardano-ledger-alonzo, testlib},
     cardano-ledger-binary:testlib,
-    cardano-ledger-conway:{cardano-ledger-conway,scls,scls-testlib, testlib},
+    cardano-ledger-conway:{cardano-ledger-conway, scls, scls-testlib, testlib},
     cardano-ledger-core:{cardano-ledger-core, testlib},
     cardano-ledger-shelley:testlib,
     scls-cardano:testlib,

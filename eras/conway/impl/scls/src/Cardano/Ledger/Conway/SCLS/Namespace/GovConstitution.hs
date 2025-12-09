@@ -11,14 +11,15 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module Cardano.Ledger.Conway.SCLS.Namespace.GovConstitution
-    ( GovConstitutionIn(..)
-    , GovConstitutionOut(..)
-    ) where
+
+module Cardano.Ledger.Conway.SCLS.Namespace.GovConstitution (
+  GovConstitutionIn (..),
+  GovConstitutionOut (..),
+) where
 
 import Cardano.Ledger.BaseTypes (EpochNo (..))
 import Cardano.Ledger.Conway (ConwayEra)
-import Cardano.Ledger.Conway.Governance (Constitution(..))
+import Cardano.Ledger.Conway.Governance (Constitution (..))
 import Cardano.Ledger.Conway.SCLS.Common ()
 import Cardano.SCLS.CBOR.Canonical.Decoder
 import Cardano.SCLS.CBOR.Canonical.Encoder
@@ -42,11 +43,13 @@ newtype GovConstitutionOut = GovConstitutionOut (Constitution ConwayEra)
   deriving (Eq, Show)
 
 deriving newtype instance ToCanonicalCBOR v (GovConstitutionOut)
+
 deriving newtype instance FromCanonicalCBOR v (GovConstitutionOut)
 
 instance ToCanonicalCBOR v (Constitution ConwayEra) where
-  toCanonicalCBOR v Constitution{..} =
+  toCanonicalCBOR v Constitution {..} =
     toCanonicalCBOR v (constitutionAnchor, constitutionScript)
+
 instance FromCanonicalCBOR v (Constitution ConwayEra) where
   fromCanonicalCBOR = do
     Versioned (anchor, script) <- fromCanonicalCBOR

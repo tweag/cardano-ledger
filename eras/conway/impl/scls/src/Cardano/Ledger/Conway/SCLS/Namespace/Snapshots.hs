@@ -13,32 +13,32 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module Cardano.Ledger.Conway.SCLS.Namespace.Snapshots
-  ( SnapShotIn(..)
-  , SnapShotOut(..)
-  , SnapShotValueType(..)
-  , SnapshotStage(..)
-  ) where
 
-import Control.Monad (unless)
-import Cardano.Ledger.Credential
-import Cardano.Ledger.BaseTypes (Url(..))
-import Cardano.SCLS.CBOR.Canonical.Encoder
-import Cardano.SCLS.CBOR.Canonical.Decoder
+module Cardano.Ledger.Conway.SCLS.Namespace.Snapshots (
+  SnapShotIn (..),
+  SnapShotOut (..),
+  SnapShotValueType (..),
+  SnapshotStage (..),
+) where
+
 import Cardano.Ledger.Address (RewardAccount)
-import Cardano.Ledger.State (StakePoolParams (..), PoolMetadata (..), StakePoolRelay (..))
-import Codec.CBOR.Encoding qualified as E
-import Codec.CBOR.Decoding qualified as D
-import Cardano.Ledger.Keys
-import Cardano.Ledger.Conway.SCLS.Common ()
+import Cardano.Ledger.BaseTypes (Url (..))
 import Cardano.Ledger.Coin (Coin)
+import Cardano.Ledger.Conway.SCLS.Common ()
 import Cardano.SCLS.Entry.IsKey
 import Cardano.SCLS.NamespaceCodec
 import Data.Proxy
 import Cardano.Ledger.Conway.SCLS.LedgerCBOR
+import Cardano.Ledger.Credential
+import Cardano.Ledger.Keys
+import Cardano.Ledger.State (PoolMetadata (..), StakePoolParams (..), StakePoolRelay (..))
+import Cardano.SCLS.CBOR.Canonical.Decoder
+import Cardano.SCLS.CBOR.Canonical.Encoder
+import Control.Monad (unless)
 import Data.Foldable (toList)
 import Data.MemPack
 import Data.Sequence.Strict qualified as StrictSeq
+import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Typeable (Typeable)
 import Data.Word (Word8)
@@ -49,9 +49,9 @@ data SnapshotStage = SnapshotStageMark | SnapShotStageSet | SnapshotStageGo
 
 instance MemPack SnapshotStage where
   packedByteCount _ = 1
-  packM SnapshotStageMark = packM (0::Word8)
-  packM SnapShotStageSet = packM (1::Word8)
-  packM SnapshotStageGo = packM (2::Word8)
+  packM SnapshotStageMark = packM (0 :: Word8)
+  packM SnapShotStageSet = packM (1 :: Word8)
+  packM SnapshotStageGo = packM (2 :: Word8)
   unpackM = do
     tag :: Word8 <- unpackM
     case tag of
@@ -68,9 +68,9 @@ data SnapShotValueType
 
 instance MemPack SnapShotValueType where
   packedByteCount _ = 1
-  packM SnapShotValueCoin = packM (0::Word8)
-  packM SnapShotValueAddress = packM (1::Word8)
-  packM SnapShotValuePoolParams = packM (2::Word8)
+  packM SnapShotValueCoin = packM (0 :: Word8)
+  packM SnapShotValueAddress = packM (1 :: Word8)
+  packM SnapShotValuePoolParams = packM (2 :: Word8)
   unpackM = do
     tag :: Word8 <- unpackM
     case tag of
@@ -81,35 +81,35 @@ instance MemPack SnapShotValueType where
 
 data SnapShotIn where
   SnapShotInCred :: SnapshotStage -> Credential Staking -> SnapShotValueType -> SnapShotIn
-  SnapShotInKey  :: SnapshotStage -> KeyHash StakePool -> SnapShotValueType -> SnapShotIn
+  SnapShotInKey :: SnapshotStage -> KeyHash StakePool -> SnapShotValueType -> SnapShotIn
   deriving (Eq, Ord, Show, Typeable)
 
 instance IsKey SnapShotIn where
   keySize = namespaceKeySize @"snapshots/v0"
   packKeyM (SnapShotInCred stage cred valueType) = do
-    packM (0::Word8)
+    packM (0 :: Word8)
     packM stage
     packM cred
     packM valueType
   packKeyM (SnapShotInKey stage kh valueType) = do
-    packM (1::Word8)
+    packM (1 :: Word8)
     packM stage
     packM kh
-    packM (0::Word8) -- filler?
+    packM (0 :: Word8) -- filler?
     packM valueType
   unpackKeyM = do
     tag :: Word8 <- unpackM
     stage <- unpackM
     case tag of
       0 -> do
-          cred <- unpackM
-          valueType <- unpackM
-          return $ SnapShotInCred stage cred valueType
+        cred <- unpackM
+        valueType <- unpackM
+        return $ SnapShotInCred stage cred valueType
       1 -> do
-          kh <- unpackM
-          _filler :: Word8 <- unpackM
-          valueType <- unpackM
-          return $ SnapShotInKey stage kh valueType
+        kh <- unpackM
+        _filler :: Word8 <- unpackM
+        valueType <- unpackM
+        return $ SnapShotInKey stage kh valueType
       _ -> fail "Invalid SnapShotIn tag"
 
 data SnapShotOut where
@@ -121,13 +121,13 @@ data SnapShotOut where
   deriving (Generic)
 
 instance ToCanonicalCBOR v SnapShotOut where
-  toCanonicalCBOR v (SnapShotOutCoin coin) = toCanonicalCBOR v (0::Word8, coin)
-  toCanonicalCBOR v (SnapShotOutAddress kh) = toCanonicalCBOR v (1::Word8, kh)
-  toCanonicalCBOR v (SnapShotOutPoolParams pp) = toCanonicalCBOR v (2::Word8, pp)
+  toCanonicalCBOR v (SnapShotOutCoin coin) = toCanonicalCBOR v (0 :: Word8, coin)
+  toCanonicalCBOR v (SnapShotOutAddress kh) = toCanonicalCBOR v (1 :: Word8, kh)
+  toCanonicalCBOR v (SnapShotOutPoolParams pp) = toCanonicalCBOR v (2 :: Word8, pp)
 
 instance FromCanonicalCBOR v SnapShotOut where
   fromCanonicalCBOR = do
-    D.decodeListLenCanonicalOf 2
+    decodeListLenCanonicalOf 2
     Versioned (tag :: Word8) <- fromCanonicalCBOR
     case tag of
       0 -> fmap SnapShotOutCoin <$> fromCanonicalCBOR
@@ -136,24 +136,25 @@ instance FromCanonicalCBOR v SnapShotOut where
       _ -> fail "Invalid SnapShotOut tag"
 
 instance ToCanonicalCBOR v (StakePoolParams) where
-  toCanonicalCBOR v StakePoolParams{..} =
-    E.encodeMapLen 9
-       <> E.encodeString "cost" <> toCanonicalCBOR v sppCost
-       <> E.encodeString "pledge" <> toCanonicalCBOR v sppPledge
-       <> E.encodeString "margin" <> toCanonicalCBOR v sppMargin
-       <> E.encodeString "relays" <> toCanonicalCBOR v (toList sppRelays)
-       <> E.encodeString "operator" <> toCanonicalCBOR v sppId
-       <> E.encodeString "pool_owners" <> toCanonicalCBOR v sppOwners
-       <> E.encodeString "vrf_keyhash" <> toCanonicalCBOR v sppVrf
-       <> E.encodeString "pool_metadata" <> toCanonicalCBOR v sppMetadata
-       <> E.encodeString "reward_account" <> toCanonicalCBOR v sppRewardAccount
+  toCanonicalCBOR v StakePoolParams {..} =
+    encodeAsMap
+      [ SomeEncodablePair v ("cost" :: Text) sppCost
+      , SomeEncodablePair v ("pledge" :: Text) sppPledge
+      , SomeEncodablePair v ("margin" :: Text) sppMargin
+      , SomeEncodablePair v ("relays" :: Text) (toList sppRelays)
+      , SomeEncodablePair v ("operator" :: Text) sppId
+      , SomeEncodablePair v ("pool_owners" :: Text) sppOwners
+      , SomeEncodablePair v ("vrf_keyhash" :: Text) sppVrf
+      , SomeEncodablePair v ("pool_metadata" :: Text) sppMetadata
+      , SomeEncodablePair v ("reward_account" :: Text) sppRewardAccount
+      ]
 
 instance FromCanonicalCBOR v (StakePoolParams) where
   fromCanonicalCBOR = do
-    9 <- D.decodeMapLenCanonical
+    decodeMapLenCanonicalOf 9
     Versioned sppCost <- decodeField "cost"
-    Versioned sppPledge <- decodeField "pledge"
     Versioned sppMargin <- decodeField "margin"
+    Versioned sppPledge <- decodeField "pledge"
     Versioned relaysList <- decodeField "relays"
     let sppRelays = StrictSeq.fromList relaysList
     Versioned sppId <- decodeField "operator"
@@ -161,23 +162,29 @@ instance FromCanonicalCBOR v (StakePoolParams) where
     Versioned sppVrf <- decodeField "vrf_keyhash"
     Versioned sppMetadata <- decodeField "pool_metadata"
     Versioned sppRewardAccount <- decodeField "reward_account"
-    pure $ Versioned StakePoolParams{..}
+    pure $ Versioned StakePoolParams {..}
 
-decodeField :: forall s v a. FromCanonicalCBOR v a => T.Text -> D.Decoder s (Versioned v a)
+decodeField :: forall s v a. FromCanonicalCBOR v a => T.Text -> CanonicalDecoder s (Versioned v a)
 decodeField fieldName = do
-  s <- D.decodeStringCanonical
+  Versioned s <- fromCanonicalCBOR
   unless (s == fieldName) $
-    fail $ T.unpack $ "Expected field name " <> fieldName <> " but got " <> s
+    fail $
+      T.unpack $
+        "Expected field name " <> fieldName <> " but got " <> s
   fromCanonicalCBOR
 
 deriving via (LedgerCBOR v RewardAccount) instance ToCanonicalCBOR v RewardAccount
+
 deriving via (LedgerCBOR v RewardAccount) instance FromCanonicalCBOR v RewardAccount
+
 deriving via (LedgerCBOR v PoolMetadata) instance FromCanonicalCBOR v PoolMetadata
+
 deriving via (LedgerCBOR v StakePoolRelay) instance ToCanonicalCBOR v StakePoolRelay
+
 deriving via (LedgerCBOR v StakePoolRelay) instance FromCanonicalCBOR v StakePoolRelay
 
 instance ToCanonicalCBOR v PoolMetadata where
-  toCanonicalCBOR v PoolMetadata{..} = toCanonicalCBOR v (pmUrl, pmHash)
+  toCanonicalCBOR v PoolMetadata {..} = toCanonicalCBOR v (pmUrl, pmHash)
 
 instance ToCanonicalCBOR v Url where
   toCanonicalCBOR v u = toCanonicalCBOR v (urlToText u)

@@ -5,13 +5,15 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module Cardano.Ledger.Conway.SCLS.Namespace.Pots
-    ( PotsIn(..)
-    , PotsOut(..)
-    ) where
+
+module Cardano.Ledger.Conway.SCLS.Namespace.Pots (
+  PotsIn (..),
+  PotsOut (..),
+) where
 
 import Cardano.Ledger.BaseTypes (EpochNo (..))
 import Cardano.Ledger.Coin (Coin)
@@ -21,10 +23,9 @@ import Cardano.SCLS.CBOR.Canonical.Decoder
 import Cardano.SCLS.CBOR.Canonical.Encoder
 import Cardano.SCLS.Entry.IsKey
 import Cardano.SCLS.NamespaceCodec
-import Codec.CBOR.Decoding qualified as D
-import Codec.CBOR.Encoding qualified as E
 import Data.MemPack.ByteOrdered
 import Data.Proxy
+import Data.Text (Text)
 import GHC.Generics (Generic)
 
 newtype PotsIn = PotsIn EpochNo
@@ -49,26 +50,27 @@ data PotsOut = PotsOut
   deriving (Generic)
 
 instance ToCanonicalCBOR "pots/v0" PotsOut where
-  toCanonicalCBOR v (PotsOut{..}) =
-    E.encodeMapLen 5
-      <> E.encodeString "fee" <> toCanonicalCBOR v poFee
-      <> E.encodeString "deposit" <> toCanonicalCBOR v poDeposit
-      <> E.encodeString "donation" <> toCanonicalCBOR v poDonation
-      <> E.encodeString "reserves" <> toCanonicalCBOR v poReserves
-      <> E.encodeString "treasury" <> toCanonicalCBOR v poTreasury
+  toCanonicalCBOR v (PotsOut {..}) =
+    encodeAsMap
+      [ SomeEncodablePair v ("fee" :: Text) poFee
+      , SomeEncodablePair v ("deposit" :: Text) poDeposit
+      , SomeEncodablePair v ("donation" :: Text) poDonation
+      , SomeEncodablePair v ("reserves" :: Text) poReserves
+      , SomeEncodablePair v ("treasury" :: Text) poTreasury
+      ]
 
 instance FromCanonicalCBOR "pots/v0" PotsOut where
   fromCanonicalCBOR = do
-    5 <- D.decodeMapLenCanonical
-    "fee" <- D.decodeStringCanonical
+    decodeMapLenCanonicalOf 5
+    Versioned ("fee" :: Text) <- fromCanonicalCBOR
     Versioned poFee <- fromCanonicalCBOR
-    "deposit" <- D.decodeStringCanonical
+    Versioned ("deposit" :: Text) <- fromCanonicalCBOR
     Versioned poDeposit <- fromCanonicalCBOR
-    "donation" <- D.decodeStringCanonical
+    Versioned ("donation" :: Text) <- fromCanonicalCBOR
     Versioned poDonation <- fromCanonicalCBOR
-    "reserves" <- D.decodeStringCanonical
+    Versioned ("reserves" :: Text) <- fromCanonicalCBOR
     Versioned poReserves <- fromCanonicalCBOR
-    "treasury" <- D.decodeStringCanonical
+    Versioned ("treasury" :: Text) <- fromCanonicalCBOR
     Versioned poTreasury <- fromCanonicalCBOR
     pure (Versioned PotsOut {..})
 

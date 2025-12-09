@@ -6,13 +6,15 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module Cardano.Ledger.Conway.SCLS.Namespace.PoolStake
-  ( PoolStakeIn(..)
-  , PoolStakeOut(..)
-  ) where
+
+module Cardano.Ledger.Conway.SCLS.Namespace.PoolStake (
+  PoolStakeIn (..),
+  PoolStakeOut (..),
+) where
 
 import Cardano.Ledger.Coin (Coin)
 import Cardano.Ledger.Conway.SCLS.Common ()
@@ -21,15 +23,13 @@ import Cardano.SCLS.CBOR.Canonical.Decoder
 import Cardano.SCLS.CBOR.Canonical.Encoder
 import Cardano.SCLS.Entry.IsKey
 import Cardano.SCLS.NamespaceCodec
-import Codec.CBOR.Decoding qualified as D
-import Codec.CBOR.Encoding qualified as E
 import Data.MemPack
 import Data.Proxy
+import Data.Text (Text)
 import GHC.Generics (Generic)
 
 newtype PoolStakeIn = PoolStakeIn (KeyHash StakePool)
   deriving (Eq, Ord, Show)
-
 
 instance IsKey PoolStakeIn where
   keySize = namespaceKeySize @"pool_stake/v0"
@@ -45,16 +45,17 @@ data PoolStakeOut = PoolStakeOut
 
 instance ToCanonicalCBOR v PoolStakeOut where
   toCanonicalCBOR v (PoolStakeOut total vrf) =
-    E.encodeMapLen 2
-      <> E.encodeString "vrf" <> toCanonicalCBOR v vrf
-      <> E.encodeString "total" <> toCanonicalCBOR v total
+    encodeAsMap
+      [ SomeEncodablePair v ("vrf" :: Text) vrf
+      , SomeEncodablePair v ("total" :: Text) total
+      ]
 
 instance FromCanonicalCBOR v PoolStakeOut where
   fromCanonicalCBOR = do
-    2 <- D.decodeMapLenCanonical
-    "vrf" <- D.decodeStringCanonical
+    decodeMapLenCanonicalOf 2
+    Versioned ("vrf" :: Text) <- fromCanonicalCBOR
     Versioned vrf <- fromCanonicalCBOR
-    "total" <- D.decodeStringCanonical
+    Versioned ("total" :: Text) <- fromCanonicalCBOR
     Versioned total <- fromCanonicalCBOR
     return $ Versioned PoolStakeOut {..}
 
