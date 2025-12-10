@@ -34,7 +34,6 @@ import Codec.CBOR.Decoding qualified as D
 import Codec.CBOR.Encoding qualified as E
 import Control.Monad (unless)
 import Data.ByteString (ByteString)
-import Data.Maybe.Strict
 import Data.MemPack
 import Data.Proxy
 import Data.Text qualified as T
@@ -84,7 +83,7 @@ deriving newtype instance FromCanonicalCBOR v (GovPParamsOut)
 
 instance ToCanonicalCBOR v (PParams ConwayEra) where
   toCanonicalCBOR v (PParams ConwayPParams{..}) =
-    E.encodeMapLen 30
+    E.encodeMapLen 31
       <> E.encodeString "a0" <> toCanonicalCBOR v (unTHKD cppA0)
       <> E.encodeString "rho" <> toCanonicalCBOR v (unTHKD cppRho)
       <> E.encodeString "tau" <> toCanonicalCBOR v (unTHKD cppTau)
@@ -115,10 +114,11 @@ instance ToCanonicalCBOR v (PParams ConwayEra) where
       <> E.encodeString "max_collateral_inputs" <> toCanonicalCBOR v (unTHKD cppMaxCollateralInputs)
       <> E.encodeString "drep_voting_thresholds" <> toCanonicalCBOR v (unTHKD cppDRepVotingThresholds)
       <> E.encodeString "pool_voting_thresholds" <> toCanonicalCBOR v (unTHKD cppPoolVotingThresholds)
+      <> E.encodeString "min_fee_cost_per_byte" <> toCanonicalCBOR v (unTHKD cppMinFeeRefScriptCostPerByte)
 
 instance FromCanonicalCBOR v (PParams ConwayEra) where
   fromCanonicalCBOR = do
-    30 <- D.decodeMapLenCanonical
+    31 <- D.decodeMapLenCanonical
     Versioned (THKD -> cppA0) <- decodeField "a0"
     Versioned (THKD -> cppRho) <- decodeField "rho"
     Versioned (THKD -> cppTau) <- decodeField "tau"
@@ -149,7 +149,7 @@ instance FromCanonicalCBOR v (PParams ConwayEra) where
     Versioned (THKD -> cppMaxCollateralInputs) <- decodeField "max_collateral_inputs"
     Versioned (THKD -> cppDRepVotingThresholds) <- decodeField "drep_voting_thresholds"
     Versioned (THKD -> cppPoolVotingThresholds) <- decodeField "pool_voting_thresholds"
-    let cppMinFeeRefScriptCostPerByte = THKD minBound
+    Versioned (THKD -> cppMinFeeRefScriptCostPerByte) <- decodeField "min_fee_cost_per_byte"
     pure $ Versioned $ PParams ConwayPParams{..}
 
 decodeField :: forall s v a. FromCanonicalCBOR v a => T.Text -> D.Decoder s (Versioned v a)
@@ -161,7 +161,7 @@ decodeField fieldName = do
 
 instance ToCanonicalCBOR v (PParamsUpdate ConwayEra) where
   toCanonicalCBOR v (PParamsUpdate ConwayPParams{..}) =
-    E.encodeMapLen 29
+    E.encodeMapLen 30
       <> E.encodeString "a0" <> toCanonicalCBOR v (unTHKD cppA0)
       <> E.encodeString "rho" <> toCanonicalCBOR v (unTHKD cppRho)
       <> E.encodeString "tau" <> toCanonicalCBOR v (unTHKD cppTau)
@@ -191,10 +191,11 @@ instance ToCanonicalCBOR v (PParamsUpdate ConwayEra) where
       <> E.encodeString "max_block_header_size" <> toCanonicalCBOR v (unTHKD cppMaxBHSize)
       <> E.encodeString "max_collateral_inputs" <> toCanonicalCBOR v (unTHKD cppMaxCollateralInputs)
       <> E.encodeString "pool_voting_thresholds" <> toCanonicalCBOR v (unTHKD cppPoolVotingThresholds)
+      <> E.encodeString "min_fee_cost_per_byte" <> toCanonicalCBOR v (unTHKD cppMinFeeRefScriptCostPerByte)
 
 instance FromCanonicalCBOR v (PParamsUpdate ConwayEra) where
   fromCanonicalCBOR = do
-    29 <- D.decodeMapLenCanonical
+    30 <- D.decodeMapLenCanonical
     Versioned (THKD -> cppA0) <- decodeField "a0"
     Versioned (THKD -> cppRho) <- decodeField "rho"
     Versioned (THKD -> cppTau) <- decodeField "tau"
@@ -224,8 +225,8 @@ instance FromCanonicalCBOR v (PParamsUpdate ConwayEra) where
     Versioned (THKD -> cppMaxBHSize) <- decodeField "max_block_header_size"
     Versioned (THKD -> cppMaxCollateralInputs) <- decodeField "max_collateral_inputs"
     Versioned (THKD -> cppPoolVotingThresholds) <- decodeField "pool_voting_thresholds"
-    let cppMinFeeRefScriptCostPerByte = THKD SNothing
-        cppProtocolVersion = NoUpdate
+    Versioned (THKD -> cppMinFeeRefScriptCostPerByte) <- decodeField "min_fee_cost_per_byte"
+    let cppProtocolVersion = NoUpdate
     pure $ Versioned $ PParamsUpdate ConwayPParams{..}
 
 

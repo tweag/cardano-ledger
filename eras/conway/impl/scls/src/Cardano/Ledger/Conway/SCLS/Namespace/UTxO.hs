@@ -20,7 +20,7 @@ module Cardano.Ledger.Conway.SCLS.Namespace.UTxO
 import Cardano.Ledger.Address
 import Cardano.Ledger.Allegra.Scripts (Timelock(..), TimelockRaw(..))
 import Cardano.Ledger.Alonzo.Scripts (AlonzoPlutusPurpose, AsItem, AlonzoScript(..), decodePlutusScript)
-import Cardano.Ledger.Alonzo.TxOut (DataHash32, Addr28Extra)
+import Cardano.Ledger.Alonzo.TxOut (DataHash32)
 import Cardano.Ledger.Babbage.TxOut qualified as Babbage
 import Cardano.Ledger.Binary (decodeMemPack, encodeMemPack, toPlainEncoding, toPlainDecoder, natVersion)
 import Cardano.Ledger.Compactible
@@ -109,47 +109,17 @@ instance FromCanonicalCBOR "utxo/v0" UtxoOut where
       _ -> fail "Invalid UtxoOut tag"
 
 instance ToCanonicalCBOR "utxo/v0" (Babbage.BabbageTxOut ConwayEra) where
-  toCanonicalCBOR v (Babbage.TxOutCompact cAddr form) =
-    E.encodeMapLen 2
-      <> E.encodeInt 0 <> toCanonicalCBOR v cAddr
-      <> E.encodeInt 1 <> toCanonicalCBOR v form
-  -- toCanonicalCBOR v (Babbage.TxOut_AddrHash28_AdaOnly staking hash28 compactForm) =
-  --     let cAddr = unCompactAddr (compactAddr (decodeAddress28 staking hash28))
-  --     in E.encodeMapLen 2
-  --         <> E.encodeInt 0 <> toCanonicalCBOR v cAddr
-  --         <> E.encodeInt 1 <> toCanonicalCBOR v compactForm
-  -- toCanonicalCBOR v (Babbage.TxOut_AddrHash28_AdaOnly_DataHash32 staking hash28 compact dataHash) =
-  --     let cAddr = unCompactAddr (compactAddr (decodeAddress28 staking hash28))
-  --     in E.encodeMapLen 3
-  --         <> E.encodeInt 0 <> toCanonicalCBOR v cAddr
-  --         <> E.encodeInt 1 <> toCanonicalCBOR v compact
-  --         <> E.encodeInt 2 <> toCanonicalCBOR v (0::Int, dataHash)
-  toCanonicalCBOR v (Babbage.TxOutCompactRefScript cAddr form datum script) =
+  toCanonicalCBOR v (Babbage.BabbageTxOut addr vl datum refScript) = do
     let datumEncoding = case datum of
-          NoDatum -> (Nothing)
-          DatumHash dh -> Just (toCanonicalCBOR v (0::Int, originalBytes dh))
-          Datum binaryData -> Just (toCanonicalCBOR v (1:: Int, toCanonicalCBOR v (LedgerCBOR @"utxo/v0" binaryData)))
-    in E.encodeMapLen (3 + (case datumEncoding of Just{} -> 1 ; Nothing -> 0))
-          <> E.encodeInt 0 <> toCanonicalCBOR v cAddr
-          <> E.encodeInt 1 <> toCanonicalCBOR v form
-          <> case datumEncoding of
-               Nothing -> mempty
-               Just enc -> E.encodeInt 2 <> enc
-          <> E.encodeInt 3 <> toCanonicalCBOR v script
-  toCanonicalCBOR v (Babbage.TxOutCompactDatum cAddr form inlineDatum) =
-    E.encodeMapLen 3
-       <> E.encodeInt 0 <> toCanonicalCBOR v cAddr
-       <> E.encodeInt 1 <> toCanonicalCBOR v form
-       <> E.encodeInt 2
-           <> case inlineDatum of
-                binaryData -> toCanonicalCBOR v (1::Int, toCanonicalCBOR v (LedgerCBOR @"utxo/v0" binaryData))
-  toCanonicalCBOR v (Babbage.TxOutCompactDH cAddr form datum) =
-    E.encodeMapLen 3
-       <> E.encodeInt 0 <> toCanonicalCBOR v cAddr
-       <> E.encodeInt 1 <> toCanonicalCBOR v form
-       <> E.encodeInt 2
-           <> case datum of
-               hash_ -> toCanonicalCBOR v (0::Int, originalBytes hash_)
+          NoDatum -> SNothing
+          DatumHash dh -> SJust (toCanonicalCBOR v (0::Int, originalBytes dh))
+          Datum binaryData -> SJust (toCanonicalCBOR v (1:: Int, toCanonicalCBOR v (LedgerCBOR @"utxo/v0" binaryData)))
+    E.encodeMapLen (2 + (case datumEncoding of SJust{} -> 1 ; SNothing -> 0) + (case refScript of SNothing -> 0 ; _ -> 1))
+      <> E.encodeInt 0 <> toCanonicalCBOR v (compactAddr addr)
+      <> E.encodeInt 1 <> toCanonicalCBOR v vl
+      <> foldMap (\d -> E.encodeInt 2 <> d) datumEncoding
+      <> foldMap (\script -> E.encodeInt 3 <> toCanonicalCBOR v script) refScript
+
 
 instance FromCanonicalCBOR "utxo/v0" (Babbage.BabbageTxOut ConwayEra) where
   fromCanonicalCBOR = do
@@ -157,8 +127,8 @@ instance FromCanonicalCBOR "utxo/v0" (Babbage.BabbageTxOut ConwayEra) where
     D.decodeWordCanonicalOf 0
     Versioned cAddr <- fromCanonicalCBOR @"utxo/v0"
     D.decodeWordCanonicalOf 1
-    Versioned form <- fromCanonicalCBOR
-    (datumPart, script)
+    Versioned vl <- fromCanonicalCBOR
+    (datum, refScript)
       <- if l == 2
          then return (NoDatum, SNothing)
          else do
@@ -176,12 +146,7 @@ instance FromCanonicalCBOR "utxo/v0" (Babbage.BabbageTxOut ConwayEra) where
                Versioned script <- fromCanonicalCBOR @"utxo/v0"
                return (NoDatum, SJust script)
              _ -> fail "Invalid Datum tag"
-    case (datumPart, script) of
-      (NoDatum, SNothing) -> return $ Versioned (Babbage.TxOutCompact cAddr form)
-      (NoDatum, SJust scr) -> return $ Versioned (Babbage.TxOutCompactRefScript cAddr form NoDatum scr)
-      (datum, SJust scr) -> return $ Versioned (Babbage.TxOutCompactRefScript cAddr form datum scr)
-      (DatumHash hsh, SNothing) -> return $ Versioned (Babbage.TxOutCompactDH cAddr form hsh)
-      (Datum binaryData, SNothing) -> return $ Versioned (Babbage.TxOutCompactDatum cAddr form binaryData)
+    return $ Versioned (Babbage.BabbageTxOut (decompactAddr cAddr) vl datum refScript)
 
 
 deriving via (LedgerCBOR v (Shelley.ShelleyTxOut ConwayEra)) instance ToCanonicalCBOR v (Shelley.ShelleyTxOut ConwayEra)
@@ -233,10 +198,9 @@ instance {-# OVERLAPPING #-} FromCanonicalCBOR version (CompactForm MaryValue) w
     Just v' <- pure (toCompact v)
     pure $ Versioned v'
 
+
 deriving via (MemPackCBOR CompactAddr) instance ToCanonicalCBOR "utxo/v0" CompactAddr
 deriving via (MemPackCBOR CompactAddr) instance FromCanonicalCBOR "utxo/v0" CompactAddr
-deriving via (MemPackCBOR Addr28Extra) instance FromCanonicalCBOR "utxo/v0" Addr28Extra
-deriving via (MemPackCBOR Addr28Extra) instance ToCanonicalCBOR "utxo/v0" Addr28Extra
 deriving via (LedgerCBOR v TxIn) instance FromCanonicalCBOR v TxIn
 deriving via (LedgerCBOR v TxIn) instance ToCanonicalCBOR v TxIn
 deriving via (MemPackCBOR DataHash32) instance FromCanonicalCBOR "utxo/v0" DataHash32

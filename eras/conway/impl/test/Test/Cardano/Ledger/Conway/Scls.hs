@@ -13,7 +13,7 @@ import Cardano.SCLS.Testlib
 import Test.Cardano.Ledger.Common
 import Cardano.Ledger.State (StakePoolParams (..), PoolMetadata (..)) -- , StakePoolRelay (..))
 import Cardano.Ledger.Conway (ConwayEra)
-import Cardano.Ledger.Conway.Governance (ProposalProcedure(..), GovAction(..), GovPurposeId(..), GovActionPurpose(..), Constitution(..))
+import Cardano.Ledger.Conway.Governance -- (ProposalProcedure(..), GovAction(..), GovPurposeId(..), GovActionPurpose(..), Constitution(..))
 import Cardano.Ledger.Coin (Coin)
 import Cardano.Ledger.BaseTypes (UnitInterval, Anchor, ProtVer(..), EpochInterval, NonNegativeInterval{-, StrictMaybe(..)-})
 import Cardano.Ledger.Address (RewardAccount)
@@ -21,7 +21,7 @@ import Cardano.Ledger.Credential
 import Cardano.Ledger.Conway.PParams
 -- import Data.Set qualified as Set
 -- import Data.Map qualified as Map
-import Cardano.Ledger.Hashes
+-- import Cardano.Ledger.Hashes
 import Cardano.Ledger.Core
 import Cardano.Ledger.Plutus.CostModels
 import Cardano.Ledger.Alonzo.PParams
@@ -42,7 +42,6 @@ spec = do
     validateType @"gov/proposals/v0" @(ProposalProcedure ConwayEra)  "proposal_procedure"
     validateType @"gov/proposals/v0" @(RewardAccount) "reward_account"
     validateType @"gov/proposals/v0" @(Coin) "coin"
-    validateType @"gov/proposals/v0" @(GovAction ConwayEra) "gov_action"
     validateType @"gov/proposals/v0" @(Constitution ConwayEra) "constitution"
     validateType @"gov/proposals/v0" @(Anchor) "anchor"
     validateType @"gov/proposals/v0" @(Credential ColdCommitteeRole) "credential"
@@ -57,7 +56,7 @@ spec = do
     validateType @"gov/proposals/v0" @(PoolVotingThresholds) "pool_voting_thresholds"
 
     validateType @"gov/proposals/v0" @(PParamsUpdate ConwayEra) "gov_params_update"
-    validateType @"gov/proposals/v0" @(PParamsUpdate ConwayEra) "gov_params_update"
-    validateType @"gov/proposals/v0" @(PParamsUpdate ConwayEra) "gov_params_update"
+
+    validateType @"gov/proposals/v0" @(GovAction ConwayEra) "gov_action"
     validateType @"gov/proposals/v0" @(PParamsUpdate ConwayEra) "gov_params_update"
 
