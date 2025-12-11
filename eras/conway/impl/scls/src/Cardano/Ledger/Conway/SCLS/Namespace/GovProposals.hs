@@ -38,10 +38,12 @@ import Cardano.Ledger.Conway.SCLS.Namespace.GovPParams ()
 import Cardano.Ledger.Conway.SCLS.Namespace.Snapshots ()
 import Cardano.Ledger.Credential
 import Cardano.Ledger.Keys
+import Cardano.SCLS.CBOR.Canonical
 import Cardano.SCLS.CBOR.Canonical.Decoder
 import Cardano.SCLS.CBOR.Canonical.Encoder
 import Cardano.SCLS.Entry.IsKey
 import Cardano.SCLS.NamespaceCodec
+import Cardano.SCLS.Versioned (Versioned (..))
 import Control.Monad (unless)
 import Data.Map (Map)
 import Data.MemPack
@@ -84,12 +86,12 @@ deriving newtype instance FromCanonicalCBOR v (GovProposalOut)
 instance ToCanonicalCBOR v (GovActionState') where
   toCanonicalCBOR v GovActionState' {..} =
     encodeAsMap
-      [ SomeEncodablePair v ("drep_votes" :: Text) gasDRepVotes
-      , SomeEncodablePair v ("proposed_in" :: Text) gasProposedIn
-      , SomeEncodablePair v ("expires_after" :: Text) gasExpiresAfter
-      , SomeEncodablePair v ("committee_votes" :: Text) gasCommitteeVotes
-      , SomeEncodablePair v ("stake_pool_votes" :: Text) gasStakePoolVotes
-      , SomeEncodablePair v ("proposal_procedure" :: Text) gasProposalProcedure
+      [ mkEncodablePair v ("drep_votes" :: Text) gasDRepVotes
+      , mkEncodablePair v ("proposed_in" :: Text) gasProposedIn
+      , mkEncodablePair v ("expires_after" :: Text) gasExpiresAfter
+      , mkEncodablePair v ("committee_votes" :: Text) gasCommitteeVotes
+      , mkEncodablePair v ("stake_pool_votes" :: Text) gasStakePoolVotes
+      , mkEncodablePair v ("proposal_procedure" :: Text) gasProposalProcedure
       ]
 
 decodeField :: forall s v a. FromCanonicalCBOR v a => T.Text -> CanonicalDecoder s (Versioned v a)
@@ -129,10 +131,10 @@ instance FromCanonicalCBOR v (GovActionState') where
 instance ToCanonicalCBOR v (ProposalProcedure ConwayEra) where
   toCanonicalCBOR v ProposalProcedure {..} =
     encodeAsMap
-      [ SomeEncodablePair v ("anchor" :: Text) pProcAnchor
-      , SomeEncodablePair v ("deposit" :: Text) pProcDeposit
-      , SomeEncodablePair v ("gov_action" :: Text) pProcGovAction
-      , SomeEncodablePair v ("return_address" :: Text) pProcReturnAddr
+      [ mkEncodablePair v ("anchor" :: Text) pProcAnchor
+      , mkEncodablePair v ("deposit" :: Text) pProcDeposit
+      , mkEncodablePair v ("gov_action" :: Text) pProcGovAction
+      , mkEncodablePair v ("return_address" :: Text) pProcReturnAddr
       ]
 
 instance FromCanonicalCBOR v (ProposalProcedure ConwayEra) where

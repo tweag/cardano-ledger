@@ -47,6 +47,10 @@ import Cardano.Ledger.Plutus.Data (BinaryData, Datum (..))
 import Cardano.Ledger.Plutus.Language
 import Cardano.Ledger.Shelley.TxOut qualified as Shelley
 import Cardano.Ledger.TxIn (TxId (..), TxIn (..))
+import Cardano.SCLS.CBOR.Canonical (
+  assumeCanonicalDecoder,
+  assumeCanonicalEncoding,
+ )
 import Cardano.SCLS.CBOR.Canonical.Decoder (
   FromCanonicalCBOR (..),
   decodeListLenCanonical,
@@ -55,13 +59,13 @@ import Cardano.SCLS.CBOR.Canonical.Decoder (
   decodeWordCanonicalOf,
  )
 import Cardano.SCLS.CBOR.Canonical.Encoder (
-  SomeEncodablePair (..),
   ToCanonicalCBOR (..),
   encodeAsMap,
+  mkEncodablePair,
  )
 import Cardano.SCLS.Entry.IsKey
 import Cardano.SCLS.NamespaceCodec
-import Cardano.SCLS.Versioned ()
+import Cardano.SCLS.Versioned (Versioned (..))
 import Data.Maybe.Strict
 import Data.MemPack
 import Data.Proxy
@@ -72,12 +76,12 @@ newtype MemPackCBOR a = MemPackCBOR {unMemPackCBOR :: a}
   deriving (Eq, Show)
 
 instance MemPack a => ToCanonicalCBOR "utxo/v0" (MemPackCBOR a) where
-  toCanonicalCBOR _v (MemPackCBOR a) = unsafeToCanonicalEncoding $ toPlainEncoding (natVersion @9) (encodeMemPack a)
+  toCanonicalCBOR _v (MemPackCBOR a) = assumeCanonicalEncoding $ toPlainEncoding (natVersion @9) (encodeMemPack a)
 
 instance MemPack a => FromCanonicalCBOR "utxo/v0" (MemPackCBOR a) where
   fromCanonicalCBOR =
     Versioned . MemPackCBOR
-      <$> (unsafeToCanonicalDecoder $ toPlainDecoder Nothing (natVersion @9) decodeMemPack)
+      <$> (assumeCanonicalDecoder $ toPlainDecoder Nothing (natVersion @9) decodeMemPack)
 
 -- | Input wrapper for the keys that are used in utxo namespace
 data UtxoKey
@@ -131,8 +135,8 @@ instance FromCanonicalCBOR "utxo/v0" UtxoOut where
 instance ToCanonicalCBOR "utxo/v0" (Babbage.BabbageTxOut ConwayEra) where
   toCanonicalCBOR v (Babbage.TxOutCompact cAddr form) =
     encodeAsMap
-      [ SomeEncodablePair v (0 :: Int) cAddr
-      , SomeEncodablePair v (1 :: Int) form
+      [ mkEncodablePair v (0 :: Int) cAddr
+      , mkEncodablePair v (1 :: Int) form
       ]
   -- toCanonicalCBOR v (Babbage.TxOut_AddrHash28_AdaOnly staking hash28 compactForm) =
   --     let cAddr = unCompactAddr (compactAddr (decodeAddress28 staking hash28))
@@ -151,19 +155,19 @@ instance ToCanonicalCBOR "utxo/v0" (Babbage.BabbageTxOut ConwayEra) where
           DatumHash dh -> Just (toCanonicalCBOR v (0 :: Int, originalBytes dh))
           Datum binaryData -> Just (toCanonicalCBOR v (1 :: Int, (LedgerCBOR @"utxo/v0" binaryData)))
      in encodeAsMap
-          ( [ SomeEncodablePair v (0 :: Int) cAddr
-            , SomeEncodablePair v (1 :: Int) form
-            , SomeEncodablePair v (3 :: Int) script
+          ( [ mkEncodablePair v (0 :: Int) cAddr
+            , mkEncodablePair v (1 :: Int) form
+            , mkEncodablePair v (3 :: Int) script
             ]
               <> case datumEncoding of
                 Nothing -> mempty
-                Just enc -> [SomeEncodablePair v (2 :: Int) enc]
+                Just enc -> [mkEncodablePair v (2 :: Int) enc]
           )
   toCanonicalCBOR v (Babbage.TxOutCompactDatum cAddr form inlineDatum) =
     encodeAsMap
-      [ SomeEncodablePair v (0 :: Int) cAddr
-      , SomeEncodablePair v (1 :: Int) form
-      , SomeEncodablePair
+      [ mkEncodablePair v (0 :: Int) cAddr
+      , mkEncodablePair v (1 :: Int) form
+      , mkEncodablePair
           v
           (2 :: Int)
           ( case inlineDatum of
@@ -172,9 +176,9 @@ instance ToCanonicalCBOR "utxo/v0" (Babbage.BabbageTxOut ConwayEra) where
       ]
   toCanonicalCBOR v (Babbage.TxOutCompactDH cAddr form datum) =
     encodeAsMap
-      [ SomeEncodablePair v (0 :: Int) cAddr
-      , SomeEncodablePair v (1 :: Int) form
-      , SomeEncodablePair
+      [ mkEncodablePair v (0 :: Int) cAddr
+      , mkEncodablePair v (1 :: Int) form
+      , mkEncodablePair
           v
           (2 :: Int)
           ( case datum of
@@ -247,17 +251,17 @@ instance FromCanonicalCBOR v (AlonzoScript ConwayEra) where
       0 -> fmap (NativeScript) <$> fromCanonicalCBOR
       1 ->
         Versioned . PlutusScript
-          <$> ( unsafeToCanonicalDecoder $
+          <$> ( assumeCanonicalDecoder $
                   toPlainDecoder Nothing (natVersion @9) (decodePlutusScript @ConwayEra SPlutusV1)
               )
       2 ->
         Versioned . PlutusScript
-          <$> ( unsafeToCanonicalDecoder $
+          <$> ( assumeCanonicalDecoder $
                   toPlainDecoder Nothing (natVersion @9) (decodePlutusScript @ConwayEra SPlutusV2)
               )
       3 ->
         Versioned . PlutusScript
-          <$> ( unsafeToCanonicalDecoder $
+          <$> ( assumeCanonicalDecoder $
                   toPlainDecoder Nothing (natVersion @9) (decodePlutusScript @ConwayEra SPlutusV3)
               )
       n -> fail ("Unknown tag: " <> show n)

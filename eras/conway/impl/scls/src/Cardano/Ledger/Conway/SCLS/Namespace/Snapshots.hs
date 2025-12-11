@@ -25,18 +25,20 @@ import Cardano.Ledger.Address (RewardAccount)
 import Cardano.Ledger.BaseTypes (Url (..))
 import Cardano.Ledger.Coin (Coin)
 import Cardano.Ledger.Conway.SCLS.Common ()
-import Cardano.SCLS.Entry.IsKey
-import Cardano.SCLS.NamespaceCodec
-import Data.Proxy
 import Cardano.Ledger.Conway.SCLS.LedgerCBOR
 import Cardano.Ledger.Credential
 import Cardano.Ledger.Keys
 import Cardano.Ledger.State (PoolMetadata (..), StakePoolParams (..), StakePoolRelay (..))
+import Cardano.SCLS.CBOR.Canonical
 import Cardano.SCLS.CBOR.Canonical.Decoder
 import Cardano.SCLS.CBOR.Canonical.Encoder
+import Cardano.SCLS.Entry.IsKey
+import Cardano.SCLS.NamespaceCodec
+import Cardano.SCLS.Versioned (Versioned (..))
 import Control.Monad (unless)
 import Data.Foldable (toList)
 import Data.MemPack
+import Data.Proxy
 import Data.Sequence.Strict qualified as StrictSeq
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -138,15 +140,15 @@ instance FromCanonicalCBOR v SnapShotOut where
 instance ToCanonicalCBOR v (StakePoolParams) where
   toCanonicalCBOR v StakePoolParams {..} =
     encodeAsMap
-      [ SomeEncodablePair v ("cost" :: Text) sppCost
-      , SomeEncodablePair v ("pledge" :: Text) sppPledge
-      , SomeEncodablePair v ("margin" :: Text) sppMargin
-      , SomeEncodablePair v ("relays" :: Text) (toList sppRelays)
-      , SomeEncodablePair v ("operator" :: Text) sppId
-      , SomeEncodablePair v ("pool_owners" :: Text) sppOwners
-      , SomeEncodablePair v ("vrf_keyhash" :: Text) sppVrf
-      , SomeEncodablePair v ("pool_metadata" :: Text) sppMetadata
-      , SomeEncodablePair v ("reward_account" :: Text) sppRewardAccount
+      [ mkEncodablePair v ("cost" :: Text) sppCost
+      , mkEncodablePair v ("pledge" :: Text) sppPledge
+      , mkEncodablePair v ("margin" :: Text) sppMargin
+      , mkEncodablePair v ("relays" :: Text) (toList sppRelays)
+      , mkEncodablePair v ("operator" :: Text) sppId
+      , mkEncodablePair v ("pool_owners" :: Text) sppOwners
+      , mkEncodablePair v ("vrf_keyhash" :: Text) sppVrf
+      , mkEncodablePair v ("pool_metadata" :: Text) sppMetadata
+      , mkEncodablePair v ("reward_account" :: Text) sppRewardAccount
       ]
 
 instance FromCanonicalCBOR v (StakePoolParams) where

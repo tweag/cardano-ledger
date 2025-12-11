@@ -22,9 +22,9 @@ import Cardano.Ledger.Binary (
   toPlainDecoder,
   toPlainEncoding,
  )
+import Cardano.SCLS.CBOR.Canonical (assumeCanonicalDecoder, assumeCanonicalEncoding)
 import Cardano.SCLS.CBOR.Canonical.Decoder (FromCanonicalCBOR (..))
 import Cardano.SCLS.CBOR.Canonical.Encoder (ToCanonicalCBOR (..))
-import Cardano.SCLS.NamespaceCodec (unsafeToCanonicalDecoder, unsafeToCanonicalEncoding)
 import Cardano.SCLS.Versioned
 import GHC.TypeLits
 
@@ -33,10 +33,9 @@ newtype LedgerCBOR (v :: Symbol) a = LedgerCBOR {unLedgerCBOR :: a}
   deriving (Eq, Show)
 
 instance EncCBOR a => ToCanonicalCBOR v (LedgerCBOR v a) where
-  toCanonicalCBOR _v (LedgerCBOR a) = unsafeToCanonicalEncoding $ toPlainEncoding (natVersion @9) (encCBOR a)
+  toCanonicalCBOR _v (LedgerCBOR a) = assumeCanonicalEncoding $ toPlainEncoding (natVersion @9) (encCBOR a)
 
 instance DecCBOR a => FromCanonicalCBOR v (LedgerCBOR v a) where
   fromCanonicalCBOR =
     Versioned . LedgerCBOR
-      <$> (unsafeToCanonicalDecoder $ toPlainDecoder Nothing (natVersion @9) decCBOR)
-
+      <$> (assumeCanonicalDecoder $ toPlainDecoder Nothing (natVersion @9) decCBOR)

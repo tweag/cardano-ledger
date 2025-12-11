@@ -27,6 +27,7 @@ import Cardano.SCLS.CBOR.Canonical.Decoder
 import Cardano.SCLS.CBOR.Canonical.Encoder
 import Cardano.SCLS.Entry.IsKey
 import Cardano.SCLS.NamespaceCodec
+import Cardano.SCLS.Versioned (Versioned (..))
 import Data.MemPack.ByteOrdered
 import Data.Proxy
 import Data.Word (Word8)

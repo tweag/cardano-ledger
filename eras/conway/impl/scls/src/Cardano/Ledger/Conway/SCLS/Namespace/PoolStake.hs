@@ -23,6 +23,7 @@ import Cardano.SCLS.CBOR.Canonical.Decoder
 import Cardano.SCLS.CBOR.Canonical.Encoder
 import Cardano.SCLS.Entry.IsKey
 import Cardano.SCLS.NamespaceCodec
+import Cardano.SCLS.Versioned (Versioned (..))
 import Data.MemPack
 import Data.Proxy
 import Data.Text (Text)
@@ -46,8 +47,8 @@ data PoolStakeOut = PoolStakeOut
 instance ToCanonicalCBOR v PoolStakeOut where
   toCanonicalCBOR v (PoolStakeOut total vrf) =
     encodeAsMap
-      [ SomeEncodablePair v ("vrf" :: Text) vrf
-      , SomeEncodablePair v ("total" :: Text) total
+      [ mkEncodablePair v ("vrf" :: Text) vrf
+      , mkEncodablePair v ("total" :: Text) total
       ]
 
 instance FromCanonicalCBOR v PoolStakeOut where

@@ -23,6 +23,7 @@ import Cardano.SCLS.CBOR.Canonical.Decoder
 import Cardano.SCLS.CBOR.Canonical.Encoder
 import Cardano.SCLS.Entry.IsKey
 import Cardano.SCLS.NamespaceCodec
+import Cardano.SCLS.Versioned (Versioned (..))
 import Data.MemPack.ByteOrdered
 import Data.Proxy
 import Data.Text (Text)
@@ -52,11 +53,11 @@ data PotsOut = PotsOut
 instance ToCanonicalCBOR "pots/v0" PotsOut where
   toCanonicalCBOR v (PotsOut {..}) =
     encodeAsMap
-      [ SomeEncodablePair v ("fee" :: Text) poFee
-      , SomeEncodablePair v ("deposit" :: Text) poDeposit
-      , SomeEncodablePair v ("donation" :: Text) poDonation
-      , SomeEncodablePair v ("reserves" :: Text) poReserves
-      , SomeEncodablePair v ("treasury" :: Text) poTreasury
+      [ mkEncodablePair v ("fee" :: Text) poFee
+      , mkEncodablePair v ("deposit" :: Text) poDeposit
+      , mkEncodablePair v ("donation" :: Text) poDonation
+      , mkEncodablePair v ("reserves" :: Text) poReserves
+      , mkEncodablePair v ("treasury" :: Text) poTreasury
       ]
 
 instance FromCanonicalCBOR "pots/v0" PotsOut where
