@@ -23,12 +23,14 @@ module Cardano.Ledger.SCLS.Common
   , mkCanonicalVRFVerKeyHash
   , Nonce (..)
   , CoinPerByte (..)
+  , ScriptHash
   ) where
 
 import Cardano.SCLS.CDDL ()
 import Cardano.Ledger.SCLS.BaseTypes
 import Cardano.Ledger.Coin (Coin(..), CompactForm (..), CoinPerByte (..))
 import Cardano.Ledger.Plutus.ExUnits (Prices)
+import Data.Foldable (toList)
 import qualified Cardano.Crypto.Hash as Hash
 import qualified Cardano.Ledger.Hashes as H
 import Cardano.SCLS.Versioned (Versioned (..))
@@ -76,6 +78,10 @@ instance IsCanonicalCoin Coin where
 instance IsCanonicalCoin (CompactForm Coin) where
   mkCanonicalCoin (CompactCoin ci) = CanonicalCoin (fromIntegral ci)
   fromCanonicalCoin (CanonicalCoin ci) = CompactCoin (fromIntegral ci)
+
+instance IsCanonicalCoin Integer where
+  mkCanonicalCoin = CanonicalCoin
+  fromCanonicalCoin (CanonicalCoin ci) = ci
 
 instance ToCanonicalCBOR v CanonicalCoin where
   toCanonicalCBOR v (CanonicalCoin ci) = toCanonicalCBOR v ci
@@ -191,6 +197,9 @@ instance H.HashAlgorithm a => FromCanonicalCBOR v (H.Hash a b) where
 deriving via LedgerCBOR v Prices instance ToCanonicalCBOR v Prices
 
 deriving via LedgerCBOR v Prices instance FromCanonicalCBOR v Prices
+
+instance ToCanonicalCBOR v a => ToCanonicalCBOR v (StrictSeq a) where
+  toCanonicalCBOR v l = toCanonicalCBOR v (toList l)
 
 instance FromCanonicalCBOR v a => FromCanonicalCBOR v (StrictSeq a) where
   fromCanonicalCBOR = do

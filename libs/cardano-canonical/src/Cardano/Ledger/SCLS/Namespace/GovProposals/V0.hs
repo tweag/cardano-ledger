@@ -36,7 +36,6 @@ module Cardano.Ledger.SCLS.Namespace.GovProposals.V0 (
   IsCanonicalVote (..),
 ) where
 
-
 import Cardano.Ledger.SCLS.BaseTypes (
   Anchor (..),
   EpochInterval,
@@ -46,7 +45,6 @@ import Cardano.Ledger.SCLS.BaseTypes (
   StrictMaybe,
   UnitInterval,
  )
--- import Cardano.Ledger.Coin (Coin (..), CoinPerByte (..), CompactForm)
 import Cardano.Ledger.SCLS.Common (
   CanonicalCoin,
   CanonicalCredential (..),

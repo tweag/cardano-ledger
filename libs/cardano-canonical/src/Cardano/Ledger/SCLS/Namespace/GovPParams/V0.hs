@@ -355,7 +355,6 @@ class IsCanonicalPParams a where
   fromCanonicalPParams :: CanonicalPParams -> a
 
 
-
 instance ToCanonicalCBOR v CanonicalPParams where
   toCanonicalCBOR v CanonicalPParams {..} =
     encodeAsMap

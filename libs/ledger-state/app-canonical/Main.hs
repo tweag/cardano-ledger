@@ -31,6 +31,7 @@ import Cardano.Types.Network (NetworkId (..))
 import Cardano.Types.SlotNo (SlotNo (..))
 import Control.Exception (throwIO)
 import Control.Monad
+import Control.Monad.Trans.Resource (runResourceT)
 import Data.Bifunctor (first)
 import qualified Data.ByteString.Base16.Lazy as Base16
 import qualified Data.ByteString.Lazy as LBS
@@ -130,7 +131,7 @@ main = do
       withKnownNamespacedData fileName (Proxy @"snapshots/v0") $ \stream ->
         S.print stream
     Tee oldFile newFile -> do
-      withFile oldFile ReadMode $ \hdl -> do
+      withFile oldFile ReadMode $ \hdl -> runResourceT $ do
         External.serialize
           newFile
           Mainnet
@@ -170,8 +171,7 @@ main = do
       nes <- readNewEpochState stateFilePath
       UTxO utxo0 <- localReadDecCBORHex utxoFilePath
       let epoch = nesEL nes
-      print epoch
-      External.serialize
+      runResourceT $ External.serialize
         fileName
         Mainnet
         (SlotNo 1)

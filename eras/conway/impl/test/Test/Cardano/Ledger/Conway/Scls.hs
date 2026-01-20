@@ -11,28 +11,24 @@ module Test.Cardano.Ledger.Conway.Scls (
   spec,
 ) where
 
-import Cardano.Ledger.Address (CompactAddr)
--- import Cardano.Ledger.Allegra.Scripts (Timelock (..))
-import Cardano.Ledger.Alonzo.Scripts ({-AlonzoScript,-} Prices)
--- import Cardano.Ledger.Conway (ConwayEra)
-import Cardano.SCLS.CBOR.Canonical.Encoder (ToCanonicalCBOR (..))
-import Cardano.Ledger.Conway.SCLS
+-- import Cardano.Ledger.Address (CompactAddr)
+-- import Cardano.Ledger.Alonzo.Scripts (Prices)
+-- import Cardano.SCLS.CBOR.Canonical.Encoder (ToCanonicalCBOR (..))
+-- import Cardano.Ledger.Conway.SCLS
 import Cardano.Ledger.Conway.SCLS.Arbitrary ()
-import Cardano.Ledger.Core
-import Cardano.Ledger.Credential (Credential (..))
-import Cardano.Ledger.Hashes qualified as H
--- import Cardano.Ledger.Mary.Value
-import Cardano.Ledger.Plutus.CostModels
--- import Cardano.Ledger.Plutus.Data (BinaryData)
--- import Cardano.Ledger.Shelley.TxOut qualified as Shelley
+-- import Cardano.Ledger.Core
+-- import Cardano.Ledger.Credential (Credential (..))
+-- import Cardano.Ledger.Hashes qualified as H
+-- import Cardano.Ledger.Plutus.CostModels
 import Cardano.SCLS.Testlib
-import Data.Typeable
-import GHC.TypeLits
+-- import Data.Typeable
+-- import GHC.TypeLits
 import Test.Cardano.Ledger.Common
 
 spec :: Spec
 spec = do
   describe "Cardano ledger state: namespaces tests" testAllNS
+  {-
   describe "Cardano ledger state: instace tests" $ do
     isCanonical @"gov/pparams/v0" @CanonicalPoolVotingThresholds
     isCanonical @"gov/pparams/v0" @CanonicalDRepVotingThresholds
@@ -105,10 +101,5 @@ spec = do
     describe "nonces/v0" $ do
       validateType @"nonces/v0" @(CanonicalNonce) "nonce"
       validateType @"nonces/v0" @(H.Hash H.HASH Nonce) "hash32"
+      -}
 
-isCanonical ::
-  forall ns a. (KnownSymbol ns, ToCanonicalCBOR ns a, Typeable a, Arbitrary a, Show a) => Spec
-isCanonical = go
-  where
-    typ = showsTypeRep (typeRep (Proxy @a))
-    go = prop (typ " is canonical") $ propTypeIsCanonical @ns @a

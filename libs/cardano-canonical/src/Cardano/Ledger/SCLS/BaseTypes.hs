@@ -44,20 +44,14 @@ import Cardano.Ledger.BaseTypes (
   textToUrl,
  )
 import Cardano.Ledger.SCLS.LedgerCBOR (LedgerCBOR (..))
-import Cardano.SCLS.CBOR.Canonical (
-  assumeCanonicalDecoder,
-  assumeCanonicalEncoding,
- )
 import Cardano.SCLS.CBOR.Canonical.Decoder (
   FromCanonicalCBOR (..),
   peekTokenType,
  )
 import Cardano.SCLS.CBOR.Canonical.Encoder (ToCanonicalCBOR (..))
 import qualified Codec.CBOR.Decoding as D
-import qualified Codec.CBOR.Encoding as E
 import Cardano.SCLS.Versioned (Versioned (..))
 import Data.IP (IPv4, IPv6)
-import GHC.Natural (Natural)
 
 deriving via LedgerCBOR v Anchor instance ToCanonicalCBOR v Anchor
 
@@ -131,12 +125,3 @@ instance FromCanonicalCBOR v Url where
     case textToUrl 128 t of
       Just url -> return $ Versioned url
       Nothing -> fail "Invalid URL"
-
-
--- TODO: remove
-
-instance FromCanonicalCBOR v Natural where
-  fromCanonicalCBOR = assumeCanonicalDecoder $ Versioned @v . fromIntegral <$> D.decodeIntegerCanonical
-
-instance ToCanonicalCBOR v Natural where
-  toCanonicalCBOR _v n = assumeCanonicalEncoding $ E.encodeInteger (fromIntegral n)

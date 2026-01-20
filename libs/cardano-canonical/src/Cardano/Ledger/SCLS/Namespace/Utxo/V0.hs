@@ -26,17 +26,14 @@ module Cardano.Ledger.SCLS.Namespace.UTxO.V0 (
   IsCanonicalBabbageTxOut (..),
   CanonicalShelleyTxOut (..),
   IsCanonicalShelleyTxOut (..),
+  CanonicalValue (..),
+  IsCanonicalValue (..),
+  PlutusBinary(..),
+  CompactAddr,
 ) where
 
 import Cardano.Ledger.Address
---import Cardano.Ledger.Allegra.Scripts (Timelock (..), TimelockRaw (..))
-{-
-import Cardano.Ledger.Alonzo.Scripts (
-  AlonzoScript (..),
-  decodePlutusScript,
- )
--}
---import qualified Cardano.Ledger.Babbage.TxOut as Babbage
+import Cardano.Ledger.Plutus.Language
 import Cardano.Ledger.Binary (
   decodeMemPack,
   encodeMemPack,
@@ -44,17 +41,9 @@ import Cardano.Ledger.Binary (
   toPlainDecoder,
   toPlainEncoding,
  )
--- import Cardano.Ledger.Compactible (CompactForm (..))
--- import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.SCLS.Common (SlotNo(..), CanonicalCoin(..))
 import Cardano.Ledger.SCLS.LedgerCBOR (LedgerCBOR (..))
--- import Cardano.Ledger.Conway.Scripts ()
-import Cardano.Ledger.Hashes (originalBytes, {- KeyHash(..),-} DataHash, ScriptHash(..), SafeHash)
--- import Cardano.Ledger.Mary (MaryValue)
--- import Cardano.Ledger.MemoBytes (mkMemoizedEra)
--- import Cardano.Ledger.Plutus.Data (BinaryData, Datum (..))
--- import Cardano.Ledger.Plutus.Language (SLanguage (..))
--- import qualified Cardano.Ledger.Shelley.TxOut as Shelley
+import Cardano.Ledger.Hashes (originalBytes, KeyHash(..), DataHash, ScriptHash(..), SafeHash, Witness)
 import Cardano.Ledger.TxIn (TxId (..), TxIn (..))
 import Cardano.SCLS.CBOR.Canonical (
   assumeCanonicalDecoder,
@@ -86,10 +75,10 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Typeable
 import Data.MemPack (MemPack (..), packByteStringM)
-import qualified Data.Text as T
--- import Data.Proxy (Proxy (..))
 import Data.Word (Word8)
 import GHC.Generics (Generic)
+import Data.Sequence.Strict (StrictSeq)
+
 
 newtype MemPackCBOR a = MemPackCBOR {unMemPackCBOR :: a}
   deriving (Eq, Show)
@@ -145,7 +134,7 @@ class IsCanonicalShelleyTxOut a where
   fromCanonicalShelleyTxOut :: CanonicalShelleyTxOut -> a
 
 data CanonicalValue
-  = CanonicalValue CanonicalCoin (Map ScriptHash (Map T.Text CanonicalCoin))
+  = CanonicalValue CanonicalCoin (Map ScriptHash (Map ShortByteString CanonicalCoin))
   deriving (Show, Eq, Generic)
 
 data CanonicalBabbageTxOut = CanonicalBabbageTxOut
@@ -180,9 +169,9 @@ class IsCanonicalScript a where
   fromCanonicalScript :: CanonicalScript -> a
 
 data CanonicalPlutusScript
-  = CanonicalPlutusScriptV1 !ShortByteString
-  | CanonicalPlutusScriptV2 !ShortByteString
-  | CanonicalPlutusScriptV3 !ShortByteString
+  = CanonicalPlutusScriptV1 !PlutusBinary
+  | CanonicalPlutusScriptV2 !PlutusBinary
+  | CanonicalPlutusScriptV3 !PlutusBinary
   deriving (Eq, Show, Generic)
 
 class IsCanonicalPlutusScript a where
@@ -190,10 +179,10 @@ class IsCanonicalPlutusScript a where
   fromCanonicalPlutusScript :: CanonicalPlutusScript -> a
 
 data CanonicalNativeScript
-  = CanonicalNativeScriptPubKey !ScriptHash
-  | CanonicalNativeScriptAllOf [CanonicalNativeScript]
-  | CanonicalNativeScriptAnyOf [CanonicalNativeScript]
-  | CanonicalNativeScriptMOfN Int [CanonicalNativeScript]
+  = CanonicalNativeScriptPubKey !(KeyHash Witness)
+  | CanonicalNativeScriptAllOf (StrictSeq CanonicalNativeScript)
+  | CanonicalNativeScriptAnyOf (StrictSeq CanonicalNativeScript)
+  | CanonicalNativeScriptMOfN Int (StrictSeq CanonicalNativeScript)
   | CanonicalNativeScriptInvalidBefore !SlotNo
   | CanonicalNativeScriptInvalidAfter !SlotNo
   deriving (Eq, Show, Generic)
@@ -269,10 +258,17 @@ instance FromCanonicalCBOR "utxo/v0" CanonicalBabbageTxOut where
             _ -> fail "Invalid Datum tag"
     return $ Versioned (CanonicalBabbageTxOut cAddr vl datum refScript)
 
+
+class IsCanonicalValue a where
+  mkCanonicalValue :: a -> CanonicalValue
+  fromCanonicalValue :: CanonicalValue -> a
+
+
 instance ToCanonicalCBOR "utxo/v0" CanonicalValue where
   toCanonicalCBOR v (CanonicalValue c m)
-     | Map.null m = toCanonicalCBOR v [c]
+     | Map.null m = toCanonicalCBOR v c
      | otherwise  = toCanonicalCBOR v (c, m)
+
 instance FromCanonicalCBOR "utxo/v0" CanonicalValue where
   fromCanonicalCBOR = do
     len <- decodeListLenCanonical
@@ -296,21 +292,9 @@ instance FromCanonicalCBOR "utxo/v0" CanonicalScript where
     Versioned (w :: Word8) <- fromCanonicalCBOR
     case w of
       0 -> fmap (CanonicalScriptNative) <$> fromCanonicalCBOR
-      1 ->
-        fmap (CanonicalScriptPlutus . CanonicalPlutusScriptV1) <$> fromCanonicalCBOR
-          -- <$> ( assumeCanonicalDecoder $
-          --         toPlainDecoder Nothing (natVersion @9) (decodePlutusScript @ConwayEra SPlutusV1)
-          --     )
-      2 ->
-        fmap (CanonicalScriptPlutus . CanonicalPlutusScriptV2) <$> fromCanonicalCBOR
-          -- <$> ( assumeCanonicalDecoder $
-          --         toPlainDecoder Nothing (natVersion @9) (decodePlutusScript @ConwayEra SPlutusV2)
-          --     )
-      3 ->
-        fmap (CanonicalScriptPlutus . CanonicalPlutusScriptV3) <$> fromCanonicalCBOR
-          -- <$> ( assumeCanonicalDecoder $
-          --         toPlainDecoder Nothing (natVersion @9) (decodePlutusScript @ConwayEra SPlutusV3)
-          --     )
+      1 -> fmap (CanonicalScriptPlutus . CanonicalPlutusScriptV1 . PlutusBinary) <$> fromCanonicalCBOR
+      2 -> fmap (CanonicalScriptPlutus . CanonicalPlutusScriptV2 . PlutusBinary) <$> fromCanonicalCBOR
+      3 -> fmap (CanonicalScriptPlutus . CanonicalPlutusScriptV3 . PlutusBinary) <$> fromCanonicalCBOR
       n -> fail ("Unknown tag: " <> show n)
 
 
@@ -349,9 +333,9 @@ deriving via LedgerCBOR v (SafeHash s) instance ToCanonicalCBOR v (SafeHash s)
 deriving via LedgerCBOR v (SafeHash s) instance Typeable s => FromCanonicalCBOR v (SafeHash s)
 
 instance ToCanonicalCBOR "utxo/v0" CanonicalPlutusScript where
-  toCanonicalCBOR v (CanonicalPlutusScriptV1 s) = toCanonicalCBOR v (1 :: Word8, s)
-  toCanonicalCBOR v (CanonicalPlutusScriptV2 s) = toCanonicalCBOR v (2 :: Word8, s)
-  toCanonicalCBOR v (CanonicalPlutusScriptV3 s) = toCanonicalCBOR v (3 :: Word8, s)
+  toCanonicalCBOR v (CanonicalPlutusScriptV1 (PlutusBinary s)) = toCanonicalCBOR v (1 :: Word8, s)
+  toCanonicalCBOR v (CanonicalPlutusScriptV2 (PlutusBinary s)) = toCanonicalCBOR v (2 :: Word8, s)
+  toCanonicalCBOR v (CanonicalPlutusScriptV3 (PlutusBinary s)) = toCanonicalCBOR v (3 :: Word8, s)
 
 
 instance FromCanonicalCBOR "utxo/v0" CanonicalPlutusScript where
@@ -359,9 +343,9 @@ instance FromCanonicalCBOR "utxo/v0" CanonicalPlutusScript where
     decodeListLenCanonicalOf 2
     Versioned (w :: Word8) <- fromCanonicalCBOR
     case w of
-      1 -> fmap CanonicalPlutusScriptV1 <$> fromCanonicalCBOR
-      2 -> fmap CanonicalPlutusScriptV2 <$> fromCanonicalCBOR
-      3 -> fmap CanonicalPlutusScriptV3 <$> fromCanonicalCBOR
+      1 -> fmap (CanonicalPlutusScriptV1 . PlutusBinary) <$> fromCanonicalCBOR
+      2 -> fmap (CanonicalPlutusScriptV2 . PlutusBinary) <$> fromCanonicalCBOR
+      3 -> fmap (CanonicalPlutusScriptV3 . PlutusBinary) <$> fromCanonicalCBOR
       n -> fail ("Unknown Plutus script version tag: " <> show n)
 
 instance FromCanonicalCBOR "utxo/v0" CanonicalShelleyTxOut where
@@ -379,85 +363,9 @@ instance FromCanonicalCBOR "utxo/v0" CanonicalShelleyTxOut where
         return $ Versioned (CanonicalShelleyTxOut addr vl dh)
       _ -> fail "Invalid CanonicalShelleyTxOut length"
 
-{-
-deriving via
-  LedgerCBORSafe v (Shelley.ShelleyTxOut ConwayEra)
-  instance
-    FromCanonicalCBOR v (Shelley.ShelleyTxOut ConwayEra)
--}
-
-
-
-{-
-deriving via
-  LedgerCBOR v (AlonzoScript ConwayEra)
-  instance
-    ToCanonicalCBOR v (AlonzoScript ConwayEra)
--}
-
-{-
-instance FromCanonicalCBOR v (AlonzoScript ConwayEra) where
-
--}
-
-{-
-instance FromCanonicalCBOR v (Timelock ConwayEra) where
-  fromCanonicalCBOR = do
-    Versioned raw <- fromCanonicalCBOR
-    return $ Versioned $ mkMemoizedEra @ConwayEra (raw :: TimelockRaw ConwayEra)
--}
-
-{-
-instance FromCanonicalCBOR v (TimelockRaw ConwayEra) where
-  fromCanonicalCBOR = do
-    k <- decodeListLenCanonical
-    Versioned (n :: Word8) <- fromCanonicalCBOR
-    case n of
-      0 -> fmap TimelockSignature <$> fromCanonicalCBOR
-      1 -> fmap TimelockAllOf <$> fromCanonicalCBOR
-      2 -> fmap TimelockAnyOf <$> fromCanonicalCBOR
-      3 | k == 3 -> do
-        Versioned f <- fromCanonicalCBOR
-        Versioned g <- fromCanonicalCBOR
-        return $ Versioned $ TimelockMOf f g
-      4 -> fmap TimelockTimeStart <$> fromCanonicalCBOR
-      5 -> fmap TimelockTimeExpire <$> fromCanonicalCBOR
-      m -> fail $ "Invalid tag: " <> show m
--}
-
--- deriving via (LedgerCBORSafe v MaryValue) instance ToCanonicalCBOR v MaryValue
-
--- deriving via (LedgerCBORSafe v MaryValue) instance FromCanonicalCBOR v MaryValue
-
-{-
-instance ToCanonicalCBOR version (CompactForm MaryValue) where
-  toCanonicalCBOR version v = toCanonicalCBOR version (fromCompact v)
-
-instance FromCanonicalCBOR version (CompactForm MaryValue) where
-  fromCanonicalCBOR = do
-    Versioned v <- fromCanonicalCBOR
-    Just v' <- pure (toCompact v)
-    pure $ Versioned v'
--}
-
 deriving via MemPackCBOR CompactAddr instance ToCanonicalCBOR "utxo/v0" CompactAddr
 
 deriving via MemPackCBOR CompactAddr instance FromCanonicalCBOR "utxo/v0" CompactAddr
-
--- deriving via LedgerCBOR v (Timelock ConwayEra) instance ToCanonicalCBOR v (Timelock ConwayEra)
-
--- deriving via LedgerCBOR v (Datum ConwayEra) instance ToCanonicalCBOR v (Datum ConwayEra)
-
--- deriving via LedgerCBOR v (Datum ConwayEra) instance FromCanonicalCBOR v (Datum ConwayEra)
-
--- deriving via LedgerCBOR v (BinaryData ConwayEra) instance ToCanonicalCBOR v (BinaryData ConwayEra)
-
-{-
-deriving via
-  LedgerCBOR v (BinaryData ConwayEra)
-  instance
-    FromCanonicalCBOR v (BinaryData ConwayEra)
--}
 
 instance KnownNamespace "utxo/v0" where
   type NamespaceKey "utxo/v0" = UtxoKey
