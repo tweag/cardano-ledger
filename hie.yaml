@@ -111,6 +111,9 @@ cradle:
     - path: "eras/conway/impl/cddl/lib"
       component: "cardano-ledger-conway:lib:cddl"
 
+    - path: "eras/conway/impl/canonical-state"
+      component: "cardano-ledger-conway:lib:canonical-state"
+
     - path: "eras/conway/impl/cddl/exe/Main.hs"
       component: "cardano-ledger-conway:exe:generate-cddl"
 
@@ -243,14 +246,8 @@ cradle:
     - path: "libs/cardano-ledger-canonical-state/src"
       component: "lib:cardano-ledger-canonical-state"
 
-    - path: "libs/cardano-ledger-canonical-state/conway"
-      component: "cardano-ledger-canonical-state:lib:conway"
-
     - path: "libs/cardano-ledger-canonical-state/testlib"
       component: "cardano-ledger-canonical-state:lib:testlib"
-
-    - path: "libs/cardano-ledger-canonical-state/test"
-      component: "cardano-ledger-canonical-state:test:tests"
 
     - path: "libs/cardano-ledger-conformance/src"
       component: "lib:cardano-ledger-conformance"
