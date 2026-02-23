@@ -7,11 +7,16 @@
 
 module Test.Cardano.Ledger.Conway.CanonicalState.Arbitrary () where
 
+import Cardano.Ledger.CanonicalState.BasicTypes (
+  CanonicalExUnits (..),
+  mkCanonicalExUnits,
+ )
 import Cardano.Ledger.CanonicalState.Conway (
   CanonicalGovActionState,
   fromGovActionState,
   mkCanonicalConstitution,
  )
+import qualified Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 as Committee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovConstitution.V0 as GovConstitution.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 as GovPParams.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovProposals.V0 as GovProposals.V0
@@ -27,8 +32,19 @@ instance Arbitrary GovConstitution.V0.CanonicalConstitution where
 instance Arbitrary GovConstitution.V0.GovConstitutionOut where
   arbitrary = genericArbitraryU
 
+instance Arbitrary Committee.V0.GovCommitteeOut where
+  arbitrary = genericArbitraryU
+
+instance Arbitrary Committee.V0.CanonicalCommitteeAuthorization where
+  arbitrary = fmap Committee.V0.mkCanonicalCommitteeAuthorization arbitrary
+
+instance Arbitrary Committee.V0.CanonicalCommitteeState where arbitrary = genericArbitraryU
+
 instance Arbitrary (GovPParams.V0.GovPParamsOut ConwayEra) where
   arbitrary = genericArbitraryU
+
+instance Arbitrary CanonicalExUnits where
+  arbitrary = mkCanonicalExUnits <$> arbitrary
 
 instance Arbitrary (GovProposals.V0.GovProposalOut CanonicalGovActionState) where
   arbitrary = snd . fromGovActionState <$> arbitrary @(GovActionState ConwayEra)
