@@ -11,7 +11,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Test.Cardano.Ledger.CanonicalState.Spec (spec) where
+module Test.Cardano.Ledger.Conway.CanonicalState.Spec (spec) where
 
 import Cardano.Ledger.BaseTypes (EpochInterval, NonNegativeInterval, UnitInterval)
 import Cardano.Ledger.CanonicalState.BasicTypes (CanonicalExUnits (..))
