@@ -36,6 +36,7 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   iteFixupL,
   itePostSubmitTxHookL,
   itePostEpochBoundaryHookL,
+  iteSclsDumpHookL,
   impWitsVKeyNeeded,
   modifyPrevPParams,
   passEpoch,
@@ -76,6 +77,7 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   getProtVer,
   getsNES,
   getUTxO,
+  getSclsData,
   impAddNativeScript,
   impAnn,
   impAnnDoc,
@@ -128,6 +130,8 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   disableImpInitPostSubmitTxHook,
   modifyImpInitPostEpochBoundaryHook,
   disableImpInitPostEpochBoundaryHook,
+  modifyImpInitSclsDumpHook,
+  disableImpInitSclsDumpHook,
   disableInConformanceIt,
   minorFollow,
   majorFollow,
@@ -163,6 +167,7 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   withPreFixup,
   impEventsFrom,
   impRecordSubmittedTxs,
+  impSclsDataL,
   impNESL,
   impGlobalsL,
   impCurSlotNoG,
@@ -323,6 +328,7 @@ instance ShelleyEraImp era => ImpSpec (LedgerSpec era) where
               { iteFixup = fixupTx
               , itePostSubmitTxHook = \_ _ _ -> pure ()
               , itePostEpochBoundaryHook = \_ _ _ -> pure ()
+              , iteSclsDumpHook = \_ _ _ -> pure ()
               }
         , impInitState = initState
         }
@@ -363,6 +369,17 @@ data ImpTestState era = ImpTestState
   , impGlobals :: !Globals
   , impEvents :: Seq (SomeSTSEvent era)
   , impRecordedTxs :: !(StrictMaybe (StrictSeq (Tx TopTx era)))
+  , impSclsData ::
+      !( StrictMaybe
+           ( StrictSeq
+               ( NewEpochState era
+               , Tx TopTx era
+               , Either
+                   (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
+                   (LedgerState era, [Event (EraRule "LEDGER" era)])
+               )
+           )
+       )
   -- ^ When this is set to `SNothing` transactions are not being recorded.
   -- This should never be switched to `Just` outside of simulations.
   }
@@ -432,6 +449,21 @@ impEventsL = lens impEvents (\x y -> x {impEvents = y})
 
 impRecordedTxsL :: Lens' (ImpTestState era) (StrictMaybe (StrictSeq (Tx TopTx era)))
 impRecordedTxsL = lens impRecordedTxs (\x y -> x {impRecordedTxs = y})
+
+impSclsDataL ::
+  Lens'
+    (ImpTestState era)
+    ( StrictMaybe
+        ( StrictSeq
+            ( NewEpochState era
+            , Tx TopTx era
+            , Either
+                (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
+                (LedgerState era, [Event (EraRule "LEDGER" era)])
+            )
+        )
+    )
+impSclsDataL = lens impSclsData (\x y -> x {impSclsData = y})
 
 class
   ( ShelleyEraTest era
@@ -679,6 +711,7 @@ defaultInitImpTestState nes = do
       , impGlobals = globals
       , impEvents = mempty
       , impRecordedTxs = mempty
+      , impSclsData = SNothing
       }
 
 withEachEraVersion ::
@@ -754,6 +787,32 @@ disableImpInitPostEpochBoundaryHook ::
   SpecWith (ImpInit (LedgerSpec era))
 disableImpInitPostEpochBoundaryHook =
   modifyImpInitPostEpochBoundaryHook $ \_ _ _ -> pure ()
+
+modifyImpInitSclsDumpHook ::
+  forall era.
+  ( forall t.
+    NewEpochState era ->
+    Tx TopTx era ->
+    Either
+      (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
+      (LedgerState era, [Event (EraRule "LEDGER" era)]) ->
+    ImpM t ()
+  ) ->
+  SpecWith (ImpInit (LedgerSpec era)) ->
+  SpecWith (ImpInit (LedgerSpec era))
+modifyImpInitSclsDumpHook f =
+  modifyImpInit $ \impInit ->
+    impInit
+      { impInitEnv =
+          impInitEnv impInit
+            & iteSclsDumpHookL .~ f
+      }
+
+disableImpInitSclsDumpHook ::
+  SpecWith (ImpInit (LedgerSpec era)) ->
+  SpecWith (ImpInit (LedgerSpec era))
+disableImpInitSclsDumpHook =
+  modifyImpInitSclsDumpHook $ \_ _ _ -> pure ()
 
 disableInConformanceIt ::
   ShelleyEraImp era =>
@@ -901,6 +960,14 @@ data ImpTestEnv era = ImpTestEnv
       TRC (EraRule "NEWEPOCH" era) ->
       State (EraRule "NEWEPOCH" era) ->
       ImpM t ()
+  , iteSclsDumpHook ::
+      forall t.
+      NewEpochState era ->
+      Tx TopTx era ->
+      Either
+        (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
+        (LedgerState era, [Event (EraRule "LEDGER" era)]) ->
+      ImpM t ()
   }
 
 iteFixupL :: Lens' (ImpTestEnv era) (Tx TopTx era -> ImpTestM era (Tx TopTx era))
@@ -931,6 +998,20 @@ itePostEpochBoundaryHookL ::
       ImpM t ()
     )
 itePostEpochBoundaryHookL = lens itePostEpochBoundaryHook (\x y -> x {itePostEpochBoundaryHook = y})
+
+iteSclsDumpHookL ::
+  forall era.
+  Lens'
+    (ImpTestEnv era)
+    ( forall t.
+      NewEpochState era ->
+      Tx TopTx era ->
+      Either
+        (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
+        (LedgerState era, [Event (EraRule "LEDGER" era)]) ->
+      ImpM t ()
+    )
+iteSclsDumpHookL = lens iteSclsDumpHook (\x y -> x {iteSclsDumpHook = y})
 
 instance MonadWriter (Seq (SomeSTSEvent era)) (ImpTestM era) where
   writer (x, evs) = (impEventsL %= (<> evs)) $> x
@@ -1255,6 +1336,11 @@ trySubmitTx tx = do
   globals <- use impGlobalsL
   let trc = TRC (lEnv, st ^. nesEsL . esLStateL, txFixed)
   asks itePostSubmitTxHook >>= (\f -> f globals trc res)
+
+  recordedTxs <- gets impRecordedTxs
+  when (recordedTxs == SNothing) $ do
+    asks iteSclsDumpHook >>= (\f -> f st txFixed res)
+    modify' $ impSclsDataL %~ fmap (SSeq.|> (st, txFixed, res))
 
   case res of
     Left predFailures -> do
@@ -1827,6 +1913,21 @@ getsNES l = gets . view $ impNESL . l
 
 getUTxO :: ImpTestM era (UTxO era)
 getUTxO = getsNES utxoL
+
+getSclsData ::
+  ImpM
+    (LedgerSpec era)
+    ( StrictMaybe
+        ( StrictSeq
+            ( NewEpochState era
+            , Tx TopTx era
+            , Either
+                (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
+                (LedgerState era, [Event (EraRule "LEDGER" era)])
+            )
+        )
+    )
+getSclsData = gets impSclsData
 
 getProtVer :: EraGov era => ImpTestM era ProtVer
 getProtVer = getsNES $ nesEsL . curPParamsEpochStateL . ppProtocolVersionL
