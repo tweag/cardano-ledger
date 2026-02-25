@@ -36,6 +36,7 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   iteFixupL,
   itePostSubmitTxHookL,
   itePostEpochBoundaryHookL,
+  iteSclsDumpHookL,
   impWitsVKeyNeeded,
   modifyPrevPParams,
   passEpoch,
@@ -76,6 +77,7 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   getProtVer,
   getsNES,
   getUTxO,
+  getSclsData,
   impAddNativeScript,
   impAnn,
   impAnnDoc,
@@ -128,6 +130,8 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   disableImpInitPostSubmitTxHook,
   modifyImpInitPostEpochBoundaryHook,
   disableImpInitPostEpochBoundaryHook,
+  modifyImpInitSclsDumpHook,
+  disableImpInitSclsDumpHook,
   disableInConformanceIt,
   minorFollow,
   majorFollow,
@@ -163,6 +167,7 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   withPreFixup,
   impEventsFrom,
   impRecordSubmittedTxs,
+  impSclsDataL,
   impNESL,
   impGlobalsL,
   impCurSlotNoG,
@@ -175,6 +180,9 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   -- * ImpSpec re-exports
   ImpM,
   ImpInit,
+  impInitStateL,
+  impNESUtxoL,
+  impRecordedTxsL,
 ) where
 
 import qualified Cardano.Chain.Common as Byron
@@ -306,6 +314,8 @@ import Test.ImpSpec
 import Type.Reflection (Typeable, typeOf)
 import UnliftIO (evaluateDeep)
 
+-- import Debug.Trace (traceM)
+
 type ImpTestM era = ImpM (LedgerSpec era)
 
 data LedgerSpec era
@@ -323,6 +333,7 @@ instance ShelleyEraImp era => ImpSpec (LedgerSpec era) where
               { iteFixup = fixupTx
               , itePostSubmitTxHook = \_ _ _ -> pure ()
               , itePostEpochBoundaryHook = \_ _ _ -> pure ()
+              , iteSclsDumpHook = \_ _ _ -> pure ()
               }
         , impInitState = initState
         }
@@ -363,6 +374,17 @@ data ImpTestState era = ImpTestState
   , impGlobals :: !Globals
   , impEvents :: Seq (SomeSTSEvent era)
   , impRecordedTxs :: !(StrictMaybe (StrictSeq (Tx TopTx era)))
+  , impSclsData ::
+      !( StrictMaybe
+           ( StrictSeq
+               ( NewEpochState era
+               , Tx TopTx era
+               , Either
+                   (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
+                   (LedgerState era, [Event (EraRule "LEDGER" era)])
+               )
+           )
+       )
   -- ^ When this is set to `SNothing` transactions are not being recorded.
   -- This should never be switched to `Just` outside of simulations.
   }
@@ -399,11 +421,17 @@ instance HasKeyPairs ImpPrepState where
   keyPairsL = lens impPrepKeyPairs (\x y -> x {impPrepKeyPairs = y})
   keyPairsByronL = lens impPrepByronKeyPairs (\x y -> x {impPrepByronKeyPairs = y})
 
+impInitStateL :: Lens' (ImpInit (LedgerSpec era)) (ImpTestState era)
+impInitStateL = lens impInitState (\x y -> x {impInitState = y})
+
 impGlobalsL :: Lens' (ImpTestState era) Globals
 impGlobalsL = lens impGlobals (\x y -> x {impGlobals = y})
 
 impNESL :: Lens' (ImpTestState era) (NewEpochState era)
 impNESL = lens impNES (\x y -> x {impNES = y})
+
+impNESUtxoL :: Lens' (ImpTestState era) (UTxO era)
+impNESUtxoL = impNESL . utxoL
 
 impCurSlotNoL :: Lens' (ImpTestState era) SlotNo
 impCurSlotNoL = lens impCurSlotNo (\x y -> x {impCurSlotNo = y})
@@ -432,6 +460,21 @@ impEventsL = lens impEvents (\x y -> x {impEvents = y})
 
 impRecordedTxsL :: Lens' (ImpTestState era) (StrictMaybe (StrictSeq (Tx TopTx era)))
 impRecordedTxsL = lens impRecordedTxs (\x y -> x {impRecordedTxs = y})
+
+impSclsDataL ::
+  Lens'
+    (ImpTestState era)
+    ( StrictMaybe
+        ( StrictSeq
+            ( NewEpochState era
+            , Tx TopTx era
+            , Either
+                (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
+                (LedgerState era, [Event (EraRule "LEDGER" era)])
+            )
+        )
+    )
+impSclsDataL = lens impSclsData (\x y -> x {impSclsData = y})
 
 class
   ( ShelleyEraTest era
@@ -626,8 +669,12 @@ defaultInitNewEpochState modifyPrevEraNewEpochState = do
       -- for theses changes to be applied.
       prevEraNewEpochState =
         nes
-          & nesEsL . curPParamsEpochStateL . ppProtocolVersionL .~ ProtVer majProtVer 0
-          & nesELL .~ pred (impEraStartEpochNo @era)
+          & nesEsL
+          . curPParamsEpochStateL
+          . ppProtocolVersionL
+          .~ ProtVer majProtVer 0
+          & nesELL
+          .~ pred (impEraStartEpochNo @era)
   pure $ translateEra' genesis $ modifyPrevEraNewEpochState prevEraNewEpochState
 
 -- | For debugging purposes we start the era at the epoch number that matches the starting
@@ -679,6 +726,7 @@ defaultInitImpTestState nes = do
       , impGlobals = globals
       , impEvents = mempty
       , impRecordedTxs = mempty
+      , impSclsData = SNothing
       }
 
 withEachEraVersion ::
@@ -703,7 +751,11 @@ shelleyModifyImpInitProtVer ver =
     impInit
       { impInitState =
           impInitState impInit
-            & impNESL . nesEsL . curPParamsEpochStateL . ppProtocolVersionL .~ ProtVer ver 0
+            & impNESL
+            . nesEsL
+            . curPParamsEpochStateL
+            . ppProtocolVersionL
+            .~ ProtVer ver 0
       }
 
 modifyImpInitPostSubmitTxHook ::
@@ -723,7 +775,8 @@ modifyImpInitPostSubmitTxHook f =
     impInit
       { impInitEnv =
           impInitEnv impInit
-            & itePostSubmitTxHookL .~ f
+            & itePostSubmitTxHookL
+            .~ f
       }
 
 disableImpInitPostSubmitTxHook ::
@@ -746,7 +799,8 @@ modifyImpInitPostEpochBoundaryHook f = modifyImpInit $ \impInit ->
   impInit
     { impInitEnv =
         impInitEnv impInit
-          & itePostEpochBoundaryHookL .~ f
+          & itePostEpochBoundaryHookL
+          .~ f
     }
 
 disableImpInitPostEpochBoundaryHook ::
@@ -754,6 +808,33 @@ disableImpInitPostEpochBoundaryHook ::
   SpecWith (ImpInit (LedgerSpec era))
 disableImpInitPostEpochBoundaryHook =
   modifyImpInitPostEpochBoundaryHook $ \_ _ _ -> pure ()
+
+modifyImpInitSclsDumpHook ::
+  forall era.
+  ( forall t.
+    NewEpochState era ->
+    Tx TopTx era ->
+    Either
+      (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
+      (LedgerState era, [Event (EraRule "LEDGER" era)]) ->
+    ImpM t ()
+  ) ->
+  SpecWith (ImpInit (LedgerSpec era)) ->
+  SpecWith (ImpInit (LedgerSpec era))
+modifyImpInitSclsDumpHook f =
+  modifyImpInit $ \impInit ->
+    impInit
+      { impInitEnv =
+          impInitEnv impInit
+            & iteSclsDumpHookL
+            .~ f
+      }
+
+disableImpInitSclsDumpHook ::
+  SpecWith (ImpInit (LedgerSpec era)) ->
+  SpecWith (ImpInit (LedgerSpec era))
+disableImpInitSclsDumpHook =
+  modifyImpInitSclsDumpHook $ \_ _ _ -> pure ()
 
 disableInConformanceIt ::
   ShelleyEraImp era =>
@@ -816,21 +897,36 @@ instance
           , sgMaxLovelaceSupply = 45_000_000_000_000_000
           , sgProtocolParams =
               emptyPParams
-                & ppTxFeePerByteL .~ CoinPerByte (CompactCoin 44)
-                & ppTxFeeFixedL .~ Coin 155_381
-                & ppMaxBBSizeL .~ 65_536
-                & ppMaxTxSizeL .~ 16_384
-                & ppKeyDepositL .~ Coin 2_000_000
-                & ppPoolDepositL .~ Coin 500_000_000
-                & ppEMaxL .~ EpochInterval 18
-                & ppNOptL .~ 150
-                & ppA0L .~ (3 %! 10)
-                & ppRhoL .~ (3 %! 1000)
-                & ppTauL .~ (2 %! 10)
-                & ppDL .~ (1 %! 1)
-                & ppExtraEntropyL .~ NeutralNonce
-                & ppMinUTxOValueL .~ Coin 2_000_000
-                & ppMinPoolCostL .~ Coin 340_000_000
+                & ppTxFeePerByteL
+                .~ CoinPerByte (CompactCoin 44)
+                & ppTxFeeFixedL
+                .~ Coin 155_381
+                & ppMaxBBSizeL
+                .~ 65_536
+                & ppMaxTxSizeL
+                .~ 16_384
+                & ppKeyDepositL
+                .~ Coin 2_000_000
+                & ppPoolDepositL
+                .~ Coin 500_000_000
+                & ppEMaxL
+                .~ EpochInterval 18
+                & ppNOptL
+                .~ 150
+                & ppA0L
+                .~ (3 %! 10)
+                & ppRhoL
+                .~ (3 %! 1000)
+                & ppTauL
+                .~ (2 %! 10)
+                & ppDL
+                .~ (1 %! 1)
+                & ppExtraEntropyL
+                .~ NeutralNonce
+                & ppMinUTxOValueL
+                .~ Coin 2_000_000
+                & ppMinPoolCostL
+                .~ Coin 340_000_000
           , -- TODO: Add a top level definition and add private keys to ImpState:
             sgGenDelegs = mempty
           , sgInitialFunds = mempty
@@ -901,6 +997,14 @@ data ImpTestEnv era = ImpTestEnv
       TRC (EraRule "NEWEPOCH" era) ->
       State (EraRule "NEWEPOCH" era) ->
       ImpM t ()
+  , iteSclsDumpHook ::
+      forall t.
+      NewEpochState era ->
+      Tx TopTx era ->
+      Either
+        (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
+        (LedgerState era, [Event (EraRule "LEDGER" era)]) ->
+      ImpM t ()
   }
 
 iteFixupL :: Lens' (ImpTestEnv era) (Tx TopTx era -> ImpTestM era (Tx TopTx era))
@@ -931,6 +1035,20 @@ itePostEpochBoundaryHookL ::
       ImpM t ()
     )
 itePostEpochBoundaryHookL = lens itePostEpochBoundaryHook (\x y -> x {itePostEpochBoundaryHook = y})
+
+iteSclsDumpHookL ::
+  forall era.
+  Lens'
+    (ImpTestEnv era)
+    ( forall t.
+      NewEpochState era ->
+      Tx TopTx era ->
+      Either
+        (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
+        (LedgerState era, [Event (EraRule "LEDGER" era)]) ->
+      ImpM t ()
+    )
+iteSclsDumpHookL = lens iteSclsDumpHook (\x y -> x {iteSclsDumpHook = y})
 
 instance MonadWriter (Seq (SomeSTSEvent era)) (ImpTestM era) where
   writer (x, evs) = (impEventsL %= (<> evs)) $> x
@@ -1050,7 +1168,9 @@ addNativeScriptTxWits tx = impAnn "addNativeScriptTxWits" $ do
       scriptsToAdd = scriptsRequired Map.\\ provided
   pure $
     tx
-      & witsTxL . scriptTxWitsL <>~ fmap fromNativeScript scriptsToAdd
+      & witsTxL
+      . scriptTxWitsL
+      <>~ fmap fromNativeScript scriptsToAdd
 
 -- | Adds @TxWits@ that will satisfy all of the required key witnesses
 updateAddrTxWits ::
@@ -1087,8 +1207,13 @@ updateAddrTxWits tx = impAnn "updateAddrTxWits" $ do
     pure $ makeBootstrapWitness (extractHash txBodyHash) signingKey attrs
   pure $
     tx
-      & witsTxL . addrTxWitsL <>~ extraAddrVKeyWits <> extraNativeScriptVKeyWits
-      & witsTxL . bootAddrTxWitsL <>~ Set.fromList extraBootAddrWits
+      & witsTxL
+      . addrTxWitsL
+      <>~ extraAddrVKeyWits
+      <> extraNativeScriptVKeyWits
+        & witsTxL
+        . bootAddrTxWitsL
+        <>~ Set.fromList extraBootAddrWits
 
 -- | This fixup step ensures that there are enough funds in the transaction.
 addRootTxIn ::
@@ -1099,7 +1224,9 @@ addRootTxIn tx = impAnn "addRootTxIn" $ do
   rootTxIn <- fst <$> getImpRootTxOut
   pure $
     tx
-      & bodyTxL . inputsTxBodyL %~ Set.insert rootTxIn
+      & bodyTxL
+      . inputsTxBodyL
+      %~ Set.insert rootTxIn
 
 impNativeScriptKeyPairs ::
   ShelleyEraImp era =>
@@ -1172,12 +1299,20 @@ fixupFees txOriginal = impAnn "fixupFees" $ do
     txWithFee
       | change >= getMinCoinTxOut pp changeTxOut =
           txNoWits
-            & bodyTxL . outputsTxBodyL .~ (outsBeforeFee :|> changeTxOut)
-            & bodyTxL . feeTxBodyL .~ fee
+            & bodyTxL
+            . outputsTxBodyL
+            .~ (outsBeforeFee :|> changeTxOut)
+            & bodyTxL
+            . feeTxBodyL
+            .~ fee
       | otherwise =
           txNoWits
-            & bodyTxL . outputsTxBodyL .~ outsBeforeFee
-            & bodyTxL . feeTxBodyL .~ (fee <> change)
+            & bodyTxL
+            . outputsTxBodyL
+            .~ outsBeforeFee
+            & bodyTxL
+            . feeTxBodyL
+            .~ (fee <> change)
   pure txWithFee
 
 -- | Adds an auxiliary data hash if auxiliary data present, while the hash of it is not.
@@ -1255,6 +1390,11 @@ trySubmitTx tx = do
   globals <- use impGlobalsL
   let trc = TRC (lEnv, st ^. nesEsL . esLStateL, txFixed)
   asks itePostSubmitTxHook >>= (\f -> f globals trc res)
+
+  recordedTxs <- gets impRecordedTxs
+  when (recordedTxs == SNothing) $ do
+    asks iteSclsDumpHook >>= (\f -> f st txFixed res)
+    modify' $ impSclsDataL %~ fmap (SSeq.|> (st, txFixed, res))
 
   case res of
     Left predFailures -> do
@@ -1473,8 +1613,10 @@ tryTxsInBlock txs finalState = do
           blockEvents = previousEvents <> newEvents
       put $
         finalState
-          & impNESL .~ blockNes
-          & impEventsL .~ blockEvents
+          & impNESL
+          .~ blockNes
+          & impEventsL
+          .~ blockEvents
 
       pure $ Right block
 
@@ -1811,7 +1953,9 @@ sendValueTo addr amount = do
     submitTxAnn
       ("Giving " <> show amount <> " to " <> show addr)
       $ mkBasicTx mkBasicTxBody
-        & bodyTxL . outputsTxBodyL .~ SSeq.singleton (mkBasicTxOut addr amount)
+        & bodyTxL
+        . outputsTxBodyL
+        .~ SSeq.singleton (mkBasicTxOut addr amount)
   pure $ txInAt 0 tx
 
 sendValueTo_ :: (ShelleyEraImp era, HasCallStack) => Addr -> Value era -> ImpTestM era ()
@@ -1827,6 +1971,21 @@ getsNES l = gets . view $ impNESL . l
 
 getUTxO :: ImpTestM era (UTxO era)
 getUTxO = getsNES utxoL
+
+getSclsData ::
+  ImpM
+    (LedgerSpec era)
+    ( StrictMaybe
+        ( StrictSeq
+            ( NewEpochState era
+            , Tx TopTx era
+            , Either
+                (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
+                (LedgerState era, [Event (EraRule "LEDGER" era)])
+            )
+        )
+    )
+getSclsData = gets impSclsData
 
 getProtVer :: EraGov era => ImpTestM era ProtVer
 getProtVer = getsNES $ nesEsL . curPParamsEpochStateL . ppProtocolVersionL
@@ -1860,8 +2019,9 @@ registerStakeCredential cred = do
   regTxCert <- genRegTxCert cred
   submitTxAnn_ ("Register Staking Address: " <> T.unpack (credToText cred)) $
     mkBasicTx mkBasicTxBody
-      & bodyTxL . certsTxBodyL
-        .~ SSeq.fromList [regTxCert]
+      & bodyTxL
+      . certsTxBodyL
+      .~ SSeq.fromList [regTxCert]
   networkId <- use (impGlobalsL . to networkId)
   pure $ AccountAddress networkId (AccountId cred)
 
@@ -1873,7 +2033,9 @@ delegateStake ::
 delegateStake cred poolKH = do
   submitTxAnn_ ("Delegate Staking Credential: " <> T.unpack (credToText cred)) $
     mkBasicTx mkBasicTxBody
-      & bodyTxL . certsTxBodyL .~ [delegStakeTxCert cred poolKH]
+      & bodyTxL
+      . certsTxBodyL
+      .~ [delegStakeTxCert cred poolKH]
 
 expectStakeCredRegistered ::
   (HasCallStack, ShelleyEraImp era) =>
@@ -1994,7 +2156,9 @@ registerPoolWithAccountAddress khPool accountAddress = do
   pps <- freshPoolParams khPool accountAddress
   submitTxAnn_ "Registering a new stake pool" $
     mkBasicTx mkBasicTxBody
-      & bodyTxL . certsTxBodyL .~ SSeq.singleton (RegPoolTxCert pps)
+      & bodyTxL
+      . certsTxBodyL
+      .~ SSeq.singleton (RegPoolTxCert pps)
 
 registerAndRetirePoolToMakeReward ::
   ShelleyEraImp era =>
@@ -2009,7 +2173,9 @@ registerAndRetirePoolToMakeReward stakingCred = do
       poolExpiry = addEpochInterval curEpochNo $ EpochInterval poolLifetime
   submitTxAnn_ "Retiring the temporary stake pool" $
     mkBasicTx mkBasicTxBody
-      & bodyTxL . certsTxBodyL .~ SSeq.singleton (RetirePoolTxCert poolId poolExpiry)
+      & bodyTxL
+      . certsTxBodyL
+      .~ SSeq.singleton (RetirePoolTxCert poolId poolExpiry)
   passNEpochs $ fromIntegral poolLifetime
 
 -- | Compose given function with the configured fixup
@@ -2108,7 +2274,9 @@ produceScript scriptHash = do
   let addr = mkAddr scriptHash StakeRefNull
   let tx =
         mkBasicTx mkBasicTxBody
-          & bodyTxL . outputsTxBodyL .~ SSeq.singleton (mkBasicTxOut addr mempty)
+          & bodyTxL
+          . outputsTxBodyL
+          .~ SSeq.singleton (mkBasicTxOut addr mempty)
   logString $ "Produced script: " <> show scriptHash
   txInAt 0 <$> submitTx tx
 
