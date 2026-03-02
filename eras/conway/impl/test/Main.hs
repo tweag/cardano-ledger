@@ -12,7 +12,6 @@ import qualified Test.Cardano.Ledger.Conway.GenesisSpec as Genesis
 import qualified Test.Cardano.Ledger.Conway.GoldenSpec as GoldenSpec
 import qualified Test.Cardano.Ledger.Conway.GoldenTranslation as GoldenTranslation
 import qualified Test.Cardano.Ledger.Conway.GovActionReorderSpec as GovActionReorder
-import qualified Test.Cardano.Ledger.Conway.Imp as Imp
 import Test.Cardano.Ledger.Conway.Plutus.PlutusSpec as PlutusSpec
 import qualified Test.Cardano.Ledger.Conway.Spec as ConwaySpec
 import qualified Test.Cardano.Ledger.Conway.TxInfoSpec as TxInfo
@@ -41,5 +40,3 @@ main = ledgerTestMain $ do
   roundTripJsonShelleyEraSpec @ConwayEra
   describe "Conway canonical state" $ do
     Test.Cardano.Ledger.Conway.CanonicalState.Spec.spec
-  describe "Export SCLS" $
-    Imp.specWithScls "/home/joaosreis/projects/cardano-ledger/dumps"
