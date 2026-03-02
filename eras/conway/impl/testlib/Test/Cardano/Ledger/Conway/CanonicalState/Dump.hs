@@ -167,10 +167,13 @@ getNextFile dir prefix extension = do
   -- maxCounter: 3 (if the existing files are dump-1.scls, dump-2.scls, dump-3.scls)
   pure (dir </> (T.unpack prefixT <> "-" <> show (maxCounter + 1) <> "." <> extension))
 
-dump :: (CanGetUTxO t, era ~ ConwayEra) => FilePath -> String -> t era -> IO ()
-dump dumpDir prefix t = do
+dump ::
+  FilePath ->
+  String ->
+  SerializationPlan (SomeChunkEntry RawBytes) ResIO ->
+  IO ()
+dump dumpDir prefix plan = do
   createDirectoryIfMissing True dumpDir
-  let plan = defaultSerializationPlan & addUtxo t
   filepath <- getNextFile dumpDir prefix "scls"
   _ <-
     runResourceT $
@@ -181,12 +184,31 @@ dump dumpDir prefix t = do
         plan
   pure ()
 
+dumpLedgerState ::
+  (Monad m, era ~ ConwayEra) =>
+  LedgerState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+dumpLedgerState ls = do
+  defaultSerializationPlan
+    & addUtxo ls
+
+dumpNewEpochState ::
+  (Monad m, era ~ ConwayEra) =>
+  NewEpochState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+dumpNewEpochState nes = do
+  defaultSerializationPlan
+    & addUtxo (nes ^. nesEsL . esLStateL)
+    & addBlocks nes
+    & addGovCommittee nes
+    & addGovConstitution nes
+
 withScls ::
   FilePath -> SpecWith (ImpInit (LedgerSpec ConwayEra)) -> SpecWith (ImpInit (LedgerSpec ConwayEra))
 withScls dir =
   modifyImpInitSclsDumpHook
     ( \nes tx res -> liftIO $ do
-        dump dir "initial" nes
+        dump dir "initial" $ dumpNewEpochState nes
         let ProtVer version _ = nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
         dumpTx dir "txn" version tx
         case res of
@@ -194,5 +216,5 @@ withScls dir =
             -- TODO: dump the failures
             pure ()
           Right (st, _) -> do
-            dump dir "final" st
+            dump dir "final" $ dumpLedgerState st -- TODO: this should be dumpNewEpochState, but we don't have the final NewEpochState available here.
     )
