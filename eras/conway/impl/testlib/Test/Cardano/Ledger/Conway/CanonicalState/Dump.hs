@@ -64,12 +64,13 @@ addUtxo ::
   t era ->
   SerializationPlan (SomeChunkEntry RawBytes) m ->
   SerializationPlan (SomeChunkEntry RawBytes) m
-addUtxo t plan =
-  let utxos =
-        S.each (Map.toList $ unUTxO $ t ^. utxoG)
-          & S.map (\(txIn, txOut) -> ChunkEntry (UtxoKeyIn txIn) (mkUtxo txOut))
-      p = Proxy :: Proxy "utxo/v0"
-   in addNamespacedChunks p utxos plan
+addUtxo t =
+  addNamespacedChunks (Proxy :: Proxy "utxo/v0") utxos
+  where
+    utxos =
+      S.each (Map.toList $ unUTxO $ t ^. utxoG)
+        & S.map (\(txIn, txOut) -> ChunkEntry (UtxoKeyIn txIn) (mkUtxo txOut))
+
 
 getNextFile :: FilePath -> String -> String -> IO FilePath
 getNextFile dir prefix extension = do
