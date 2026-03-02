@@ -360,3 +360,28 @@ test-suite tests
     scls-cardano:testlib,
     scls-cbor,
     testlib,
+
+test-suite canonical-state-test-export
+  type: exitcode-stdio-1.0
+  main-is: Main.hs
+  hs-source-dirs: canonical-state-test-export/
+  other-modules:
+    Paths_cardano_ledger_conway
+
+  default-language: Haskell2010
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Wincomplete-record-updates
+    -Wincomplete-uni-patterns
+    -Wredundant-constraints
+    -Wpartial-fields
+    -Wunused-packages
+    -threaded
+    -rtsopts
+    -with-rtsopts=-N
+
+  build-depends:
+    base,
+    cardano-ledger-core:{testlib},
+    testlib,
