@@ -14,12 +14,43 @@ import Cardano.Ledger.Binary (
   toLazyByteString,
   toPlainEncoding,
  )
-import Cardano.Ledger.CanonicalState.Conway ()
+import Cardano.Ledger.CanonicalState.Conway (mkCanonicalConstitution)
+import Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 (BlockIn (BlockIn), BlockOut (BlockOut))
+import Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 (
+  CanonicalCommitteeState (CanonicalCommitteeState),
+  GovCommitteeIn (GovCommitteeIn),
+  GovCommitteeOut (GovCommitteeOut),
+  mkCanonicalCommitteeAuthorization,
+ )
+import Cardano.Ledger.CanonicalState.Namespace.GovConstitution.V0 (
+  GovConstitutionIn (GovConstitutionIn),
+  GovConstitutionOut (GovConstitutionOut),
+ )
 import Cardano.Ledger.CanonicalState.Namespace.UTxO.V0 (UtxoIn (UtxoKeyIn), mkUtxo)
 import Cardano.Ledger.Conway (ConwayEra)
-import Cardano.Ledger.Conway.State (CanGetUTxO (utxoG), UTxO (unUTxO))
+import Cardano.Ledger.Conway.Governance (
+  ConwayEraGov (constitutionGovStateL),
+ )
+import Cardano.Ledger.Conway.State (
+  CanGetUTxO (utxoG),
+  ConwayEraCertState (certVStateL),
+  UTxO (unUTxO),
+  csCommitteeCredsL,
+  vsCommitteeStateL,
+ )
 import Cardano.Ledger.Core (EraPParams (ppProtocolVersionL), Tx, TxLevel (TopTx))
-import Cardano.Ledger.Shelley.LedgerState (curPParamsEpochStateL, nesEsL)
+import Cardano.Ledger.Shelley.LedgerState (
+  LedgerState,
+  NewEpochState,
+  curPParamsEpochStateL,
+  esLStateL,
+  lsCertStateL,
+  nesBcurL,
+  nesELL,
+  nesEpochStateL,
+  nesEsL,
+  newEpochStateGovStateL,
+ )
 import Cardano.SCLS.CDDL (knownNamespaceKeySizes)
 import Cardano.SCLS.Internal.Entry.ChunkEntry (ChunkEntry (ChunkEntry), SomeChunkEntry)
 import Cardano.SCLS.Internal.Serializer.Dump.Plan (
@@ -30,7 +61,7 @@ import Cardano.SCLS.Internal.Serializer.Dump.Plan (
 import Cardano.SCLS.Internal.Serializer.External.Impl (serialize)
 import Cardano.Types.SlotNo (SlotNo (SlotNo))
 import Control.Monad.IO.Class (MonadIO (liftIO))
-import Control.Monad.Trans.Resource (runResourceT)
+import Control.Monad.Trans.Resource (ResIO, runResourceT)
 import qualified Data.ByteString.Lazy as BSL
 import Data.Data (Proxy (Proxy))
 import qualified Data.Map as Map
@@ -60,8 +91,8 @@ dumpTx dir prefix version tx = do
   BSL.writeFile filepath (toLazyByteString (toPlainEncoding version e))
 
 addUtxo ::
-  (Monad m, CanGetUTxO t, era ~ ConwayEra) =>
-  t era ->
+  (Monad m, era ~ ConwayEra) =>
+  LedgerState era ->
   SerializationPlan (SomeChunkEntry RawBytes) m ->
   SerializationPlan (SomeChunkEntry RawBytes) m
 addUtxo t =
@@ -70,6 +101,55 @@ addUtxo t =
     utxos =
       S.each (Map.toList $ unUTxO $ t ^. utxoG)
         & S.map (\(txIn, txOut) -> ChunkEntry (UtxoKeyIn txIn) (mkUtxo txOut))
+
+addBlocks ::
+  Monad m =>
+  NewEpochState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+addBlocks nes =
+  addNamespacedChunks (Proxy :: Proxy "blocks/v0") blocks
+  where
+    epochNo = nes ^. nesELL
+    blocks =
+      S.each (Map.toList $ nes ^. nesBcurL)
+        & S.map (\(keyHash, n) -> ChunkEntry (BlockIn keyHash epochNo) (BlockOut n))
+
+addGovCommittee ::
+  (Monad m, era ~ ConwayEra) =>
+  NewEpochState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+addGovCommittee nes =
+  addNamespacedChunks
+    (Proxy :: Proxy "gov/committee/v0")
+    (S.yield (ChunkEntry (GovCommitteeIn epochNo) (GovCommitteeOut committeeState)))
+  where
+    epochNo = nes ^. nesELL
+    committeeState =
+      CanonicalCommitteeState $
+        Map.map mkCanonicalCommitteeAuthorization $
+          nes
+            ^. nesEpochStateL
+            . esLStateL
+            . lsCertStateL
+            . certVStateL
+            . vsCommitteeStateL
+            . csCommitteeCredsL
+
+addGovConstitution ::
+  (Monad m, era ~ ConwayEra) =>
+  NewEpochState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+addGovConstitution nes =
+  addNamespacedChunks
+    (Proxy :: Proxy "gov/constitution/v0")
+    (S.yield (ChunkEntry (GovConstitutionIn epochNo) (GovConstitutionOut canonicalConstitution)))
+  where
+    constitution = nes ^. newEpochStateGovStateL . constitutionGovStateL
+    epochNo = nes ^. nesELL
+    canonicalConstitution = mkCanonicalConstitution constitution
 
 
 getNextFile :: FilePath -> String -> String -> IO FilePath
