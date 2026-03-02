@@ -151,6 +151,62 @@ addGovConstitution nes =
     epochNo = nes ^. nesELL
     canonicalConstitution = mkCanonicalConstitution constitution
 
+-- addPParams ::
+--   era ~ ConwayEra =>
+--   NewEpochState era ->
+--   SerializationPlan (SomeChunkEntry RawBytes) m ->
+--   SerializationPlan (SomeChunkEntry RawBytes) m
+-- addPParams nes =
+--   addNamespacedChunks (Proxy :: Proxy "gov/pparams/v0") (S.each pparams)
+--   where
+--     epochState = nes ^. nesEsL
+--     currPParams = epochState ^. curPParamsEpochStateL
+--     prevPParams = epochState ^. prevPParamsEpochStateL
+--     (futurePossiblePParams, futureDefinitePParams) = case epochState ^. futurePParamsEpochStateL of
+--       NoPParamsUpdate -> ([], [])
+--       DefinitePParamsUpdate p -> ([], [ChunkEntry GovPParamsInDefiniteFuture (GovPParamsOut p)])
+--       PotentialPParamsUpdate (Just p) -> ([ChunkEntry GovPParamsInPossibleFuture (GovPParamsOut p)], [])
+--       PotentialPParamsUpdate Nothing -> ([], [])
+--     pparams =
+--       [ ChunkEntry GovPParamsInPrev (GovPParamsOut prevPParams)
+--       , ChunkEntry GovPParamsInCurr (GovPParamsOut currPParams)
+--       ]
+--         ++ futurePossiblePParams
+--         ++ futureDefinitePParams
+
+-- addPoolStake ::
+--   era ~ ConwayEra =>
+--   NewEpochState era ->
+--   SerializationPlan (SomeChunkEntry RawBytes) m ->
+--   SerializationPlan (SomeChunkEntry RawBytes) m
+-- addPoolStake nes =
+--   addNamespacedChunks (Proxy :: Proxy "pool_stake/v0") poolStake
+--  where
+--   poolStake = S.each (Map.toList $ nes ^. epochStateStakePoolsL)
+--     & S.map (\(keyHash, poolState) -> ChunkEntry (PoolStakeIn keyHash) (mkPoolStakeOut poolState))
+--   mkPoolStakeOut poolState =
+--     let vrf = poolState ^. spsVrfL
+--         total = poolState ^. spsDepositL -- TODO: is this the right field to use for total stake of the pool?
+--      in PoolStakeOut { total, vrf }
+
+-- addSnapshots ::
+--   era ~ ConwayEra =>
+--   NewEpochState era ->
+--   SerializationPlan (SomeChunkEntry RawBytes) m ->
+--   SerializationPlan (SomeChunkEntry RawBytes) m
+-- addSnapshots nes =
+--   addNamespacedChunks (Proxy :: Proxy "snapshots/v0") snapshots
+--   where
+--     stateSnapshots = nes ^. nesEsL . esSnapshotsL
+--     markSnapshot = stateSnapshots ^. ssStakeMarkL
+--     setSnapshtop = stateSnapshots ^. ssStakeSetL
+--     goSnapshot = stateSnapshots ^. ssStakeGoL
+--     snapshots =
+--       S.each
+--         [ ChunkEntry (SnapshotIn "mark") (SnapshotOut markSnapshot)
+--         , ChunkEntry (SnapshotIn "set") (SnapshotOut setSnapshtop)
+--         , ChunkEntry (SnapshotIn "go") (SnapshotOut goSnapshot)
+--         ]
 
 getNextFile :: FilePath -> String -> String -> IO FilePath
 getNextFile dir prefix extension = do
