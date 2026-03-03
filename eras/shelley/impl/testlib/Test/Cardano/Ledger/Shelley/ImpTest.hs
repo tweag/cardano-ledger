@@ -77,7 +77,6 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   getProtVer,
   getsNES,
   getUTxO,
-  getSclsData,
   impAddNativeScript,
   impAnn,
   impAnnDoc,
@@ -167,7 +166,6 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   withPreFixup,
   impEventsFrom,
   impRecordSubmittedTxs,
-  impSclsDataL,
   impNESL,
   impGlobalsL,
   impCurSlotNoG,
@@ -374,17 +372,6 @@ data ImpTestState era = ImpTestState
   , impGlobals :: !Globals
   , impEvents :: Seq (SomeSTSEvent era)
   , impRecordedTxs :: !(StrictMaybe (StrictSeq (Tx TopTx era)))
-  , impSclsData ::
-      !( StrictMaybe
-           ( StrictSeq
-               ( NewEpochState era
-               , Tx TopTx era
-               , Either
-                   (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
-                   (LedgerState era, [Event (EraRule "LEDGER" era)])
-               )
-           )
-       )
   -- ^ When this is set to `SNothing` transactions are not being recorded.
   -- This should never be switched to `Just` outside of simulations.
   }
@@ -460,21 +447,6 @@ impEventsL = lens impEvents (\x y -> x {impEvents = y})
 
 impRecordedTxsL :: Lens' (ImpTestState era) (StrictMaybe (StrictSeq (Tx TopTx era)))
 impRecordedTxsL = lens impRecordedTxs (\x y -> x {impRecordedTxs = y})
-
-impSclsDataL ::
-  Lens'
-    (ImpTestState era)
-    ( StrictMaybe
-        ( StrictSeq
-            ( NewEpochState era
-            , Tx TopTx era
-            , Either
-                (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
-                (LedgerState era, [Event (EraRule "LEDGER" era)])
-            )
-        )
-    )
-impSclsDataL = lens impSclsData (\x y -> x {impSclsData = y})
 
 class
   ( ShelleyEraTest era
@@ -726,7 +698,6 @@ defaultInitImpTestState nes = do
       , impGlobals = globals
       , impEvents = mempty
       , impRecordedTxs = mempty
-      , impSclsData = SNothing
       }
 
 withEachEraVersion ::
@@ -1394,7 +1365,6 @@ trySubmitTx tx = do
   recordedTxs <- gets impRecordedTxs
   when (recordedTxs == SNothing) $ do
     asks iteSclsDumpHook >>= (\f -> f st txFixed res)
-    modify' $ impSclsDataL %~ fmap (SSeq.|> (st, txFixed, res))
 
   case res of
     Left predFailures -> do
@@ -1971,21 +1941,6 @@ getsNES l = gets . view $ impNESL . l
 
 getUTxO :: ImpTestM era (UTxO era)
 getUTxO = getsNES utxoL
-
-getSclsData ::
-  ImpM
-    (LedgerSpec era)
-    ( StrictMaybe
-        ( StrictSeq
-            ( NewEpochState era
-            , Tx TopTx era
-            , Either
-                (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
-                (LedgerState era, [Event (EraRule "LEDGER" era)])
-            )
-        )
-    )
-getSclsData = gets impSclsData
 
 getProtVer :: EraGov era => ImpTestM era ProtVer
 getProtVer = getsNES $ nesEsL . curPParamsEpochStateL . ppProtocolVersionL
