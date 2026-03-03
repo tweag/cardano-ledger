@@ -365,8 +365,7 @@ test-suite tests
     scls-cbor,
     testlib,
 
-test-suite canonical-state-test-export
-  type: exitcode-stdio-1.0
+executable canonical-state-test-export
   main-is: Main.hs
   hs-source-dirs: canonical-state-test-export/
   other-modules:
