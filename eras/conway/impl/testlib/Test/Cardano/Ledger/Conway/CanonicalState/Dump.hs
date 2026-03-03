@@ -151,29 +151,6 @@ addGovConstitution nes =
     epochNo = nes ^. nesELL
     canonicalConstitution = mkCanonicalConstitution constitution
 
--- addPParams ::
---   era ~ ConwayEra =>
---   NewEpochState era ->
---   SerializationPlan (SomeChunkEntry RawBytes) m ->
---   SerializationPlan (SomeChunkEntry RawBytes) m
--- addPParams nes =
---   addNamespacedChunks (Proxy :: Proxy "gov/pparams/v0") (S.each pparams)
---   where
---     epochState = nes ^. nesEsL
---     currPParams = epochState ^. curPParamsEpochStateL
---     prevPParams = epochState ^. prevPParamsEpochStateL
---     (futurePossiblePParams, futureDefinitePParams) = case epochState ^. futurePParamsEpochStateL of
---       NoPParamsUpdate -> ([], [])
---       DefinitePParamsUpdate p -> ([], [ChunkEntry GovPParamsInDefiniteFuture (GovPParamsOut p)])
---       PotentialPParamsUpdate (Just p) -> ([ChunkEntry GovPParamsInPossibleFuture (GovPParamsOut p)], [])
---       PotentialPParamsUpdate Nothing -> ([], [])
---     pparams =
---       [ ChunkEntry GovPParamsInPrev (GovPParamsOut prevPParams)
---       , ChunkEntry GovPParamsInCurr (GovPParamsOut currPParams)
---       ]
---         ++ futurePossiblePParams
---         ++ futureDefinitePParams
-
 -- addPoolStake ::
 --   era ~ ConwayEra =>
 --   NewEpochState era ->
