@@ -26,6 +26,10 @@ import Cardano.Ledger.CanonicalState.Namespace.GovConstitution.V0 (
   GovConstitutionIn (GovConstitutionIn),
   GovConstitutionOut (GovConstitutionOut),
  )
+import Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 (
+  GovPParamsIn (..),
+  GovPParamsOut (..),
+ )
 import Cardano.Ledger.CanonicalState.Namespace.UTxO.V0 (UtxoIn (UtxoKeyIn), mkUtxo)
 import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.Governance (
@@ -34,6 +38,7 @@ import Cardano.Ledger.Conway.Governance (
 import Cardano.Ledger.Conway.State (
   CanGetUTxO (utxoG),
   ConwayEraCertState (certVStateL),
+  FuturePParams (..),
   UTxO (unUTxO),
   csCommitteeCredsL,
   vsCommitteeStateL,
@@ -44,12 +49,14 @@ import Cardano.Ledger.Shelley.LedgerState (
   NewEpochState,
   curPParamsEpochStateL,
   esLStateL,
+  futurePParamsEpochStateL,
   lsCertStateL,
   nesBcurL,
   nesELL,
   nesEpochStateL,
   nesEsL,
   newEpochStateGovStateL,
+  prevPParamsEpochStateL,
  )
 import Cardano.SCLS.CDDL (knownNamespaceKeySizes)
 import Cardano.SCLS.Internal.Entry.ChunkEntry (ChunkEntry (ChunkEntry), SomeChunkEntry)
@@ -151,7 +158,6 @@ addGovConstitution nes =
     epochNo = nes ^. nesELL
     canonicalConstitution = mkCanonicalConstitution constitution
 
-
 getNextFile :: FilePath -> String -> String -> IO FilePath
 getNextFile dir prefix extension = do
   -- dir: "/path/to"
@@ -166,6 +172,29 @@ getNextFile dir prefix extension = do
       maxCounter = maximum ((0 :: Int) : mapMaybe (readMaybe . T.unpack) counters)
   -- maxCounter: 3 (if the existing files are dump-1.scls, dump-2.scls, dump-3.scls)
   pure (dir </> (T.unpack prefixT <> "-" <> show (maxCounter + 1) <> "." <> extension))
+
+addPParams ::
+  (Monad m, era ~ ConwayEra) =>
+  NewEpochState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+addPParams nes =
+  addNamespacedChunks (Proxy :: Proxy "gov/pparams/v0") (S.each pparams)
+  where
+    epochState = nes ^. nesEsL
+    currPParams = epochState ^. curPParamsEpochStateL
+    prevPParams = epochState ^. prevPParamsEpochStateL
+    (futurePossiblePParams, futureDefinitePParams) = case epochState ^. futurePParamsEpochStateL of
+      NoPParamsUpdate -> ([], [])
+      DefinitePParamsUpdate p -> ([], [ChunkEntry GovPParamsInDefiniteFuture (GovPParamsOut p)])
+      PotentialPParamsUpdate (Just p) -> ([ChunkEntry GovPParamsInPossibleFuture (GovPParamsOut p)], [])
+      PotentialPParamsUpdate Nothing -> ([], [])
+    pparams =
+      [ ChunkEntry GovPParamsInPrev (GovPParamsOut prevPParams)
+      , ChunkEntry GovPParamsInCurr (GovPParamsOut currPParams)
+      ]
+        ++ futurePossiblePParams
+        ++ futureDefinitePParams
 
 dump ::
   FilePath ->
@@ -202,6 +231,7 @@ dumpNewEpochState nes = do
     & addBlocks nes
     & addGovCommittee nes
     & addGovConstitution nes
+    & addPParams nes
 
 withScls ::
   FilePath -> SpecWith (ImpInit (LedgerSpec ConwayEra)) -> SpecWith (ImpInit (LedgerSpec ConwayEra))
