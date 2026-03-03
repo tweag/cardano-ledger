@@ -1,5 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
 
 module Test.Cardano.Ledger.Conway.CanonicalState.Dump (
@@ -81,6 +83,8 @@ import System.Directory (createDirectoryIfMissing, listDirectory)
 import System.FilePath (takeBaseName, (</>))
 import Test.Cardano.Ledger.Common (SpecWith)
 import Test.Cardano.Ledger.Conway.ImpTest
+import Test.Hspec.Core.Spec (Item (..), mapSpecItem_)
+import Test.ImpSpec (ImpInit (impInitEnv))
 import Text.Read (readMaybe)
 
 -- TODO: move somewhere common to all eras?
@@ -233,18 +237,63 @@ dumpNewEpochState nes = do
     & addGovConstitution nes
     & addPParams nes
 
+-- withScls ::
+--   FilePath -> SpecWith (ImpInit (LedgerSpec ConwayEra)) -> SpecWith (ImpInit (LedgerSpec ConwayEra))
+-- withScls dir =
+--   modifyImpInitSclsDumpHook
+--     ( \nes tx res -> liftIO $ do
+--         dump dir "initial" $ dumpNewEpochState nes
+--         let ProtVer version _ = nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
+--         dumpTx dir "txn" version tx
+--         case res of
+--           Left _failures -> do
+--             -- TODO: dump the failures
+--             pure ()
+--           Right (st, _) -> do
+--             dump dir "final" $ dumpLedgerState st -- TODO: this should be dumpNewEpochState, but we don't have the final NewEpochState available here.
+--     )
+
 withScls ::
   FilePath -> SpecWith (ImpInit (LedgerSpec ConwayEra)) -> SpecWith (ImpInit (LedgerSpec ConwayEra))
-withScls dir =
-  modifyImpInitSclsDumpHook
-    ( \nes tx res -> liftIO $ do
-        dump dir "initial" $ dumpNewEpochState nes
-        let ProtVer version _ = nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
-        dumpTx dir "txn" version tx
-        case res of
-          Left _failures -> do
-            -- TODO: dump the failures
-            pure ()
-          Right (st, _) -> do
-            dump dir "final" $ dumpLedgerState st -- TODO: this should be dumpNewEpochState, but we don't have the final NewEpochState available here.
-    )
+withScls baseDir =
+  mapSpecItem_ $
+    \Item
+       { itemRequirement
+       , itemLocation
+       , itemIsParallelizable
+       , itemIsFocused
+       , itemAnnotations
+       , itemExample = originalItemExample
+       } ->
+        let dir = baseDir </> itemRequirement
+         in Item
+              { itemRequirement
+              , itemLocation
+              , itemIsParallelizable
+              , itemIsFocused
+              , itemAnnotations
+              , itemExample = \p f c ->
+                  let f' ff =
+                        let a impInit =
+                              let env = impInitEnv impInit
+                               in ff
+                                    ( impInit
+                                        { impInitEnv =
+                                            env
+                                              { iteSclsDumpHook =
+                                                  \nes tx res -> liftIO $ do
+                                                    dump dir "initial" $ dumpNewEpochState nes
+                                                    let ProtVer version _ = nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
+                                                    dumpTx dir "txn" version tx
+                                                    case res of
+                                                      Left _failures -> do
+                                                        -- TODO: dump the failures
+                                                        pure ()
+                                                      Right (st, _) -> do
+                                                        dump dir "final" $ dumpLedgerState st -- TODO: this should be dumpNewEpochState, but we don't have the final NewEpochState available here.
+                                              }
+                                        }
+                                    )
+                         in f a
+                   in originalItemExample p f' c
+              }

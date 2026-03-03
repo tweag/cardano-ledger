@@ -292,6 +292,7 @@ library testlib
     directory,
     filepath,
     generic-random,
+    hspec-core,
     mempack-scls,
     microlens,
     microlens-mtl,
