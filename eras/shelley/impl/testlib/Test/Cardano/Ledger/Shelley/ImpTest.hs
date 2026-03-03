@@ -178,7 +178,6 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   -- * ImpSpec re-exports
   ImpM,
   ImpInit,
-  impInitStateL,
   impNESUtxoL,
   impRecordedTxsL,
 ) where
@@ -407,9 +406,6 @@ instance Era era => HasKeyPairs (ImpTestState era) where
 instance HasKeyPairs ImpPrepState where
   keyPairsL = lens impPrepKeyPairs (\x y -> x {impPrepKeyPairs = y})
   keyPairsByronL = lens impPrepByronKeyPairs (\x y -> x {impPrepByronKeyPairs = y})
-
-impInitStateL :: Lens' (ImpInit (LedgerSpec era)) (ImpTestState era)
-impInitStateL = lens impInitState (\x y -> x {impInitState = y})
 
 impGlobalsL :: Lens' (ImpTestState era) Globals
 impGlobalsL = lens impGlobals (\x y -> x {impGlobals = y})
