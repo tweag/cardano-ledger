@@ -132,6 +132,9 @@ cradle:
     - path: "eras/conway/impl/test"
       component: "cardano-ledger-conway:test:tests"
 
+    - path: "eras/conway/impl/canonical-state-test-export"
+      component: "cardano-ledger-conway:exe:canonical-state-test-export"
+
     - path: "eras/dijkstra/impl/src"
       component: "lib:cardano-ledger-dijkstra"
 
