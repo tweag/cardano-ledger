@@ -138,11 +138,11 @@ addGovCommittee nes =
         Map.map mkCanonicalCommitteeAuthorization $
           nes
             ^. nesEpochStateL
-            . esLStateL
-            . lsCertStateL
-            . certVStateL
-            . vsCommitteeStateL
-            . csCommitteeCredsL
+              . esLStateL
+              . lsCertStateL
+              . certVStateL
+              . vsCommitteeStateL
+              . csCommitteeCredsL
 
 addGovConstitution ::
   (Monad m, era ~ ConwayEra) =>
