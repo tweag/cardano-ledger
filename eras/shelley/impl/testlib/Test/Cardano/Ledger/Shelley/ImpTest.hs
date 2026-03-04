@@ -761,13 +761,12 @@ disableImpInitPostEpochBoundaryHook =
 
 modifyImpInitSclsDumpHook ::
   forall era.
-  ( forall t.
-    NewEpochState era ->
+  ( NewEpochState era ->
     Tx TopTx era ->
     Either
       (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
       (LedgerState era, [Event (EraRule "LEDGER" era)]) ->
-    ImpM t ()
+    IO ()
   ) ->
   SpecWith (ImpInit (LedgerSpec era)) ->
   SpecWith (ImpInit (LedgerSpec era))
@@ -932,13 +931,12 @@ data ImpTestEnv era = ImpTestEnv
       State (EraRule "NEWEPOCH" era) ->
       ImpM t ()
   , iteSclsDumpHook ::
-      forall t.
       NewEpochState era ->
       Tx TopTx era ->
       Either
         (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
         (LedgerState era, [Event (EraRule "LEDGER" era)]) ->
-      ImpM t ()
+      IO ()
   }
 
 iteFixupL :: Lens' (ImpTestEnv era) (Tx TopTx era -> ImpTestM era (Tx TopTx era))
@@ -974,13 +972,12 @@ iteSclsDumpHookL ::
   forall era.
   Lens'
     (ImpTestEnv era)
-    ( forall t.
-      NewEpochState era ->
+    ( NewEpochState era ->
       Tx TopTx era ->
       Either
         (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
         (LedgerState era, [Event (EraRule "LEDGER" era)]) ->
-      ImpM t ()
+      IO ()
     )
 iteSclsDumpHookL = lens iteSclsDumpHook (\x y -> x {iteSclsDumpHook = y})
 
@@ -1310,7 +1307,7 @@ trySubmitTx tx = do
 
   recordedTxs <- gets impRecordedTxs
   when (recordedTxs == SNothing) $ do
-    asks iteSclsDumpHook >>= (\f -> f st txFixed res)
+    asks iteSclsDumpHook >>= (\f -> liftIO $ f st txFixed res)
 
   case res of
     Left predFailures -> do
