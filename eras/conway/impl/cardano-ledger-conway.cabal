@@ -382,5 +382,5 @@ executable canonical-state-test-export
 
   build-depends:
     base,
-    cardano-ledger-core:{testlib},
+    cardano-ledger-core:testlib,
     testlib,
