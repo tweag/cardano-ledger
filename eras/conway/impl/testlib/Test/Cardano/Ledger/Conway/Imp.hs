@@ -7,7 +7,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Test.Cardano.Ledger.Conway.Imp (spec, specWithScls) where
+module Test.Cardano.Ledger.Conway.Imp (spec, conwayEraGenericSpec) where
 
 import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.Core
@@ -19,7 +19,6 @@ import Cardano.Ledger.Conway.Rules (
 import Control.State.Transition.Extended
 import qualified Test.Cardano.Ledger.Alonzo.Imp as AlonzoImp
 import qualified Test.Cardano.Ledger.Babbage.Imp as BabbageImp
-import Test.Cardano.Ledger.Conway.CanonicalState.Dump (withScls)
 import qualified Test.Cardano.Ledger.Conway.Imp.BbodySpec as Bbody
 import qualified Test.Cardano.Ledger.Conway.Imp.CertsSpec as Certs
 import qualified Test.Cardano.Ledger.Conway.Imp.DelegSpec as Deleg
@@ -48,10 +47,6 @@ spec ::
 spec = do
   BabbageImp.spec @era
   withEachEraVersion @era $ conwayEraGenericSpec @era
-
-specWithScls :: FilePath -> Spec
-specWithScls dir =
-  withEachEraVersion @ConwayEra $ withScls dir $ conwayEraGenericSpec @ConwayEra
 
 conwayEraGenericSpec ::
   forall era.
