@@ -346,7 +346,7 @@ test-suite tests
     cardano-ledger-alonzo:{cardano-ledger-alonzo, testlib},
     cardano-ledger-binary:testlib,
     cardano-ledger-canonical-state:{cardano-ledger-canonical-state, testlib},
-    cardano-ledger-conway:{cardano-ledger-conway, cddl, canonical-state},
+    cardano-ledger-conway:{cardano-ledger-conway, canonical-state, cddl},
     cardano-ledger-core:{cardano-ledger-core, testlib},
     cardano-ledger-shelley:testlib,
     scls-cardano:testlib,

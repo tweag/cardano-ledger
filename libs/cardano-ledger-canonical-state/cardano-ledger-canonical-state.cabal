@@ -76,5 +76,5 @@ library testlib
   build-depends:
     QuickCheck,
     base,
-    cardano-ledger-canonical-state:{cardano-ledger-canonical-state},
+    cardano-ledger-canonical-state,
     cardano-ledger-core,
