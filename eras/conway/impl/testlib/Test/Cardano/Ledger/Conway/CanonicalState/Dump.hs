@@ -151,21 +151,6 @@ addGovConstitution nes =
     epochNo = nes ^. nesELL
     canonicalConstitution = mkCanonicalConstitution constitution
 
--- addPoolStake ::
---   era ~ ConwayEra =>
---   NewEpochState era ->
---   SerializationPlan (SomeChunkEntry RawBytes) m ->
---   SerializationPlan (SomeChunkEntry RawBytes) m
--- addPoolStake nes =
---   addNamespacedChunks (Proxy :: Proxy "pool_stake/v0") poolStake
---  where
---   poolStake = S.each (Map.toList $ nes ^. epochStateStakePoolsL)
---     & S.map (\(keyHash, poolState) -> ChunkEntry (PoolStakeIn keyHash) (mkPoolStakeOut poolState))
---   mkPoolStakeOut poolState =
---     let vrf = poolState ^. spsVrfL
---         total = poolState ^. spsDepositL -- TODO: is this the right field to use for total stake of the pool?
---      in PoolStakeOut { total, vrf }
-
 -- addSnapshots ::
 --   era ~ ConwayEra =>
 --   NewEpochState era ->
