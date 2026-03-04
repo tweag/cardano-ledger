@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
@@ -69,23 +70,33 @@ import Cardano.SCLS.Internal.Serializer.Dump.Plan (
  )
 import Cardano.SCLS.Internal.Serializer.External.Impl (serialize)
 import Cardano.Types.SlotNo (SlotNo (SlotNo))
-import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Resource (ResIO, runResourceT)
+import Data.Aeson (ToJSON (toEncoding), defaultOptions, encode, genericToEncoding)
 import qualified Data.ByteString.Lazy as BSL
 import Data.Data (Proxy (Proxy))
 import qualified Data.Map as Map
 import Data.Maybe (mapMaybe)
 import Data.MemPack.Extra (RawBytes)
 import qualified Data.Text as T
-import Lens.Micro ((&), (^.))
+import GHC.Generics (Generic)
+import Lens.Micro ((&), (.~), (^.))
 import qualified Streaming.Prelude as S
-import System.Directory (createDirectoryIfMissing, listDirectory)
+import System.Directory (createDirectoryIfMissing, doesFileExist, listDirectory)
 import System.FilePath (takeBaseName, (</>))
-import Test.Cardano.Ledger.Common (SpecWith)
+import Test.Cardano.Ledger.Common (SpecWith, unless)
 import Test.Cardano.Ledger.Conway.ImpTest
 import Test.Hspec.Core.Spec (Item (..), mapSpecItem_)
 import Test.ImpSpec (ImpInit (impInitEnv))
 import Text.Read (readMaybe)
+
+data Context = Context
+  { protocolVersion :: Version
+  , description :: String
+  }
+  deriving (Generic, Show)
+
+instance ToJSON Context where
+  toEncoding = genericToEncoding defaultOptions
 
 -- TODO: move somewhere common to all eras?
 dumpTx ::
@@ -141,12 +152,7 @@ addGovCommittee nes =
       CanonicalCommitteeState $
         Map.map mkCanonicalCommitteeAuthorization $
           nes
-            ^. nesEpochStateL
-              . esLStateL
-              . lsCertStateL
-              . certVStateL
-              . vsCommitteeStateL
-              . csCommitteeCredsL
+            ^. nesEpochStateL . esLStateL . lsCertStateL . certVStateL . vsCommitteeStateL . csCommitteeCredsL
 
 addGovConstitution ::
   (Monad m, era ~ ConwayEra) =>
@@ -221,7 +227,7 @@ dumpLedgerState ::
   (Monad m, era ~ ConwayEra) =>
   LedgerState era ->
   SerializationPlan (SomeChunkEntry RawBytes) m
-dumpLedgerState ls = do
+dumpLedgerState ls =
   defaultSerializationPlan
     & addUtxo ls
 
@@ -229,7 +235,7 @@ dumpNewEpochState ::
   (Monad m, era ~ ConwayEra) =>
   NewEpochState era ->
   SerializationPlan (SomeChunkEntry RawBytes) m
-dumpNewEpochState nes = do
+dumpNewEpochState nes =
   defaultSerializationPlan
     & addUtxo (nes ^. nesEsL . esLStateL)
     & addBlocks nes
@@ -254,8 +260,11 @@ dumpNewEpochState nes = do
 --     )
 
 withScls ::
-  FilePath -> SpecWith (ImpInit (LedgerSpec ConwayEra)) -> SpecWith (ImpInit (LedgerSpec ConwayEra))
-withScls baseDir =
+  Version ->
+  FilePath ->
+  SpecWith (ImpInit (LedgerSpec ConwayEra)) ->
+  SpecWith (ImpInit (LedgerSpec ConwayEra))
+withScls protocolVersion baseDir =
   mapSpecItem_ $
     \Item
        { itemRequirement
@@ -265,35 +274,37 @@ withScls baseDir =
        , itemAnnotations
        , itemExample = originalItemExample
        } ->
-        let dir = baseDir </> itemRequirement
-         in Item
-              { itemRequirement
-              , itemLocation
-              , itemIsParallelizable
-              , itemIsFocused
-              , itemAnnotations
-              , itemExample = \p f c ->
-                  let f' ff =
-                        let a impInit =
-                              let env = impInitEnv impInit
-                               in ff
-                                    ( impInit
-                                        { impInitEnv =
-                                            env
-                                              { iteSclsDumpHook =
-                                                  \nes tx res -> liftIO $ do
-                                                    dump dir "initial" $ dumpNewEpochState nes
-                                                    let ProtVer version _ = nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
-                                                    dumpTx dir "txn" version tx
-                                                    case res of
-                                                      Left _failures -> do
-                                                        -- TODO: dump the failures
-                                                        pure ()
-                                                      Right (st, _) -> do
-                                                        dump dir "final" $ dumpLedgerState st -- TODO: this should be dumpNewEpochState, but we don't have the final NewEpochState available here.
-                                              }
-                                        }
-                                    )
-                         in f a
-                   in originalItemExample p f' c
-              }
+        Item
+          { itemRequirement
+          , itemLocation
+          , itemIsParallelizable
+          , itemIsFocused
+          , itemAnnotations
+          , itemExample = \p f ->
+              originalItemExample p $ \action ->
+                f $ \impInit ->
+                  action
+                    ( impInit
+                        { impInitEnv =
+                            impInitEnv impInit
+                              & iteSclsDumpHookL .~ hook itemRequirement
+                        }
+                    )
+          }
+  where
+    hook description nes tx res = do
+      let ctx = Context {protocolVersion, description}
+      let dir = baseDir </> ("Protocol " <> show protocolVersion) </> description
+      let metadataFile = dir </> "metadata.json"
+      createDirectoryIfMissing True dir
+      doesFileExist metadataFile >>= \metadataExists ->
+        unless metadataExists $
+          BSL.writeFile metadataFile (encode ctx)
+      dump dir "initial" $ dumpNewEpochState nes
+      let ProtVer version _ = nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
+      dumpTx dir "txn" version tx
+      case res of
+        Left _failures -> do
+          -- TODO: dump the failures
+          pure ()
+        Right (st, _) -> dump dir "final" $ dumpLedgerState st -- TODO: this should be dumpNewEpochState, but we don't have the final NewEpochState available here.
