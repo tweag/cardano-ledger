@@ -1,6 +1,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeOperators #-}
@@ -71,45 +72,49 @@ import Cardano.SCLS.Internal.Serializer.Dump.Plan (
 import Cardano.SCLS.Internal.Serializer.External.Impl (serialize)
 import Cardano.Types.SlotNo (SlotNo (SlotNo))
 import Control.Monad.Trans.Resource (ResIO, runResourceT)
-import Data.Aeson (ToJSON (toEncoding), defaultOptions, encode, genericToEncoding)
+import Data.Aeson (
+  FromJSON,
+  ToJSON (toEncoding),
+  decodeFileStrict,
+  defaultOptions,
+  encode,
+  genericToEncoding,
+ )
 import qualified Data.ByteString.Lazy as BSL
 import Data.Data (Proxy (Proxy))
 import qualified Data.Map as Map
-import Data.Maybe (mapMaybe)
 import Data.MemPack.Extra (RawBytes)
-import qualified Data.Text as T
 import GHC.Generics (Generic)
 import Lens.Micro ((&), (.~), (^.))
 import qualified Streaming.Prelude as S
-import System.Directory (createDirectoryIfMissing, doesFileExist, listDirectory)
-import System.FilePath (takeBaseName, (</>))
-import Test.Cardano.Ledger.Common (SpecWith, unless)
+import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.FilePath ((</>))
+import Test.Cardano.Ledger.Common (SpecWith, void)
 import Test.Cardano.Ledger.Conway.ImpTest
 import Test.Hspec.Core.Spec (Item (..), mapSpecItem_)
 import Test.ImpSpec (ImpInit (impInitEnv))
-import Text.Read (readMaybe)
 
 data Context = Context
   { protocolVersion :: Version
   , description :: String
+  , stateCount :: Int
   }
   deriving (Generic, Show)
 
 instance ToJSON Context where
   toEncoding = genericToEncoding defaultOptions
 
+instance FromJSON Context
+
 -- TODO: move somewhere common to all eras?
 dumpTx ::
   EncCBOR (Tx TopTx era) =>
   FilePath ->
-  String ->
   Version ->
   Tx TopTx era ->
   IO ()
-dumpTx dir prefix version tx = do
-  createDirectoryIfMissing True dir
+dumpTx filepath version tx = do
   let e = encCBOR tx
-  filepath <- getNextFile dir prefix "cbor"
   BSL.writeFile filepath (toLazyByteString (toPlainEncoding version e))
 
 addUtxo ::
@@ -152,7 +157,12 @@ addGovCommittee nes =
       CanonicalCommitteeState $
         Map.map mkCanonicalCommitteeAuthorization $
           nes
-            ^. nesEpochStateL . esLStateL . lsCertStateL . certVStateL . vsCommitteeStateL . csCommitteeCredsL
+            ^. nesEpochStateL
+              . esLStateL
+              . lsCertStateL
+              . certVStateL
+              . vsCommitteeStateL
+              . csCommitteeCredsL
 
 addGovConstitution ::
   (Monad m, era ~ ConwayEra) =>
@@ -167,21 +177,6 @@ addGovConstitution nes =
     constitution = nes ^. newEpochStateGovStateL . constitutionGovStateL
     epochNo = nes ^. nesELL
     canonicalConstitution = mkCanonicalConstitution constitution
-
-getNextFile :: FilePath -> String -> String -> IO FilePath
-getNextFile dir prefix extension = do
-  -- dir: "/path/to"
-  -- prefix: "dump"
-  let prefixT = T.pack prefix
-  basenames <-
-    map takeBaseName . filter (T.isPrefixOf prefixT . T.pack) <$> listDirectory dir
-  -- basenames: ["dump-1", "dump-2", "dump-3", ...]
-  -- Extract the numeric suffixes and find the maximum
-  let counters = mapMaybe (T.stripPrefix (prefixT <> T.pack "-") . T.pack) basenames
-      -- counters: ["1", "2", "3", ...]
-      maxCounter = maximum ((0 :: Int) : mapMaybe (readMaybe . T.unpack) counters)
-  -- maxCounter: 3 (if the existing files are dump-1.scls, dump-2.scls, dump-3.scls)
-  pure (dir </> (T.unpack prefixT <> "-" <> show (maxCounter + 1) <> "." <> extension))
 
 addPParams ::
   (Monad m, era ~ ConwayEra) =>
@@ -208,20 +203,16 @@ addPParams nes =
 
 dump ::
   FilePath ->
-  String ->
   SerializationPlan (SomeChunkEntry RawBytes) ResIO ->
   IO ()
-dump dumpDir prefix plan = do
-  createDirectoryIfMissing True dumpDir
-  filepath <- getNextFile dumpDir prefix "scls"
-  _ <-
-    runResourceT $
-      serialize
-        filepath
-        (SlotNo 1)
-        knownNamespaceKeySizes
-        plan
-  pure ()
+dump filepath = do
+  -- TODO: should we ignore?
+  void
+    . runResourceT
+    . serialize
+      filepath
+      (SlotNo 1)
+      knownNamespaceKeySizes
 
 dumpLedgerState ::
   (Monad m, era ~ ConwayEra) =>
@@ -293,18 +284,25 @@ withScls protocolVersion baseDir =
           }
   where
     hook description nes tx res = do
-      let ctx = Context {protocolVersion, description}
       let dir = baseDir </> ("Protocol " <> show protocolVersion) </> description
       let metadataFile = dir </> "metadata.json"
+      ctx@Context {stateCount} <-
+        doesFileExist metadataFile >>= \metadataExists ->
+          if metadataExists
+            then
+              decodeFileStrict metadataFile >>= \case
+                Just ctx -> pure ctx
+                Nothing -> do
+                  -- TODO: clean up the directory if the metadata file is corrupted, to avoid leaving around junk files?
+                  error $ "Failed to decode metadata file: " <> metadataFile
+            else pure $ Context {protocolVersion, description, stateCount = 0}
       createDirectoryIfMissing True dir
-      doesFileExist metadataFile >>= \metadataExists ->
-        unless metadataExists $
-          BSL.writeFile metadataFile (encode ctx)
-      dump dir "initial" $ dumpNewEpochState nes
+      dump (dir </> ("initial-" <> show stateCount <> ".scls")) $ dumpNewEpochState nes
       let ProtVer version _ = nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
-      dumpTx dir "txn" version tx
+      dumpTx (dir </> ("txn-" <> show stateCount <> ".cbor")) version tx
       case res of
         Left _failures -> do
           -- TODO: dump the failures
           pure ()
-        Right (st, _) -> dump dir "final" $ dumpLedgerState st -- TODO: this should be dumpNewEpochState, but we don't have the final NewEpochState available here.
+        Right (st, _) -> dump (dir </> ("final-" <> show stateCount <> ".scls")) $ dumpLedgerState st -- TODO: this should be dumpNewEpochState, but we don't have the final NewEpochState available here.
+      BSL.writeFile metadataFile $ encode $ ctx {stateCount = stateCount + 1}
