@@ -61,13 +61,10 @@ library
     cardano-ledger-core,
     cborg,
     containers,
-    directory,
-    filepath,
     mempack-scls,
     scls-cardano,
     scls-cbor,
     scls-core,
-    text,
 
 library testlib
   import: warnings
