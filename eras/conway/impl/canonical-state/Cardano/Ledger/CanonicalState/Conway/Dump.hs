@@ -13,6 +13,7 @@ module Cardano.Ledger.CanonicalState.Conway.Dump (
 ) where
 
 import Cardano.Ledger.CanonicalState.Conway (mkCanonicalConstitution)
+import Cardano.Ledger.CanonicalState.Dump (getNextFile)
 import Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 (BlockIn (BlockIn), BlockOut (BlockOut))
 import Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 (
   CanonicalCommitteeState (CanonicalCommitteeState),
@@ -113,11 +114,11 @@ addGovCommittee nes =
         Map.map mkCanonicalCommitteeAuthorization $
           nes
             ^. nesEpochStateL
-            . esLStateL
-            . lsCertStateL
-            . certVStateL
-            . vsCommitteeStateL
-            . csCommitteeCredsL
+              . esLStateL
+              . lsCertStateL
+              . certVStateL
+              . vsCommitteeStateL
+              . csCommitteeCredsL
 
 addGovConstitution ::
   (Monad m, era ~ ConwayEra) =>
