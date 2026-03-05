@@ -270,7 +270,8 @@ withScls protocolVersion baseDir =
                     ( impInit
                         { impInitEnv =
                             impInitEnv impInit
-                              & iteSclsDumpHookL .~ hook itemRequirement
+                              & iteSclsDumpHookL
+                                .~ hook itemRequirement
                         }
                     )
           }
