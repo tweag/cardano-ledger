@@ -62,8 +62,6 @@ library
     cardano-ledger-core,
     cborg,
     containers,
-    directory,
-    filepath,
     mempack-scls,
     scls-cardano,
     scls-cbor,
