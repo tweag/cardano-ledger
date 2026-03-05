@@ -258,21 +258,12 @@ withScls ::
   SpecWith (ImpInit (LedgerSpec ConwayEra))
 withScls protocolVersion baseDir =
   mapSpecItem_ $
-    \Item
+    \item@Item
        { itemRequirement
-       , itemLocation
-       , itemIsParallelizable
-       , itemIsFocused
-       , itemAnnotations
        , itemExample = originalItemExample
        } ->
-        Item
-          { itemRequirement
-          , itemLocation
-          , itemIsParallelizable
-          , itemIsFocused
-          , itemAnnotations
-          , itemExample = \p f ->
+        item
+          { itemExample = \p f ->
               originalItemExample p $ \action ->
                 f $ \impInit ->
                   action
