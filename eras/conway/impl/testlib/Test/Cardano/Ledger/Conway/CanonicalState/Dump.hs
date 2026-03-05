@@ -94,7 +94,7 @@ import Test.Cardano.Ledger.Conway.ImpTest
 import Test.Hspec.Core.Spec (Item (..), mapSpecItem_)
 import Test.ImpSpec (ImpInit (impInitEnv))
 
-data Context = Context
+data Metadata = Metadata
   { era :: String
   , protocolVersion :: Version
   , description :: String
@@ -102,10 +102,10 @@ data Context = Context
   }
   deriving (Generic, Show)
 
-instance ToJSON Context where
+instance ToJSON Metadata where
   toEncoding = genericToEncoding defaultOptions
 
-instance FromJSON Context
+instance FromJSON Metadata
 
 -- TODO: move somewhere common to all eras?
 dumpTx ::
@@ -287,7 +287,7 @@ withScls protocolVersion baseDir =
     hook description nes tx res = do
       let dir = baseDir </> ("Protocol " <> show protocolVersion) </> description
       let metadataFile = dir </> "metadata.json"
-      ctx@Context {stateCount} <-
+      ctx@Metadata {stateCount} <-
         doesFileExist metadataFile >>= \metadataExists ->
           if metadataExists
             then
@@ -296,7 +296,7 @@ withScls protocolVersion baseDir =
                 Nothing -> do
                   -- TODO: clean up the directory if the metadata file is corrupted, to avoid leaving around junk files?
                   error $ "Failed to decode metadata file: " <> metadataFile
-            else pure $ Context {era = "Conway", protocolVersion, description, stateCount = 0}
+            else pure $ Metadata {era = "Conway", protocolVersion, description, stateCount = 0}
       createDirectoryIfMissing True dir
       dump (dir </> ("initial-" <> show stateCount <> ".scls")) $ dumpNewEpochState nes
       let ProtVer version _ = nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
