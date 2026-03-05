@@ -4,15 +4,17 @@
 
 module Cardano.Ledger.CanonicalState.Conway.Dump (
   dump,
-addUtxo,
-addBlocks,
-addGovCommittee,
-addGovConstitution,
-addPParams,
-dumpLedgerState,
-dumpNewEpochState) where
+  addUtxo,
+  addBlocks,
+  addGovCommittee,
+  addGovConstitution,
+  addPParams,
+  dumpLedgerState,
+  dumpNewEpochState,
+) where
 
 import Cardano.Ledger.CanonicalState.Conway (mkCanonicalConstitution)
+import Cardano.Ledger.CanonicalState.Dump (getNextFile)
 import Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 (BlockIn (BlockIn), BlockOut (BlockOut))
 import Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 (
   CanonicalCommitteeState (CanonicalCommitteeState),
@@ -70,7 +72,6 @@ import qualified Data.Map as Map
 import Data.MemPack.Extra (RawBytes)
 import Lens.Micro ((&), (^.))
 import qualified Streaming.Prelude as S
-import Cardano.Ledger.CanonicalState.Dump (getNextFile)
 
 addUtxo ::
   (Monad m, era ~ ConwayEra) =>
@@ -113,11 +114,11 @@ addGovCommittee nes =
         Map.map mkCanonicalCommitteeAuthorization $
           nes
             ^. nesEpochStateL
-            . esLStateL
-            . lsCertStateL
-            . certVStateL
-            . vsCommitteeStateL
-            . csCommitteeCredsL
+              . esLStateL
+              . lsCertStateL
+              . certVStateL
+              . vsCommitteeStateL
+              . csCommitteeCredsL
 
 addGovConstitution ::
   (Monad m, era ~ ConwayEra) =>
