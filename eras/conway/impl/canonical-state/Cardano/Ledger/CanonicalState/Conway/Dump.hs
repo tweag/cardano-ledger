@@ -2,18 +2,16 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Test.Cardano.Ledger.Conway.CanonicalState.Dump (
+module Cardano.Ledger.CanonicalState.Conway.Dump (
   dump,
-  dumpTx,
-  withScls,
-) where
+addUtxo,
+addBlocks,
+addGovCommittee,
+addGovConstitution,
+addPParams,
+dumpLedgerState,
+dumpNewEpochState) where
 
-import Cardano.Ledger.BaseTypes (ProtVer (ProtVer), Version)
-import Cardano.Ledger.Binary (
-  EncCBOR (encCBOR),
-  toLazyByteString,
-  toPlainEncoding,
- )
 import Cardano.Ledger.CanonicalState.Conway (mkCanonicalConstitution)
 import Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 (BlockIn (BlockIn), BlockOut (BlockOut))
 import Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 (
@@ -43,7 +41,6 @@ import Cardano.Ledger.Conway.State (
   csCommitteeCredsL,
   vsCommitteeStateL,
  )
-import Cardano.Ledger.Core (EraPParams (ppProtocolVersionL), Tx, TxLevel (TopTx))
 import Cardano.Ledger.Shelley.LedgerState (
   LedgerState,
   NewEpochState,
@@ -67,35 +64,13 @@ import Cardano.SCLS.Internal.Serializer.Dump.Plan (
  )
 import Cardano.SCLS.Internal.Serializer.External.Impl (serialize)
 import Cardano.Types.SlotNo (SlotNo (SlotNo))
-import Control.Monad.IO.Class (MonadIO (liftIO))
 import Control.Monad.Trans.Resource (ResIO, runResourceT)
-import qualified Data.ByteString.Lazy as BSL
 import Data.Data (Proxy (Proxy))
 import qualified Data.Map as Map
-import Data.Maybe (mapMaybe)
 import Data.MemPack.Extra (RawBytes)
-import qualified Data.Text as T
 import Lens.Micro ((&), (^.))
 import qualified Streaming.Prelude as S
-import System.Directory (createDirectoryIfMissing, listDirectory)
-import System.FilePath (takeBaseName, (</>))
-import Test.Cardano.Ledger.Common (SpecWith)
-import Test.Cardano.Ledger.Conway.ImpTest
-import Text.Read (readMaybe)
-
--- TODO: move somewhere common to all eras?
-dumpTx ::
-  EncCBOR (Tx TopTx era) =>
-  FilePath ->
-  String ->
-  Version ->
-  Tx TopTx era ->
-  IO ()
-dumpTx dir prefix version tx = do
-  createDirectoryIfMissing True dir
-  let e = encCBOR tx
-  filepath <- getNextFile dir prefix "cbor"
-  BSL.writeFile filepath (toLazyByteString (toPlainEncoding version e))
+import Cardano.Ledger.CanonicalState.Dump (getNextFile)
 
 addUtxo ::
   (Monad m, era ~ ConwayEra) =>
@@ -138,11 +113,11 @@ addGovCommittee nes =
         Map.map mkCanonicalCommitteeAuthorization $
           nes
             ^. nesEpochStateL
-              . esLStateL
-              . lsCertStateL
-              . certVStateL
-              . vsCommitteeStateL
-              . csCommitteeCredsL
+            . esLStateL
+            . lsCertStateL
+            . certVStateL
+            . vsCommitteeStateL
+            . csCommitteeCredsL
 
 addGovConstitution ::
   (Monad m, era ~ ConwayEra) =>
@@ -157,21 +132,6 @@ addGovConstitution nes =
     constitution = nes ^. newEpochStateGovStateL . constitutionGovStateL
     epochNo = nes ^. nesELL
     canonicalConstitution = mkCanonicalConstitution constitution
-
-getNextFile :: FilePath -> String -> String -> IO FilePath
-getNextFile dir prefix extension = do
-  -- dir: "/path/to"
-  -- prefix: "dump"
-  let prefixT = T.pack prefix
-  basenames <-
-    map takeBaseName . filter (T.isPrefixOf prefixT . T.pack) <$> listDirectory dir
-  -- basenames: ["dump-1", "dump-2", "dump-3", ...]
-  -- Extract the numeric suffixes and find the maximum
-  let counters = mapMaybe (T.stripPrefix (prefixT <> T.pack "-") . T.pack) basenames
-      -- counters: ["1", "2", "3", ...]
-      maxCounter = maximum ((0 :: Int) : mapMaybe (readMaybe . T.unpack) counters)
-  -- maxCounter: 3 (if the existing files are dump-1.scls, dump-2.scls, dump-3.scls)
-  pure (dir </> (T.unpack prefixT <> "-" <> show (maxCounter + 1) <> "." <> extension))
 
 addPParams ::
   (Monad m, era ~ ConwayEra) =>
@@ -202,7 +162,6 @@ dump ::
   SerializationPlan (SomeChunkEntry RawBytes) ResIO ->
   IO ()
 dump dumpDir prefix plan = do
-  createDirectoryIfMissing True dumpDir
   filepath <- getNextFile dumpDir prefix "scls"
   _ <-
     runResourceT $
@@ -232,19 +191,3 @@ dumpNewEpochState nes = do
     & addGovCommittee nes
     & addGovConstitution nes
     & addPParams nes
-
-withScls ::
-  FilePath -> SpecWith (ImpInit (LedgerSpec ConwayEra)) -> SpecWith (ImpInit (LedgerSpec ConwayEra))
-withScls dir =
-  modifyImpInitSclsDumpHook
-    ( \nes tx res -> liftIO $ do
-        dump dir "initial" $ dumpNewEpochState nes
-        let ProtVer version _ = nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
-        dumpTx dir "txn" version tx
-        case res of
-          Left _failures -> do
-            -- TODO: dump the failures
-            pure ()
-          Right (st, _) -> do
-            dump dir "final" $ dumpLedgerState st -- TODO: this should be dumpNewEpochState, but we don't have the final NewEpochState available here.
-    )

@@ -41,6 +41,7 @@ library
   default-language: Haskell2010
   exposed-modules:
     Cardano.Ledger.CanonicalState.BasicTypes
+    Cardano.Ledger.CanonicalState.Dump
     Cardano.Ledger.CanonicalState.LedgerCBOR
     Cardano.Ledger.CanonicalState.Namespace
     Cardano.Ledger.CanonicalState.Namespace.Blocks.V0
@@ -60,10 +61,13 @@ library
     cardano-ledger-core,
     cborg,
     containers,
+    directory,
+    filepath,
     mempack-scls,
     scls-cardano,
     scls-cbor,
     scls-core,
+    text,
 
 library testlib
   import: warnings

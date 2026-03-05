@@ -175,6 +175,7 @@ executable generate-cddl
 library canonical-state
   exposed-modules:
     Cardano.Ledger.CanonicalState.Conway
+    Cardano.Ledger.CanonicalState.Conway.Dump
 
   hs-source-dirs: canonical-state
   other-modules:
@@ -192,10 +193,17 @@ library canonical-state
     base >=4.18 && <5,
     cardano-ledger-canonical-state,
     cardano-ledger-conway,
+    cardano-ledger-shelley,
     cborg,
+    containers,
+    mempack-scls,
     microlens,
+    resourcet,
+    scls-cardano,
     scls-cbor,
     scls-core,
+    scls-format,
+    streaming,
 
   if flag(asserts)
     ghc-options: -fno-ignore-asserts
@@ -210,7 +218,6 @@ library testlib
     Test.Cardano.Ledger.Conway.Binary.RoundTrip
     Test.Cardano.Ledger.Conway.BinarySpec
     Test.Cardano.Ledger.Conway.CanonicalState.Arbitrary
-    Test.Cardano.Ledger.Conway.CanonicalState.Dump
     Test.Cardano.Ledger.Conway.CommitteeRatifySpec
     Test.Cardano.Ledger.Conway.DRepRatifySpec
     Test.Cardano.Ledger.Conway.Era
@@ -285,20 +292,13 @@ library testlib
     containers,
     data-default,
     deepseq,
-    directory,
-    filepath,
     generic-random,
-    mempack-scls,
     microlens,
     microlens-mtl,
     mtl,
     plutus-ledger-api,
     prettyprinter,
-    resourcet,
-    scls-cardano,
-    scls-format,
     small-steps >=1.1,
-    streaming,
     text,
     time,
     tree-diff,
@@ -382,5 +382,10 @@ executable canonical-state-test-export
 
   build-depends:
     base,
-    cardano-ledger-core:testlib,
+    cardano-ledger-canonical-state,
+    cardano-ledger-conway:{cardano-ledger-conway, canonical-state},
+    cardano-ledger-core:{cardano-ledger-core, testlib},
+    cardano-ledger-shelley,
+    directory,
+    microlens,
     testlib,
