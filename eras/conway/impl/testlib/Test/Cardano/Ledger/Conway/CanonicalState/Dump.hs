@@ -95,7 +95,8 @@ import Test.Hspec.Core.Spec (Item (..), mapSpecItem_)
 import Test.ImpSpec (ImpInit (impInitEnv))
 
 data Context = Context
-  { protocolVersion :: Version
+  { era :: String
+  , protocolVersion :: Version
   , description :: String
   , stateCount :: Int
   }
@@ -295,7 +296,7 @@ withScls protocolVersion baseDir =
                 Nothing -> do
                   -- TODO: clean up the directory if the metadata file is corrupted, to avoid leaving around junk files?
                   error $ "Failed to decode metadata file: " <> metadataFile
-            else pure $ Context {protocolVersion, description, stateCount = 0}
+            else pure $ Context {era = "Conway", protocolVersion, description, stateCount = 0}
       createDirectoryIfMissing True dir
       dump (dir </> ("initial-" <> show stateCount <> ".scls")) $ dumpNewEpochState nes
       let ProtVer version _ = nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
