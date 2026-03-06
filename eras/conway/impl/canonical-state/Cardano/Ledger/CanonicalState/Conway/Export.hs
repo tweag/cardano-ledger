@@ -1,18 +1,13 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
-module Cardano.Ledger.CanonicalState.Conway.Dump (
-  dump,
-  addUtxo,
-  addBlocks,
-  addGovCommittee,
-  addGovConstitution,
-  addPParams,
-  dumpLedgerState,
-  dumpNewEpochState,
-) where
+module Cardano.Ledger.CanonicalState.Conway.Export where
 
+import Cardano.Ledger.BaseTypes (ProtVer (..))
 import Cardano.Ledger.CanonicalState.Conway (mkCanonicalConstitution)
+import Cardano.Ledger.CanonicalState.Export (ExportState (..))
 import Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 (BlockIn (BlockIn), BlockOut (BlockOut))
 import Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 (
   CanonicalCommitteeState (CanonicalCommitteeState),
@@ -41,6 +36,7 @@ import Cardano.Ledger.Conway.State (
   csCommitteeCredsL,
   vsCommitteeStateL,
  )
+import Cardano.Ledger.Core (EraPParams (ppProtocolVersionL))
 import Cardano.Ledger.Shelley.LedgerState (
   LedgerState,
   NewEpochState,
@@ -55,17 +51,12 @@ import Cardano.Ledger.Shelley.LedgerState (
   newEpochStateGovStateL,
   prevPParamsEpochStateL,
  )
-import Cardano.SCLS.CDDL (knownNamespaceKeySizes)
 import Cardano.SCLS.Internal.Entry.ChunkEntry (ChunkEntry (ChunkEntry), SomeChunkEntry)
 import Cardano.SCLS.Internal.Serializer.Dump.Plan (
   SerializationPlan,
   addNamespacedChunks,
   defaultSerializationPlan,
  )
-import Cardano.SCLS.Internal.Serializer.External.Impl (serialize)
-import Cardano.Types.SlotNo (SlotNo (SlotNo))
-import Control.Monad (void)
-import Control.Monad.Trans.Resource (ResIO, runResourceT)
 import Data.Data (Proxy (Proxy))
 import qualified Data.Map as Map
 import Data.MemPack.Extra (RawBytes)
@@ -113,11 +104,11 @@ addGovCommittee nes =
         Map.map mkCanonicalCommitteeAuthorization $
           nes
             ^. nesEpochStateL
-              . esLStateL
-              . lsCertStateL
-              . certVStateL
-              . vsCommitteeStateL
-              . csCommitteeCredsL
+            . esLStateL
+            . lsCertStateL
+            . certVStateL
+            . vsCommitteeStateL
+            . csCommitteeCredsL
 
 addGovConstitution ::
   (Monad m, era ~ ConwayEra) =>
@@ -156,35 +147,18 @@ addPParams nes =
         ++ futurePossiblePParams
         ++ futureDefinitePParams
 
-dump ::
-  FilePath ->
-  SerializationPlan (SomeChunkEntry RawBytes) ResIO ->
-  IO ()
-dump filepath = do
-  -- TODO: should we ignore?
-  void
-    . runResourceT
-    . serialize
-      filepath
-      (SlotNo 1)
-      knownNamespaceKeySizes
-
-dumpLedgerState ::
-  (Monad m, era ~ ConwayEra) =>
-  LedgerState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-dumpLedgerState ls =
-  defaultSerializationPlan
-    & addUtxo ls
-
-dumpNewEpochState ::
-  (Monad m, era ~ ConwayEra) =>
-  NewEpochState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-dumpNewEpochState nes =
-  defaultSerializationPlan
-    & addUtxo (nes ^. nesEsL . esLStateL)
-    & addBlocks nes
-    & addGovCommittee nes
-    & addGovConstitution nes
-    & addPParams nes
+instance ExportState ConwayEra where
+  type ExportLedgerState ConwayEra = LedgerState ConwayEra
+  type ExportNewEpochState ConwayEra = NewEpochState ConwayEra
+  dumpLedgerState ls =
+    defaultSerializationPlan
+      & addUtxo ls
+  dumpNewEpochState nes =
+    defaultSerializationPlan
+      & addUtxo (nes ^. nesEsL . esLStateL)
+      & addBlocks nes
+      & addGovCommittee nes
+      & addGovConstitution nes
+      & addPParams nes
+  getProtocolVersion nes =
+    pvMajor $ nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
