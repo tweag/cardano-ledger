@@ -1,12 +1,16 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Cardano.Ledger.CanonicalState.Conway.Export where
+module Cardano.Ledger.CanonicalState.Conway.Export () where
 
 import Cardano.Ledger.BaseTypes (ProtVer (..))
-import Cardano.Ledger.CanonicalState.Conway (mkCanonicalConstitution)
+import Cardano.Ledger.CanonicalState.Conway (
+  fromGovActionState,
+  mkCanonicalConstitution,
+ )
 import Cardano.Ledger.CanonicalState.Export (ExportState (..))
 import Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 (BlockIn (BlockIn), BlockOut (BlockOut))
 import Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 (
@@ -26,7 +30,10 @@ import Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 (
 import Cardano.Ledger.CanonicalState.Namespace.UTxO.V0 (UtxoIn (UtxoKeyIn), mkUtxo)
 import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.Governance (
-  ConwayEraGov (constitutionGovStateL),
+  ConwayEraGov (constitutionGovStateL, drepPulsingStateGovStateL),
+  DRepPulser (DRepPulser, dpProposals),
+  DRepPulsingState (DRComplete, DRPulsing),
+  psProposalsL,
  )
 import Cardano.Ledger.Conway.State (
   CanGetUTxO (utxoG),
@@ -58,6 +65,7 @@ import Cardano.SCLS.Internal.Serializer.Dump.Plan (
   defaultSerializationPlan,
  )
 import Data.Data (Proxy (Proxy))
+import Data.Foldable (Foldable (toList))
 import qualified Data.Map as Map
 import Data.MemPack.Extra (RawBytes)
 import Lens.Micro ((&), (^.))
@@ -104,11 +112,11 @@ addGovCommittee nes =
         Map.map mkCanonicalCommitteeAuthorization $
           nes
             ^. nesEpochStateL
-              . esLStateL
-              . lsCertStateL
-              . certVStateL
-              . vsCommitteeStateL
-              . csCommitteeCredsL
+            . esLStateL
+            . lsCertStateL
+            . certVStateL
+            . vsCommitteeStateL
+            . csCommitteeCredsL
 
 addGovConstitution ::
   (Monad m, era ~ ConwayEra) =>
@@ -147,6 +155,25 @@ addPParams nes =
         ++ futurePossiblePParams
         ++ futureDefinitePParams
 
+addProposals ::
+  (Monad m, era ~ ConwayEra) =>
+  NewEpochState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+addProposals nes =
+  addNamespacedChunks (Proxy :: Proxy "gov/proposals/v0") proposals
+  where
+    proposals =
+      S.each
+        [ uncurry ChunkEntry $ fromGovActionState g
+        | g <-
+            toList
+              ( case nes ^. newEpochStateGovStateL . drepPulsingStateGovStateL of
+                  DRComplete snap _rs -> snap ^. psProposalsL
+                  DRPulsing DRepPulser {..} -> dpProposals
+              )
+        ]
+
 instance ExportState ConwayEra where
   type ExportLedgerState ConwayEra = LedgerState ConwayEra
   type ExportNewEpochState ConwayEra = NewEpochState ConwayEra
@@ -160,5 +187,6 @@ instance ExportState ConwayEra where
       & addGovCommittee nes
       & addGovConstitution nes
       & addPParams nes
+      & addProposals nes
   getProtocolVersion nes =
     pvMajor $ nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
