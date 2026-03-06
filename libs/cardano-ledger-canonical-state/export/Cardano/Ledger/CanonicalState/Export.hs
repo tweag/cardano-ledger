@@ -64,7 +64,7 @@ dump ::
   SlotNo ->
   SerializationPlan (SomeChunkEntry RawBytes) ResIO ->
   IO ()
-dump filepath slotNo = do
+dump filepath slotNo =
   -- TODO: should we ignore?
   void
     . runResourceT
