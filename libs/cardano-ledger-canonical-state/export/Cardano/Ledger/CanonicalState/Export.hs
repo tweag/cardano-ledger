@@ -15,7 +15,6 @@ import Cardano.Ledger.Binary (
   toLazyByteString,
   toPlainEncoding,
  )
-
 import Cardano.SCLS.CDDL (knownNamespaceKeySizes)
 import Cardano.SCLS.Internal.Entry.ChunkEntry (SomeChunkEntry)
 import Cardano.SCLS.Internal.Serializer.Dump.Plan (
