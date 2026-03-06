@@ -15,11 +15,6 @@ import Cardano.Ledger.Binary (
   toLazyByteString,
   toPlainEncoding,
  )
--- import Test.Cardano.Ledger.Conway.ImpTest (
---   LedgerSpec,
---   iteSclsDumpHookL,
---   modifyImpInitProtVer,
---  )
 
 import Cardano.SCLS.CDDL (knownNamespaceKeySizes)
 import Cardano.SCLS.Internal.Entry.ChunkEntry (SomeChunkEntry)
@@ -85,22 +80,6 @@ class ExportState era where
   dumpLedgerState :: ExportLedgerState era -> SerializationPlan (SomeChunkEntry RawBytes) ResIO
   dumpNewEpochState :: ExportNewEpochState era -> SerializationPlan (SomeChunkEntry RawBytes) ResIO
   getProtocolVersion :: ExportNewEpochState era -> Version
-
--- withScls ::
---   FilePath -> SpecWith (ImpInit (LedgerSpec ConwayEra)) -> SpecWith (ImpInit (LedgerSpec ConwayEra))
--- withScls dir =
---   modifyImpInitSclsDumpHook
---     ( \nes tx res -> liftIO $ do
---         dump dir "initial" $ dumpNewEpochState nes
---         let ProtVer version _ = nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
---         dumpTx dir "txn" version tx
---         case res of
---           Left _failures -> do
---             -- TODO: dump the failures
---             pure ()
---           Right (st, _) -> do
---             dump dir "final" $ dumpLedgerState st -- TODO: this should be dumpNewEpochState, but we don't have the final NewEpochState available here.
---     )
 
 withScls ::
   forall era a tx failures event.
