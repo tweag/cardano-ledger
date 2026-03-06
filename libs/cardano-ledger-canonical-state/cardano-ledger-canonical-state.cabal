@@ -41,7 +41,6 @@ library
   default-language: Haskell2010
   exposed-modules:
     Cardano.Ledger.CanonicalState.BasicTypes
-    Cardano.Ledger.CanonicalState.Dump
     Cardano.Ledger.CanonicalState.LedgerCBOR
     Cardano.Ledger.CanonicalState.Namespace
     Cardano.Ledger.CanonicalState.Namespace.Blocks.V0
@@ -81,3 +80,26 @@ library testlib
     base,
     cardano-ledger-canonical-state,
     cardano-ledger-core,
+
+library export
+  import: warnings
+  exposed-modules:
+    Cardano.Ledger.CanonicalState.Export
+
+  visibility: public
+  hs-source-dirs: export
+  default-language: Haskell2010
+  build-depends:
+    ImpSpec,
+    aeson,
+    base,
+    bytestring,
+    cardano-ledger-binary,
+    cardano-ledger-core,
+    directory,
+    filepath,
+    hspec-core,
+    mempack-scls,
+    resourcet,
+    scls-cardano,
+    scls-format,
