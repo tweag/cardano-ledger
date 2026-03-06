@@ -15,6 +15,7 @@ import Cardano.Ledger.Binary (
   toLazyByteString,
   toPlainEncoding,
  )
+import Cardano.Ledger.Core (Era (eraName))
 import Cardano.SCLS.CDDL (knownNamespaceKeySizes)
 import Cardano.SCLS.Internal.Entry.ChunkEntry (SomeChunkEntry)
 import Cardano.SCLS.Internal.Serializer.Dump.Plan (
@@ -82,7 +83,7 @@ class ExportState era where
 
 withScls ::
   forall era a tx failures event.
-  (ExportState era, EncCBOR tx) =>
+  (Era era, ExportState era, EncCBOR tx) =>
   ( ImpSpecEnv a ->
     (ExportNewEpochState era -> tx -> Either failures (ExportLedgerState era, event) -> IO ()) ->
     ImpSpecEnv a
@@ -128,7 +129,7 @@ withScls setHook baseDir =
                 Nothing -> do
                   -- TODO: clean up the directory if the metadata file is corrupted, to avoid leaving around junk files?
                   error $ "Failed to decode metadata file: " <> metadataFile
-            else pure $ Metadata {era = "Conway", protocolVersion, description, stateCount = 0, path}
+            else pure $ Metadata {era = eraName @era, protocolVersion, description, stateCount = 0, path}
       createDirectoryIfMissing True dir
       let initialSlotNo = SlotNo 1 -- TODO: use the actual slot number if available
       dump (dir </> ("initial-" <> show stateCount <> ".scls")) initialSlotNo $ dumpNewEpochState @era nes
