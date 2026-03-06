@@ -32,7 +32,7 @@ main =
               conwayEraGenericSpec @ConwayEra
     Nothing -> do
       putStrLn $
-        "No export path provided, skipping SCLS export tests. Set the "
+        "No export path provided. Set the "
           <> pathVarName
           <> " environment variable to run them."
       exitFailure
