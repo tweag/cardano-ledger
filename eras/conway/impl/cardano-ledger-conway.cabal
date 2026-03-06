@@ -175,7 +175,7 @@ executable generate-cddl
 library canonical-state
   exposed-modules:
     Cardano.Ledger.CanonicalState.Conway
-    Cardano.Ledger.CanonicalState.Conway.Dump
+    Cardano.Ledger.CanonicalState.Conway.Export
 
   hs-source-dirs: canonical-state
   other-modules:
@@ -191,15 +191,14 @@ library canonical-state
 
   build-depends:
     base >=4.18 && <5,
-    cardano-ledger-canonical-state,
+    cardano-ledger-canonical-state:{cardano-ledger-canonical-state, export},
     cardano-ledger-conway,
+    cardano-ledger-core,
     cardano-ledger-shelley,
     cborg,
     containers,
     mempack-scls,
     microlens,
-    resourcet,
-    scls-cardano,
     scls-cbor,
     scls-core,
     scls-format,
@@ -381,17 +380,9 @@ executable canonical-state-test-export
     -with-rtsopts=-N
 
   build-depends:
-    ImpSpec,
-    aeson,
     base,
-    bytestring,
-    cardano-ledger-canonical-state,
-    cardano-ledger-conway,
+    cardano-ledger-canonical-state:export,
     cardano-ledger-conway:{cardano-ledger-conway, canonical-state},
-    cardano-ledger-core:{cardano-ledger-core, testlib},
-    cardano-ledger-shelley,
-    directory,
-    filepath,
-    hspec-core,
+    cardano-ledger-core:testlib,
     microlens,
     testlib,

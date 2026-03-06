@@ -255,6 +255,9 @@ cradle:
     - path: "libs/cardano-ledger-canonical-state/testlib"
       component: "cardano-ledger-canonical-state:lib:testlib"
 
+    - path: "libs/cardano-ledger-canonical-state/export"
+      component: "cardano-ledger-canonical-state:lib:export"
+
     - path: "libs/cardano-ledger-conformance/src"
       component: "lib:cardano-ledger-conformance"
 
