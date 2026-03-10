@@ -175,12 +175,8 @@ addProposals nes =
         ]
 
 instance ExportState ConwayEra where
-  type ExportLedgerState ConwayEra = LedgerState ConwayEra
-  type ExportNewEpochState ConwayEra = NewEpochState ConwayEra
-  dumpLedgerState ls =
-    defaultSerializationPlan
-      & addUtxo ls
-  dumpNewEpochState nes =
+  type ExportLedgerState ConwayEra = NewEpochState ConwayEra
+  dumpLedgerState nes =
     defaultSerializationPlan
       & addUtxo (nes ^. nesEsL . esLStateL)
       & addBlocks nes

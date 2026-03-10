@@ -76,16 +76,14 @@ dump filepath slotNo =
 
 class ExportState era where
   type ExportLedgerState era
-  type ExportNewEpochState era
   dumpLedgerState :: ExportLedgerState era -> SerializationPlan (SomeChunkEntry RawBytes) ResIO
-  dumpNewEpochState :: ExportNewEpochState era -> SerializationPlan (SomeChunkEntry RawBytes) ResIO
-  getProtocolVersion :: ExportNewEpochState era -> Version
+  getProtocolVersion :: ExportLedgerState era -> Version
 
 withScls ::
   forall era a tx failures event.
   (Era era, ExportState era, EncCBOR tx) =>
   ( ImpSpecEnv a ->
-    (ExportNewEpochState era -> tx -> Either failures (ExportLedgerState era, event) -> IO ()) ->
+    (ExportLedgerState era -> tx -> Either failures (ExportLedgerState era, event) -> IO ()) ->
     ImpSpecEnv a
   ) ->
   FilePath ->
@@ -132,7 +130,7 @@ withScls setHook baseDir =
             else pure $ Metadata {era = eraName @era, protocolVersion, description, stateCount = 0, path}
       createDirectoryIfMissing True dir
       let initialSlotNo = SlotNo 1 -- TODO: use the actual slot number if available
-      dump (dir </> ("initial-" <> show stateCount <> ".scls")) initialSlotNo $ dumpNewEpochState @era nes
+      dump (dir </> ("initial-" <> show stateCount <> ".scls")) initialSlotNo $ dumpLedgerState @era nes
       -- Dump tx
       BSL.writeFile
         (dir </> ("txn-" <> show stateCount <> ".cbor"))
@@ -143,5 +141,5 @@ withScls setHook baseDir =
           pure ()
         Right (st, _) -> do
           let finalSlotNo = SlotNo 1 -- TODO: use the actual slot number if available
-          dump (dir </> ("final-" <> show stateCount <> ".scls")) finalSlotNo $ dumpLedgerState @era st -- TODO: this should be dumpNewEpochState, but we don't have the final NewEpochState available here.
+          dump (dir </> ("final-" <> show stateCount <> ".scls")) finalSlotNo $ dumpLedgerState @era st
       BSL.writeFile metadataFile $ encode $ ctx {stateCount = stateCount + 1}
