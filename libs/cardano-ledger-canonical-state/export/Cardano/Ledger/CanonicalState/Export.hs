@@ -1,5 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
@@ -9,22 +11,25 @@
 
 module Cardano.Ledger.CanonicalState.Export where
 
-import Cardano.Ledger.BaseTypes (Version)
+import Cardano.Ledger.BaseTypes (SlotNo (SlotNo), Version)
 import Cardano.Ledger.Binary (
   EncCBOR (encCBOR),
+  Encoding,
+  encodeList,
   toLazyByteString,
   toPlainEncoding,
  )
-import Cardano.Ledger.Core (Era (eraName))
+import Cardano.Ledger.Core (Era (eraName), EraRule, EraTx (Tx), TopTx)
 import Cardano.SCLS.CDDL (knownNamespaceKeySizes)
 import Cardano.SCLS.Internal.Entry.ChunkEntry (SomeChunkEntry)
 import Cardano.SCLS.Internal.Serializer.Dump.Plan (
   SerializationPlan,
  )
 import Cardano.SCLS.Internal.Serializer.External.Impl (serialize)
-import Cardano.Types.SlotNo (SlotNo (SlotNo))
+import qualified Cardano.Types.SlotNo as SSlotNo
 import Control.Monad (void)
 import Control.Monad.Trans.Resource (ResIO, runResourceT)
+import Control.State.Transition (PredicateFailure)
 import Data.Aeson (
   FromJSON,
   ToJSON (toEncoding),
@@ -33,8 +38,11 @@ import Data.Aeson (
   encode,
   genericToEncoding,
  )
+import Data.Bifunctor (Bifunctor (first))
 import qualified Data.ByteString.Lazy as BSL
+import Data.Function ((&))
 import Data.MemPack.Extra (RawBytes)
+import GHC.Base (NonEmpty)
 import GHC.Generics (Generic)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath (joinPath, (</>))
@@ -44,7 +52,7 @@ import Test.Hspec.Core.Spec (
   Tree (Leaf, Node, NodeWithCleanup),
   mapSpecForest,
  )
-import Test.ImpSpec (ImpInit (impInitEnv), ImpSpec (ImpSpecEnv))
+import Test.ImpSpec (ImpInit (ImpInit, impInitEnv), ImpSpec (ImpSpecEnv))
 
 data Metadata = Metadata
   { era :: String
@@ -65,31 +73,52 @@ dump ::
   SlotNo ->
   SerializationPlan (SomeChunkEntry RawBytes) ResIO ->
   IO ()
-dump filepath slotNo =
+dump filepath (SlotNo slotNo) =
   -- TODO: should we ignore?
   void
     . runResourceT
     . serialize
       filepath
-      slotNo
+      (SSlotNo.SlotNo slotNo)
       knownNamespaceKeySizes
+
+type TxFailures era = NonEmpty (PredicateFailure (EraRule "LEDGER" era))
+
+type BlockFailures era = NonEmpty (PredicateFailure (EraRule "BBODY" era))
 
 class ExportState era where
   type ExportLedgerState era
   dumpLedgerState :: ExportLedgerState era -> SerializationPlan (SomeChunkEntry RawBytes) ResIO
   getProtocolVersion :: ExportLedgerState era -> Version
+  encodeTxFailures :: TxFailures era -> Encoding
+  encodeBlockFailures :: BlockFailures era -> Encoding
+
 
 withScls ::
-  forall era a tx failures event.
-  (Era era, ExportState era, EncCBOR tx) =>
-  ( ImpSpecEnv a ->
-    (ExportLedgerState era -> tx -> Either failures (ExportLedgerState era, event) -> IO ()) ->
+  forall era a.
+  (Era era, ExportState era, EncCBOR (Tx TopTx era)) =>
+  ( ( SlotNo ->
+      ExportLedgerState era ->
+      Tx TopTx era ->
+      Either (TxFailures era) (ExportLedgerState era) ->
+      IO ()
+    ) ->
+    ImpSpecEnv a ->
+    ImpSpecEnv a
+  ) ->
+  ( ( SlotNo ->
+      ExportLedgerState era ->
+      [Tx TopTx era] ->
+      Either (BlockFailures era) (ExportLedgerState era) ->
+      IO ()
+    ) ->
+    ImpSpecEnv a ->
     ImpSpecEnv a
   ) ->
   FilePath ->
   SpecWith (ImpInit a) ->
   SpecWith (ImpInit a)
-withScls setHook baseDir =
+withScls setTxHook setBlockHook baseDir =
   mapSpecForest $
     mapForest []
   where
@@ -101,20 +130,27 @@ withScls setHook baseDir =
     mapItem
       path
       item@Item
-        { itemRequirement
+        { itemRequirement = description
         , itemExample = originalItemExample
         } =
         item
           { itemExample = \params hook ->
-              originalItemExample params $ \action ->
-                hook $ \impInit ->
-                  action
-                    ( impInit
-                        { impInitEnv = setHook (impInitEnv impInit) (export (reverse path) itemRequirement)
-                        }
-                    )
+              originalItemExample params $ \hookAction ->
+                hook $ \impInit@ImpInit {impInitEnv} ->
+                  hookAction $
+                    impInit
+                      { impInitEnv =
+                          impInitEnv
+                            & setTxHook (exportTx (reverse path) description)
+                            & setBlockHook (exportBlock (reverse path) description)
+                      }
           }
-    export path description nes tx res = do
+    exportTx path description slotNo nes tx res =
+      export path description slotNo nes (encCBOR tx) (first (encodeTxFailures @era) res)
+    exportBlock path description slotNo nes txs res =
+      -- TODO: review if we want to use `encodeList`
+      export path description slotNo nes (encodeList encCBOR txs) (first (encodeBlockFailures @era) res)
+    export path description slotNo nes tx res = do
       let protocolVersion = getProtocolVersion @era nes
       let dir = joinPath ([baseDir, "Protocol " <> show protocolVersion] ++ path ++ [description])
       let metadataFile = dir </> "metadata.json"
@@ -129,17 +165,16 @@ withScls setHook baseDir =
                   error $ "Failed to decode metadata file: " <> metadataFile
             else pure $ Metadata {era = eraName @era, protocolVersion, description, stateCount = 0, path}
       createDirectoryIfMissing True dir
-      let initialSlotNo = SlotNo 1 -- TODO: use the actual slot number if available
-      dump (dir </> ("initial-" <> show stateCount <> ".scls")) initialSlotNo $ dumpLedgerState @era nes
+      dump (dir </> ("initial-" <> show stateCount <> ".scls")) slotNo $ dumpLedgerState @era nes
       -- Dump tx
       BSL.writeFile
         (dir </> ("txn-" <> show stateCount <> ".cbor"))
-        (toLazyByteString (toPlainEncoding protocolVersion (encCBOR tx)))
+        (toLazyByteString (toPlainEncoding protocolVersion tx))
       case res of
-        Left _failures -> do
-          -- TODO: dump the failures
-          pure ()
-        Right (st, _) -> do
-          let finalSlotNo = SlotNo 1 -- TODO: use the actual slot number if available
-          dump (dir </> ("final-" <> show stateCount <> ".scls")) finalSlotNo $ dumpLedgerState @era st
+        Left failures -> do
+          BSL.writeFile
+            (dir </> ("failures-" <> show stateCount <> ".cbor"))
+            (toLazyByteString (toPlainEncoding protocolVersion failures))
+        Right st ->
+          dump (dir </> ("final-" <> show stateCount <> ".scls")) slotNo $ dumpLedgerState @era st
       BSL.writeFile metadataFile $ encode $ ctx {stateCount = stateCount + 1}

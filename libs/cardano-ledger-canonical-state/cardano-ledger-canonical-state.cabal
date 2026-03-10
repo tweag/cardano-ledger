@@ -103,3 +103,4 @@ library export
     resourcet,
     scls-cardano,
     scls-format,
+    small-steps,
