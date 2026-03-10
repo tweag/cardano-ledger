@@ -36,7 +36,8 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   iteFixupL,
   itePostSubmitTxHookL,
   itePostEpochBoundaryHookL,
-  iteSclsDumpHookL,
+  iteSclsDumpTxHookL,
+  iteSclsDumpBlockHookL,
   impWitsVKeyNeeded,
   modifyPrevPParams,
   passEpoch,
@@ -129,8 +130,10 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   disableImpInitPostSubmitTxHook,
   modifyImpInitPostEpochBoundaryHook,
   disableImpInitPostEpochBoundaryHook,
-  modifyImpInitSclsDumpHook,
-  disableImpInitSclsDumpHook,
+  modifyImpInitSclsDumpTxHook,
+  disableImpInitSclsDumpTxHook,
+  modifyImpInitSclsDumpBlockHook,
+  disableImpInitSclsDumpBlockHook,
   disableInConformanceIt,
   minorFollow,
   majorFollow,
@@ -265,7 +268,7 @@ import Control.State.Transition.Extended (
   SingEP (..),
   ValidationPolicy (..),
  )
-import Data.Bifunctor (first)
+import Data.Bifunctor (Bifunctor (bimap), first)
 import Data.Coerce (coerce)
 import Data.Data (Proxy (..), type (:~:) (..))
 import Data.Default (Default (..))
@@ -326,7 +329,8 @@ instance ShelleyEraImp era => ImpSpec (LedgerSpec era) where
               { iteFixup = fixupTx
               , itePostSubmitTxHook = \_ _ _ -> pure ()
               , itePostEpochBoundaryHook = \_ _ _ -> pure ()
-              , iteSclsDumpHook = \_ _ _ -> pure ()
+              , iteSclsDumpTxHook = \_ _ _ _ -> pure ()
+              , iteSclsDumpBlockHook = \_ _ _ _ -> pure ()
               }
         , impInitState = initState
         }
@@ -759,30 +763,57 @@ disableImpInitPostEpochBoundaryHook ::
 disableImpInitPostEpochBoundaryHook =
   modifyImpInitPostEpochBoundaryHook $ \_ _ _ -> pure ()
 
-modifyImpInitSclsDumpHook ::
+modifyImpInitSclsDumpTxHook ::
   forall era.
-  ( NewEpochState era ->
+  ( SlotNo ->
+    NewEpochState era ->
     Tx TopTx era ->
     Either
       (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
-      (LedgerState era, [Event (EraRule "LEDGER" era)]) ->
+      (NewEpochState era) ->
     IO ()
   ) ->
   SpecWith (ImpInit (LedgerSpec era)) ->
   SpecWith (ImpInit (LedgerSpec era))
-modifyImpInitSclsDumpHook f =
+modifyImpInitSclsDumpTxHook f =
   modifyImpInit $ \impInit ->
     impInit
       { impInitEnv =
           impInitEnv impInit
-            & iteSclsDumpHookL .~ f
+            & iteSclsDumpTxHookL .~ f
       }
 
-disableImpInitSclsDumpHook ::
+disableImpInitSclsDumpTxHook ::
   SpecWith (ImpInit (LedgerSpec era)) ->
   SpecWith (ImpInit (LedgerSpec era))
-disableImpInitSclsDumpHook =
-  modifyImpInitSclsDumpHook $ \_ _ _ -> pure ()
+disableImpInitSclsDumpTxHook =
+  modifyImpInitSclsDumpTxHook $ \_ _ _ _ -> pure ()
+
+modifyImpInitSclsDumpBlockHook ::
+  forall era.
+  ( SlotNo ->
+    NewEpochState era ->
+    StrictSeq (Tx TopTx era) ->
+    Either
+      (NonEmpty (PredicateFailure (EraRule "BBODY" era)))
+      (NewEpochState era) ->
+    IO ()
+  ) ->
+  SpecWith (ImpInit (LedgerSpec era)) ->
+  SpecWith (ImpInit (LedgerSpec era))
+modifyImpInitSclsDumpBlockHook f =
+  modifyImpInit $ \impInit ->
+    impInit
+      { impInitEnv =
+          impInitEnv impInit
+            & iteSclsDumpBlockHookL .~ f
+      }
+
+disableImpInitSclsDumpBlockHook ::
+  SpecWith (ImpInit (LedgerSpec era)) ->
+  SpecWith (ImpInit (LedgerSpec era))
+disableImpInitSclsDumpBlockHook =
+  modifyImpInitSclsDumpBlockHook $ \_ _ _ _ -> pure ()
 
 disableInConformanceIt ::
   ShelleyEraImp era =>
@@ -930,12 +961,21 @@ data ImpTestEnv era = ImpTestEnv
       TRC (EraRule "NEWEPOCH" era) ->
       State (EraRule "NEWEPOCH" era) ->
       ImpM t ()
-  , iteSclsDumpHook ::
+  , iteSclsDumpTxHook ::
+      SlotNo ->
       NewEpochState era ->
       Tx TopTx era ->
       Either
         (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
-        (LedgerState era, [Event (EraRule "LEDGER" era)]) ->
+        (NewEpochState era) ->
+      IO ()
+  , iteSclsDumpBlockHook ::
+      SlotNo ->
+      NewEpochState era ->
+      StrictSeq (Tx TopTx era) ->
+      Either
+        (NonEmpty (PredicateFailure (EraRule "BBODY" era)))
+        (NewEpochState era) ->
       IO ()
   }
 
@@ -968,18 +1008,33 @@ itePostEpochBoundaryHookL ::
     )
 itePostEpochBoundaryHookL = lens itePostEpochBoundaryHook (\x y -> x {itePostEpochBoundaryHook = y})
 
-iteSclsDumpHookL ::
+iteSclsDumpTxHookL ::
   forall era.
   Lens'
     (ImpTestEnv era)
-    ( NewEpochState era ->
+    ( SlotNo ->
+      NewEpochState era ->
       Tx TopTx era ->
       Either
         (NonEmpty (PredicateFailure (EraRule "LEDGER" era)))
-        (LedgerState era, [Event (EraRule "LEDGER" era)]) ->
+        (NewEpochState era) ->
       IO ()
     )
-iteSclsDumpHookL = lens iteSclsDumpHook (\x y -> x {iteSclsDumpHook = y})
+iteSclsDumpTxHookL = lens iteSclsDumpTxHook (\x y -> x {iteSclsDumpTxHook = y})
+
+iteSclsDumpBlockHookL ::
+  forall era.
+  Lens'
+    (ImpTestEnv era)
+    ( SlotNo ->
+      NewEpochState era ->
+      StrictSeq (Tx TopTx era) ->
+      Either
+        (NonEmpty (PredicateFailure (EraRule "BBODY" era)))
+        (NewEpochState era) ->
+      IO ()
+    )
+iteSclsDumpBlockHookL = lens iteSclsDumpBlockHook (\x y -> x {iteSclsDumpBlockHook = y})
 
 instance MonadWriter (Seq (SomeSTSEvent era)) (ImpTestM era) where
   writer (x, evs) = (impEventsL %= (<> evs)) $> x
@@ -1305,9 +1360,16 @@ trySubmitTx tx = do
   let trc = TRC (lEnv, st ^. nesEsL . esLStateL, txFixed)
   asks itePostSubmitTxHook >>= (\f -> f globals trc res)
 
-  recordedTxs <- gets impRecordedTxs
-  when (recordedTxs == SNothing) $ do
-    asks iteSclsDumpHook >>= (\f -> liftIO $ f st txFixed res)
+  gets impRecordedTxs >>= \recordedTxs ->
+    when (isSNothing recordedTxs) $
+      asks iteSclsDumpTxHook
+        >>= ( \dumpTxHook -> do
+                slotNo <- use impCurSlotNoG
+                nes <- use impNESL
+                liftIO $
+                  dumpTxHook slotNo st txFixed $
+                    fmap (\(newState, _) -> nes & nesEsL . esLStateL .~ newState) res
+            )
 
   case res of
     Left predFailures -> do
@@ -1514,6 +1576,11 @@ tryTxsInBlock txs finalState = do
   globals <- use impGlobalsL
 
   let res = applyBlockEither EPReturn ValidateAll globals nes block
+
+  asks iteSclsDumpBlockHook >>= \dumpBlock ->
+    liftIO $
+      dumpBlock slotNo nes txs $
+        bimap (\(BlockTransitionError predFailures) -> predFailures) fst res
 
   case res of
     Left (BlockTransitionError predFailures) -> do
