@@ -186,3 +186,5 @@ instance ExportState ConwayEra where
       & addProposals nes
   getProtocolVersion nes =
     pvMajor $ nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
+  encodeTxFailures = const mempty -- TODO: implement
+  encodeBlockFailures = const mempty -- TODO: implement
