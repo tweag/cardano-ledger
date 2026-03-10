@@ -93,7 +93,6 @@ class ExportState era where
   encodeTxFailures :: TxFailures era -> Encoding
   encodeBlockFailures :: BlockFailures era -> Encoding
 
-
 withScls ::
   forall era a.
   (Era era, ExportState era, EncCBOR (Tx TopTx era)) =>
