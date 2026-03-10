@@ -7,6 +7,7 @@
 module Cardano.Ledger.CanonicalState.Conway.Export () where
 
 import Cardano.Ledger.BaseTypes (ProtVer (..))
+import Cardano.Ledger.Binary (EncCBOR (encCBOR), encodeList)
 import Cardano.Ledger.CanonicalState.Conway (
   fromGovActionState,
   mkCanonicalConstitution,
@@ -186,5 +187,5 @@ instance ExportState ConwayEra where
       & addProposals nes
   getProtocolVersion nes =
     pvMajor $ nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
-  encodeTxFailures = const mempty -- TODO: implement
-  encodeBlockFailures = const mempty -- TODO: implement
+  encodeTxFailures = encodeList encCBOR . toList
+  encodeBlockFailures = encodeList encCBOR . toList
