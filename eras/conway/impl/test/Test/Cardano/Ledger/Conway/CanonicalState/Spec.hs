@@ -171,6 +171,7 @@ spec = do
     testNS @"entities/stake_pools/v0"
     testNS @"entities/stake_pools/future_params/v0"
     testNS @"entities/stake_pools/vrf_key_hashes/v0"
+    testNS @"entities/dormant_epochs/v0"
     testNS @"gov/constitution/v0"
     testNS @"gov/committee/v0"
     testNS @"gov/pparams/v0"

@@ -94,6 +94,7 @@ library export
   import: warnings
   exposed-modules:
     Cardano.Ledger.CanonicalState.Export
+    Cardano.Ledger.CanonicalState.Import
 
   visibility: public
   hs-source-dirs: export
@@ -114,6 +115,8 @@ library export
     resourcet,
     scls-core,
     scls-cardano,
+    scls-core,
     scls-format,
     small-steps,
     streaming,
+    text,

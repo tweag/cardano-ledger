@@ -177,6 +177,7 @@ library canonical-state
   exposed-modules:
     Cardano.Ledger.CanonicalState.Conway
     Cardano.Ledger.CanonicalState.Conway.Export
+    Cardano.Ledger.CanonicalState.Conway.Import
 
   hs-source-dirs: canonical-state
   other-modules:
@@ -192,6 +193,7 @@ library canonical-state
 
   build-depends:
     base >=4.18 && <5,
+    cardano-data,
     cardano-ledger-binary,
     cardano-ledger-canonical-state:{cardano-ledger-canonical-state, export},
     cardano-ledger-conway,
@@ -199,6 +201,7 @@ library canonical-state
     cardano-ledger-shelley,
     cborg,
     containers,
+    data-default,
     microlens,
     scls-cbor,
     scls-core,
@@ -388,3 +391,34 @@ executable canonical-state-test-export
     cardano-ledger-core:testlib,
     microlens,
     testlib,
+
+test-suite canonical-ledger-tests
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  hs-source-dirs: canonical-state-test-export/test
+  other-modules:
+    Paths_cardano_ledger_conway
+
+  default-language: Haskell2010
+  ghc-options:
+    -Wall
+    -Wcompat
+    -Wincomplete-record-updates
+    -Wincomplete-uni-patterns
+    -Wredundant-constraints
+    -Wpartial-fields
+    -Wunused-packages
+    -threaded
+    -rtsopts
+    -with-rtsopts=-N
+
+  build-depends:
+    aeson,
+    base,
+    cardano-ledger-canonical-state:export,
+    cardano-ledger-conway:{cardano-ledger-conway, canonical-state},
+    cardano-ledger-core:{cardano-ledger-core, testlib},
+    directory,
+    filepath,
+    scls-format,
+    temporary,
