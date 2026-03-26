@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
@@ -19,9 +20,14 @@ import Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0 (
   EntitiesCommitteeOut (..),
   mkCanonicalCommitteeAuthorization,
  )
+import Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 (
+  CanonicalCommittee (..),
+  GovCommitteeIn (..),
+  GovCommitteeOut (..),
+ )
 import Cardano.Ledger.CanonicalState.Namespace.GovConstitution.V0 (
-  GovConstitutionIn (GovConstitutionIn),
-  GovConstitutionOut (GovConstitutionOut),
+  GovConstitutionIn (..),
+  GovConstitutionOut (..),
  )
 import Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 (
   GovPParamsIn (..),
@@ -30,9 +36,11 @@ import Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 (
 import Cardano.Ledger.CanonicalState.Namespace.UTxO.V0 (UtxoIn (UtxoKeyIn), mkUtxo)
 import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.Governance (
+  Committee (..),
   ConwayEraGov (constitutionGovStateL, drepPulsingStateGovStateL),
   DRepPulser (DRepPulser, dpProposals),
   DRepPulsingState (DRComplete, DRPulsing),
+  cgsCommitteeL,
   psProposalsL,
  )
 import Cardano.Ledger.Conway.State (
@@ -118,6 +126,24 @@ addEntitiesCommittee nes =
               . vsCommitteeStateL
               . csCommitteeCredsL
 
+addGovCommittee ::
+  (Monad m, era ~ ConwayEra) =>
+  NewEpochState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+addGovCommittee nes =
+  addNamespacedChunks
+    (Proxy :: Proxy "gov/committee/v0")
+    (S.yield (ChunkEntry (GovCommitteeIn epochNo) (GovCommitteeOut committee)))
+  where
+    epochNo = nes ^. nesELL
+    committee =
+      fmap
+        (\Committee {..} -> CanonicalCommittee {committeeMembers, committeeThreshold})
+        $ nes
+          ^. newEpochStateGovStateL
+            . cgsCommitteeL
+
 addGovConstitution ::
   (Monad m, era ~ ConwayEra) =>
   NewEpochState era ->
@@ -185,6 +211,7 @@ instance ExportState ConwayEra where
       & addUtxo (nes ^. nesEsL . esLStateL)
       & addBlocks nes
       & addEntitiesCommittee nes
+      & addGovCommittee nes
       & addGovConstitution nes
       & addPParams nes
       & addProposals nes
