@@ -13,10 +13,10 @@ import Cardano.Ledger.CanonicalState.Conway (
  )
 import Cardano.Ledger.CanonicalState.Export (ExportState (..))
 import Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 (BlockIn (BlockIn), BlockOut (BlockOut))
-import Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 (
-  CanonicalCommitteeState (CanonicalCommitteeState),
-  GovCommitteeIn (GovCommitteeIn),
-  GovCommitteeOut (GovCommitteeOut),
+import Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0 (
+  CanonicalCommitteeState (..),
+  EntitiesCommitteeIn (..),
+  EntitiesCommitteeOut (..),
   mkCanonicalCommitteeAuthorization,
  )
 import Cardano.Ledger.CanonicalState.Namespace.GovConstitution.V0 (
@@ -96,15 +96,15 @@ addBlocks nes =
       S.each (Map.toList $ nes ^. nesBcurL)
         & S.map (\(keyHash, n) -> ChunkEntry (BlockIn keyHash epochNo) (BlockOut n))
 
-addGovCommittee ::
+addEntitiesCommittee ::
   (Monad m, era ~ ConwayEra) =>
   NewEpochState era ->
   SerializationPlan (SomeChunkEntry RawBytes) m ->
   SerializationPlan (SomeChunkEntry RawBytes) m
-addGovCommittee nes =
+addEntitiesCommittee nes =
   addNamespacedChunks
-    (Proxy :: Proxy "gov/committee/v0")
-    (S.yield (ChunkEntry (GovCommitteeIn epochNo) (GovCommitteeOut committeeState)))
+    (Proxy :: Proxy "entities/committee/v0")
+    (S.yield (ChunkEntry (EntitiesCommitteeIn epochNo) (EntitiesCommitteeOut committeeState)))
   where
     epochNo = nes ^. nesELL
     committeeState =
@@ -184,7 +184,7 @@ instance ExportState ConwayEra where
     defaultSerializationPlan
       & addUtxo (nes ^. nesEsL . esLStateL)
       & addBlocks nes
-      & addGovCommittee nes
+      & addEntitiesCommittee nes
       & addGovConstitution nes
       & addPParams nes
       & addProposals nes
