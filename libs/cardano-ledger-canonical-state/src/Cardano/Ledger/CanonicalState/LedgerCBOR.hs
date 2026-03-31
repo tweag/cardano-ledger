@@ -39,14 +39,16 @@
 module Cardano.Ledger.CanonicalState.LedgerCBOR (
   LedgerCBOR (..),
   LedgerSafeCBOR (..),
+  LedgerShareCBOR (..),
 ) where
 
 import Cardano.Ledger.Binary (
   DecCBOR (..),
+  DecShareCBOR,
   EncCBOR (..),
  )
 import Cardano.Ledger.CanonicalState.Namespace
-import Cardano.Ledger.Core (fromEraCBOR, toEraCBOR)
+import Cardano.Ledger.Core (fromEraCBOR, fromEraShareCBOR, toEraCBOR)
 import Cardano.SCLS.CBOR.Canonical (assumeCanonicalDecoder, assumeCanonicalEncoding)
 import Cardano.SCLS.CBOR.Canonical.Decoder (FromCanonicalCBOR (..))
 import Cardano.SCLS.CBOR.Canonical.Encoder (ToCanonicalCBOR (..), forceCanonical)
@@ -109,3 +111,14 @@ instance
   where
   fromCanonicalCBOR =
     Versioned . LedgerSafeCBOR <$> assumeCanonicalDecoder (fromEraCBOR @era)
+
+-- | Similar to 'LedgerCBOR', but for 'DecShareCBOR' decoders
+newtype LedgerShareCBOR (v :: Symbol) a = LedgerShareCBOR {unLedgerShareCBOR :: a}
+  deriving (Eq, Show)
+
+instance
+  (DecShareCBOR a, Era era, NamespaceEra v ~ era) =>
+  FromCanonicalCBOR v (LedgerShareCBOR v a)
+  where
+  fromCanonicalCBOR =
+    Versioned . LedgerShareCBOR <$> assumeCanonicalDecoder (fromEraShareCBOR @era)

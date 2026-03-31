@@ -17,6 +17,7 @@ import Cardano.Ledger.CanonicalState.Conway (
   mkCanonicalConstitution,
  )
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0 as EntitiesCommittee.V0
+import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesAccounts.V0 as EntitiesAccounts.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 as GovCommittee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovConstitution.V0 as GovConstitution.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 as GovPParams.V0
@@ -54,3 +55,6 @@ instance Arbitrary CanonicalExUnits where
 
 instance Arbitrary (GovProposals.V0.GovProposalOut CanonicalGovActionState) where
   arbitrary = snd . fromGovActionState <$> arbitrary @(GovActionState ConwayEra)
+
+instance Arbitrary (EntitiesAccounts.V0.EntitiesAccountsOut ConwayEra) where
+  arbitrary = genericArbitraryU
