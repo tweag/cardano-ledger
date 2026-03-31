@@ -1,5 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -7,8 +9,11 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Cardano.Ledger.CanonicalState.Conway (
@@ -21,7 +26,9 @@ module Cardano.Ledger.CanonicalState.Conway (
 ) where
 
 import Cardano.Ledger.BaseTypes (EpochNo (..))
-import Cardano.Ledger.Binary (decodeFull')
+import Cardano.Ledger.Binary (
+  decodeFull',
+ )
 import Cardano.Ledger.CanonicalState.BasicTypes (
   CanonicalCoin (..),
   DecodeOnChain (..),
@@ -32,6 +39,7 @@ import Cardano.Ledger.CanonicalState.BasicTypes (
   mkCanonicalExUnits,
   mkOnChain,
  )
+import Cardano.Ledger.CanonicalState.LedgerCBOR (LedgerCBOR (..))
 import Cardano.Ledger.CanonicalState.Namespace
 import Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 ()
 import Cardano.Ledger.CanonicalState.Namespace.GovConstitution.V0
@@ -42,6 +50,16 @@ import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.Core
 import Cardano.Ledger.Conway.Governance
 import Cardano.Ledger.Conway.PParams
+import Cardano.Ledger.Conway.State (
+  ConwayAccountState (
+    ConwayAccountState,
+    casBalance,
+    casDRepDelegation,
+    casDeposit,
+    casStakePoolDelegation
+  ),
+  DRep,
+ )
 import Cardano.Ledger.Credential (Credential (..))
 import Cardano.SCLS.CBOR.Canonical (
   assumeCanonicalDecoder,
@@ -62,6 +80,8 @@ import Data.Word (Word8)
 import Lens.Micro
 
 type instance NamespaceEra "blocks/v0" = ConwayEra
+
+type instance NamespaceEra "entities/accounts/v0" = ConwayEra
 
 type instance NamespaceEra "gov/committee/v0" = ConwayEra
 
@@ -154,37 +174,68 @@ instance FromCanonicalCBOR "gov/pparams/v0" (PParams ConwayEra) where
     return $
       Versioned $
         emptyPParams @ConwayEra
-          & ppTxFeePerByteL .~ CoinPerByte (unCoin txFeePerByte)
-          & ppTxFeeFixedCompactL .~ unCoin txFeeFixedCompact
-          & ppMaxBBSizeL .~ maxBBSize
-          & ppMaxTxSizeL .~ maxTxSize
-          & ppMaxBHSizeL .~ maxBHSize
-          & ppKeyDepositCompactL .~ unCoin keyDepositCompact
-          & ppPoolDepositCompactL .~ unCoin poolDepositCompact
-          & ppEMaxL .~ eMax
-          & ppNOptL .~ nOpt
-          & ppA0L .~ a0
-          & ppRhoL .~ rho
-          & ppTauL .~ tau
-          & ppMinPoolCostCompactL .~ unCoin minPoolCostCompact
-          & ppCoinsPerUTxOByteL .~ CoinPerByte (unCoin coinsPerUTxOByte)
-          & ppCostModelsL .~ costModels
-          & ppPricesL .~ fromCanonicalPrices prices
-          & ppMaxTxExUnitsL .~ fromCanonicalExUnits maxTxExUnits
-          & ppMaxBlockExUnitsL .~ fromCanonicalExUnits maxBlockExUnits
-          & ppMaxValSizeL .~ maxValSize
-          & ppCollateralPercentageL .~ collateralPercentage
-          & ppMaxCollateralInputsL .~ maxCollateralInputs
-          & ppPoolVotingThresholdsL .~ poolVotingThresholds
-          & ppDRepVotingThresholdsL .~ dRepVotingThresholds
-          & ppCommitteeMinSizeL .~ committeeMinSize
-          & ppCommitteeMaxTermLengthL .~ committeeMaxTermLength
-          & ppGovActionLifetimeL .~ govActionLifetime
-          & ppGovActionDepositCompactL .~ unCoin govActionDepositCompact
-          & ppDRepDepositCompactL .~ unCoin dRepDepositCompact
-          & ppDRepActivityL .~ dRepActivity
-          & ppMinFeeRefScriptCostPerByteL .~ minFeeRefScriptCostPerByte
-          & ppProtocolVersionL .~ protVer
+          & ppTxFeePerByteL
+          .~ CoinPerByte (unCoin txFeePerByte)
+          & ppTxFeeFixedCompactL
+          .~ unCoin txFeeFixedCompact
+          & ppMaxBBSizeL
+          .~ maxBBSize
+          & ppMaxTxSizeL
+          .~ maxTxSize
+          & ppMaxBHSizeL
+          .~ maxBHSize
+          & ppKeyDepositCompactL
+          .~ unCoin keyDepositCompact
+          & ppPoolDepositCompactL
+          .~ unCoin poolDepositCompact
+          & ppEMaxL
+          .~ eMax
+          & ppNOptL
+          .~ nOpt
+          & ppA0L
+          .~ a0
+          & ppRhoL
+          .~ rho
+          & ppTauL
+          .~ tau
+          & ppMinPoolCostCompactL
+          .~ unCoin minPoolCostCompact
+          & ppCoinsPerUTxOByteL
+          .~ CoinPerByte (unCoin coinsPerUTxOByte)
+          & ppCostModelsL
+          .~ costModels
+          & ppPricesL
+          .~ fromCanonicalPrices prices
+          & ppMaxTxExUnitsL
+          .~ fromCanonicalExUnits maxTxExUnits
+          & ppMaxBlockExUnitsL
+          .~ fromCanonicalExUnits maxBlockExUnits
+          & ppMaxValSizeL
+          .~ maxValSize
+          & ppCollateralPercentageL
+          .~ collateralPercentage
+          & ppMaxCollateralInputsL
+          .~ maxCollateralInputs
+          & ppPoolVotingThresholdsL
+          .~ poolVotingThresholds
+          & ppDRepVotingThresholdsL
+          .~ dRepVotingThresholds
+          & ppCommitteeMinSizeL
+          .~ committeeMinSize
+          & ppCommitteeMaxTermLengthL
+          .~ committeeMaxTermLength
+          & ppGovActionLifetimeL
+          .~ govActionLifetime
+          & ppGovActionDepositCompactL
+          .~ unCoin govActionDepositCompact
+          & ppDRepDepositCompactL
+          .~ unCoin dRepDepositCompact
+          & ppDRepActivityL
+          .~ dRepActivity
+          & ppMinFeeRefScriptCostPerByteL
+          .~ minFeeRefScriptCostPerByte
+          & ppProtocolVersionL
+          .~ protVer
     where
 
 instance ToCanonicalCBOR "gov/pparams/v0" DRepVotingThresholds where
@@ -330,3 +381,31 @@ instance FromCanonicalCBOR v Vote where
       1 -> return (Versioned VoteYes)
       2 -> return (Versioned Abstain)
       _ -> fail "Invalid CanonicalVote"
+
+deriving via
+  LedgerCBOR v DRep
+  instance
+    (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v DRep
+
+deriving via
+  LedgerCBOR v DRep
+  instance
+    (Era era, NamespaceEra v ~ era) => ToCanonicalCBOR v DRep
+
+instance ToCanonicalCBOR "entities/accounts/v0" (ConwayAccountState ConwayEra) where
+  toCanonicalCBOR v ConwayAccountState {..} =
+    encodeAsMap
+      [ mkEncodablePair v ("balance" :: Text) (CanonicalCoin casBalance)
+      , mkEncodablePair v ("deposit" :: Text) (CanonicalCoin casDeposit)
+      , mkEncodablePair v ("drep_delegation" :: Text) casDRepDelegation
+      , mkEncodablePair v ("stake_pool_delegation" :: Text) casStakePoolDelegation
+      ]
+
+instance FromCanonicalCBOR "entities/accounts/v0" (ConwayAccountState ConwayEra) where
+  fromCanonicalCBOR = do
+      decodeMapLenCanonicalOf 4
+      Versioned (CanonicalCoin casBalance) <- decodeNamespacedField @"entities/accounts/v0" "balance"
+      Versioned (CanonicalCoin casDeposit) <- decodeNamespacedField @"entities/accounts/v0" "deposit"
+      Versioned casDRepDelegation <- decodeNamespacedField @"entities/accounts/v0" "drep_delegation"
+      Versioned casStakePoolDelegation <- decodeNamespacedField @"entities/accounts/v0" "stake_pool_delegation"
+      pure $ Versioned ConwayAccountState {..}
