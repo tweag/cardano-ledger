@@ -14,6 +14,10 @@ import Cardano.Ledger.CanonicalState.Conway (
  )
 import Cardano.Ledger.CanonicalState.Export (ExportState (..))
 import Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 (BlockIn (BlockIn), BlockOut (BlockOut))
+import Cardano.Ledger.CanonicalState.Namespace.EntitiesAccounts.V0 (
+  EntitiesAccountsIn (EntitiesAccountsIn),
+  EntitiesAccountsOut (EntitiesAccountsOut),
+ )
 import Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0 (
   CanonicalCommitteeState (..),
   EntitiesCommitteeIn (..),
@@ -45,7 +49,10 @@ import Cardano.Ledger.Conway.Governance (
  )
 import Cardano.Ledger.Conway.State (
   CanGetUTxO (utxoG),
+  CanSetAccounts (accountsL),
   ConwayEraCertState (certVStateL),
+  EraAccounts (accountsMapL),
+  EraCertState (certDStateL),
   FuturePParams (..),
   UTxO (unUTxO),
   csCommitteeCredsL,
@@ -120,11 +127,11 @@ addEntitiesCommittee nes =
         Map.map mkCanonicalCommitteeAuthorization $
           nes
             ^. nesEpochStateL
-              . esLStateL
-              . lsCertStateL
-              . certVStateL
-              . vsCommitteeStateL
-              . csCommitteeCredsL
+            . esLStateL
+            . lsCertStateL
+            . certVStateL
+            . vsCommitteeStateL
+            . csCommitteeCredsL
 
 addGovCommittee ::
   (Monad m, era ~ ConwayEra) =>
@@ -142,7 +149,7 @@ addGovCommittee nes =
         (\Committee {..} -> CanonicalCommittee {committeeMembers, committeeThreshold})
         $ nes
           ^. newEpochStateGovStateL
-            . cgsCommitteeL
+          . cgsCommitteeL
 
 addGovConstitution ::
   (Monad m, era ~ ConwayEra) =>
@@ -200,6 +207,27 @@ addProposals nes =
               )
         ]
 
+addAccounts ::
+  (Monad m, era ~ ConwayEra) =>
+  NewEpochState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+addAccounts nes =
+  addNamespacedChunks (Proxy :: Proxy "entities/accounts/v0") accounts
+  where
+    accounts =
+      S.map
+        (\(cred, accountState) -> ChunkEntry (EntitiesAccountsIn cred) (EntitiesAccountsOut accountState))
+        $ S.each
+        $ Map.toList
+        $ nes
+          ^. nesEsL
+          . esLStateL
+          . lsCertStateL
+          . certDStateL
+          . accountsL
+          . accountsMapL
+
 instance ExportState ConwayEra where
   type ExportLedgerState ConwayEra = LedgerState ConwayEra
   type ExportNewEpochState ConwayEra = NewEpochState ConwayEra
@@ -215,5 +243,6 @@ instance ExportState ConwayEra where
       & addGovConstitution nes
       & addPParams nes
       & addProposals nes
+      & addAccounts nes
   getProtocolVersion nes =
     pvMajor $ nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
