@@ -73,7 +73,7 @@ instance
 newtype EntitiesAccountsIn = EntitiesAccountsIn (Credential Staking)
   deriving (Eq, Ord, Show)
 
-type instance NamespaceKeySize "entities/accounts/v0" = 28
+type instance NamespaceKeySize "entities/accounts/v0" = 29
 
 instance IsKey EntitiesAccountsIn where
   keySize = namespaceKeySize @"entities/accounts/v0"
