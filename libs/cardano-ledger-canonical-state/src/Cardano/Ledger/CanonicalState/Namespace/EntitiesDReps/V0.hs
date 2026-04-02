@@ -19,13 +19,16 @@ module Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0 (
   EntitiesDRepsIn (..),
   EntitiesDRepsOut (..),
   CanonicalDRepState (..),
+  mkCanonicalDRepState,
+  fromCanonicalDRepState,
 ) where
 
 import Cardano.Ledger.BaseTypes (Anchor, EpochNo, StrictMaybe)
-import Cardano.Ledger.CanonicalState.BasicTypes (CanonicalCoin, decodeNamespacedField)
+import Cardano.Ledger.CanonicalState.BasicTypes (CanonicalCoin (..), decodeNamespacedField)
 import Cardano.Ledger.CanonicalState.Namespace (Era, NamespaceEra)
 import Cardano.Ledger.Core (KeyRole (DRepRole), Staking)
 import Cardano.Ledger.Credential (Credential)
+import Cardano.Ledger.DRep (DRepState (..))
 import Cardano.SCLS.CBOR.Canonical.Decoder (FromCanonicalCBOR (..), decodeMapLenCanonicalOf)
 import Cardano.SCLS.CBOR.Canonical.Encoder (ToCanonicalCBOR (..), encodeAsMap, mkEncodablePair)
 import Cardano.SCLS.Entry.IsKey (IsKey (..))
@@ -121,3 +124,21 @@ instance (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v CanonicalDRepSta
     Versioned cdsDeposit <- decodeNamespacedField @v "deposit"
     Versioned cdsDelegations <- decodeNamespacedField @v "delegations"
     pure $ Versioned CanonicalDRepState {..}
+
+mkCanonicalDRepState :: DRepState -> CanonicalDRepState
+mkCanonicalDRepState (DRepState {..}) =
+  CanonicalDRepState
+    { cdsExpiry = drepExpiry
+    , cdsAnchor = drepAnchor
+    , cdsDeposit = CanonicalCoin drepDeposit
+    , cdsDelegations = drepDelegs
+    }
+
+fromCanonicalDRepState :: CanonicalDRepState -> DRepState
+fromCanonicalDRepState (CanonicalDRepState {..}) =
+  DRepState
+    { drepExpiry = cdsExpiry
+    , drepAnchor = cdsAnchor
+    , drepDeposit = unCoin cdsDeposit
+    , drepDelegs = cdsDelegations
+    }
