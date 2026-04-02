@@ -24,6 +24,11 @@ import Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0 (
   EntitiesCommitteeOut (..),
   mkCanonicalCommitteeAuthorization,
  )
+import Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0 (
+  EntitiesDRepsIn (EntitiesDRepsIn),
+  EntitiesDRepsOut (EntitiesDRepsOut),
+  mkCanonicalDRepState,
+ )
 import Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 (
   CanonicalCommittee (..),
   GovCommitteeIn (..),
@@ -57,6 +62,7 @@ import Cardano.Ledger.Conway.State (
   UTxO (unUTxO),
   csCommitteeCredsL,
   vsCommitteeStateL,
+  vsDRepsL,
  )
 import Cardano.Ledger.Core (EraPParams (ppProtocolVersionL))
 import Cardano.Ledger.Shelley.LedgerState (
@@ -228,6 +234,29 @@ addAccounts nes =
           . accountsL
           . accountsMapL
 
+addDReps ::
+  (Monad m, era ~ ConwayEra) =>
+  NewEpochState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+addDReps nes =
+  addNamespacedChunks (Proxy :: Proxy "entities/dreps/v0") dreps
+  where
+    dreps =
+      S.each
+        ( Map.toList
+            ( nes
+                ^. nesEsL
+                . esLStateL
+                . lsCertStateL
+                . certVStateL
+                . vsDRepsL
+            )
+        )
+        & S.map
+          ( \(cred, drepState) -> ChunkEntry (EntitiesDRepsIn cred) (EntitiesDRepsOut $ mkCanonicalDRepState drepState)
+          )
+
 instance ExportState ConwayEra where
   type ExportLedgerState ConwayEra = LedgerState ConwayEra
   type ExportNewEpochState ConwayEra = NewEpochState ConwayEra
@@ -244,5 +273,6 @@ instance ExportState ConwayEra where
       & addPParams nes
       & addProposals nes
       & addAccounts nes
+      & addDReps nes
   getProtocolVersion nes =
     pvMajor $ nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
