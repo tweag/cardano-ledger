@@ -14,6 +14,7 @@ import Cardano.Ledger.CanonicalState.BasicTypes (
  )
 import Cardano.Ledger.CanonicalState.Conway ()
 import qualified Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 as Blocks.V0
+import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0 as EntitiesDReps.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 as Committee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 as GovPParams.V0 ()
 import qualified Cardano.Ledger.CanonicalState.Namespace.UTxO.V0 as UtxoOut.V0
@@ -44,3 +45,6 @@ instance Arbitrary Committee.V0.CanonicalCommitteeState where arbitrary = generi
 
 instance Arbitrary CanonicalExUnits where
   arbitrary = mkCanonicalExUnits <$> arbitrary
+
+instance Arbitrary EntitiesDReps.V0.CanonicalDRepState where
+  arbitrary = genericArbitraryU
