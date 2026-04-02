@@ -19,6 +19,7 @@ import Cardano.Ledger.CanonicalState.Conway ()
 import qualified Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 as Blocks.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0 as Committee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesAccounts.V0 as EntitiesAccounts.V0
+import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0 as EntitiesDReps.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 as GovCommittee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovConstitution.V0 as GovConstitution.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 as GovPParams.V0
@@ -55,6 +56,9 @@ spec = do
       isCanonical @"entities/accounts/v0" @(EntitiesAccounts.V0.EntitiesAccountsOut ConwayEra)
       validateType @"entities/accounts/v0" @(EntitiesAccounts.V0.EntitiesAccountsOut ConwayEra)
         "account_state"
+    describe "entities/dreps/v0" $ do
+      isCanonical @"entities/dreps/v0" @EntitiesDReps.V0.CanonicalDRepState
+      validateType @"entities/dreps/v0" @EntitiesDReps.V0.CanonicalDRepState "drep_state"
     describe "gov/committee/v0" $ do
       isCanonical @"gov/committee/v0" @GovCommittee.V0.CanonicalCommittee
       validateType @"gov/committee/v0" @GovCommittee.V0.CanonicalCommittee "committee"
