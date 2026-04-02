@@ -19,13 +19,23 @@ import Cardano.Ledger.CanonicalState.Conway ()
 import qualified Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 as Blocks.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesAccounts.V0 as EntitiesAccounts.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0 as EntitiesDReps.V0
+import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.V0 as EntitiesStakePools.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 as Committee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovConstitution.V0 as GovConstitution.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 as GovPParams.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.UTxO.V0 as UTxO.V0
 import Cardano.Ledger.Conway (ConwayEra)
-import Cardano.Ledger.Core (PParams)
+import Cardano.Ledger.Core (
+  AccountId,
+  KeyHash,
+  PParams,
+  StakePoolVRF,
+  Staking,
+  VRFVerKeyHash,
+ )
+import Cardano.Ledger.Credential (Credential)
 import Cardano.Ledger.DRep (DRep)
+import Cardano.Ledger.State (PoolMetadata, StakePoolRelay)
 import Cardano.SCLS.CBOR.Canonical.Encoder (ToCanonicalCBOR (..))
 import Cardano.SCLS.Testlib
 import Data.Typeable
@@ -52,6 +62,27 @@ spec = do
     describe "entities/dreps/v0" $ do
       isCanonical @"entities/dreps/v0" @EntitiesDReps.V0.CanonicalDRepState
       validateType @"entities/dreps/v0" @EntitiesDReps.V0.CanonicalDRepState "drep_state"
+    describe "entities/stake_pools/v0" $ do
+      isCanonical @"entities/stake_pools/v0" @(VRFVerKeyHash StakePoolVRF)
+      validateType @"entities/stake_pools/v0" @(VRFVerKeyHash StakePoolVRF) "vrf_keyhash"
+      isCanonical @"entities/stake_pools/v0" @UnitInterval
+      validateType @"entities/stake_pools/v0" @UnitInterval "unit_interval"
+      isCanonical @"entities/stake_pools/v0" @(KeyHash Staking)
+      validateType @"entities/stake_pools/v0" @(KeyHash Staking) "staking_keyhash"
+      isCanonical @"entities/stake_pools/v0" @StakePoolRelay
+      validateType @"entities/stake_pools/v0" @StakePoolRelay "relay"
+      isCanonical @"entities/stake_pools/v0" @PoolMetadata
+      validateType @"entities/stake_pools/v0" @PoolMetadata "pool_metadata"
+      isCanonical @"entities/stake_pools/v0" @AccountId
+      validateType @"entities/stake_pools/v0" @AccountId "account_id"
+      isCanonical @"entities/stake_pools/v0" @(Credential Staking)
+      validateType @"entities/stake_pools/v0" @(Credential Staking) "credential"
+      isCanonical @"entities/stake_pools/v0" @EntitiesStakePools.V0.CanonicalStakePoolState
+      validateType @"entities/stake_pools/v0" @EntitiesStakePools.V0.CanonicalStakePoolState
+        "stake_pool_state"
+      isCanonical @"entities/stake_pools/v0" @EntitiesStakePools.V0.CanonicalStakePool
+      validateType @"entities/stake_pools/v0" @EntitiesStakePools.V0.CanonicalStakePool
+        "stake_pool"
     describe "gov/committee/v0" $ do
       isCanonical @"gov/committee/v0" @Committee.V0.CanonicalCommitteeState
       validateType @"gov/committee/v0" @Committee.V0.CanonicalCommitteeState "committee"
@@ -75,6 +106,7 @@ spec = do
   describe "namespaces" $ do
     testNS @"blocks/v0"
     testNS @"utxo/v0"
+    testNS @"entities/stake_pools/v0"
     testNS @"gov/constitution/v0"
     testNS @"gov/committee/v0"
     testNS @"gov/pparams/v0"
