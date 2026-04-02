@@ -11,6 +11,7 @@ import Cardano.Ledger.CanonicalState.BasicTypes (
   CanonicalCoin (..),
  )
 import qualified Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 as Blocks.V0
+import qualified Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 as GovPParams.V0 ()
 import qualified Cardano.Ledger.CanonicalState.Namespace.UTxO.V0 as UtxoOut.V0
 import Cardano.Ledger.Coin (CompactForm (CompactCoin))
 import Cardano.Ledger.Core (Era, EraTxOut, TxOut)
