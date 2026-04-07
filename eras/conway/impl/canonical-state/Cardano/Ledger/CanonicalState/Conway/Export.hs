@@ -7,7 +7,7 @@
 
 module Cardano.Ledger.CanonicalState.Conway.Export () where
 
-import Cardano.Ledger.BaseTypes (ProtVer (..))
+import Cardano.Ledger.BaseTypes (ProtVer (..), StrictMaybe (..))
 import Cardano.Ledger.CanonicalState.Conway (
   fromGovActionState,
   mkCanonicalConstitution,
@@ -28,6 +28,12 @@ import Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0 (
   EntitiesDRepsIn (EntitiesDRepsIn),
   EntitiesDRepsOut (EntitiesDRepsOut),
   mkCanonicalDRepState,
+ )
+import Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.V0 (
+  CanonicalStakePool (..),
+  EntitiesStakePoolsIn (..),
+  EntitiesStakePoolsOut (..),
+  mkCanonicalStakePoolState,
  )
 import Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 (
   CanonicalCommittee (..),
@@ -57,10 +63,12 @@ import Cardano.Ledger.Conway.State (
   CanSetAccounts (accountsL),
   ConwayEraCertState (certVStateL),
   EraAccounts (accountsMapL),
-  EraCertState (certDStateL),
+  EraCertState (certDStateL, certPStateL),
   FuturePParams (..),
   UTxO (unUTxO),
   csCommitteeCredsL,
+  psRetiringL,
+  psStakePoolsL,
   vsCommitteeStateL,
   vsDRepsL,
  )
@@ -87,7 +95,8 @@ import Cardano.SCLS.Internal.Serializer.Dump.Plan (
  )
 import Data.Data (Proxy (Proxy))
 import Data.Foldable (Foldable (toList))
-import qualified Data.Map as Map
+import qualified Data.Map.Merge.Strict as Map
+import qualified Data.Map.Strict as Map
 import Data.MemPack.Extra (RawBytes)
 import Lens.Micro ((&), (^.))
 import qualified Streaming.Prelude as S
@@ -257,6 +266,51 @@ addDReps nes =
           ( \(cred, drepState) -> ChunkEntry (EntitiesDRepsIn cred) (EntitiesDRepsOut $ mkCanonicalDRepState drepState)
           )
 
+addStakePools ::
+  (Monad m, era ~ ConwayEra) =>
+  NewEpochState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+addStakePools nes =
+  addNamespacedChunks (Proxy :: Proxy "entities/stake_pools/v0") stakePoolsEntries
+  where
+    stakePools =
+      S.each $
+        Map.toList $
+          Map.merge
+            (Map.mapMissing (\_ v -> (SJust v, SNothing)))
+            (Map.mapMissing (\_ v -> (SNothing, SJust v)))
+            ( Map.zipWithMatched
+                (\_ stakePoolState retiringEpochNo -> (SJust stakePoolState, SJust retiringEpochNo))
+            )
+            ( nes
+                ^. nesEsL
+                . esLStateL
+                . lsCertStateL
+                . certPStateL
+                . psStakePoolsL
+            )
+            ( nes
+                ^. nesEsL
+                . esLStateL
+                . lsCertStateL
+                . certPStateL
+                . psRetiringL
+            )
+    stakePoolsEntries =
+      S.map
+        ( \(k, (stakePoolState, retiringEpochNo)) ->
+            ChunkEntry
+              (EntitiesStakePoolsIn k)
+              ( EntitiesStakePoolsOut $
+                  CanonicalStakePool
+                    { cspStakePoolState = fmap mkCanonicalStakePoolState stakePoolState
+                    , cspRetiringEpochNo = retiringEpochNo
+                    }
+              )
+        )
+        stakePools
+
 instance ExportState ConwayEra where
   type ExportLedgerState ConwayEra = LedgerState ConwayEra
   type ExportNewEpochState ConwayEra = NewEpochState ConwayEra
@@ -274,5 +328,6 @@ instance ExportState ConwayEra where
       & addProposals nes
       & addAccounts nes
       & addDReps nes
+      & addStakePools nes
   getProtocolVersion nes =
     pvMajor $ nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
