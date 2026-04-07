@@ -92,7 +92,7 @@ instance
 newtype EntitiesStakePoolsIn = EntitiesStakePoolsIn (KeyHash StakePool)
   deriving (Eq, Ord, Show)
 
-type instance NamespaceKeySize "entities/stake_pools/v0" = 1 -- TODO: determine key size
+type instance NamespaceKeySize "entities/stake_pools/v0" = 28
 
 instance IsKey EntitiesStakePoolsIn where
   keySize = namespaceKeySize @"entities/stake_pools/v0"
