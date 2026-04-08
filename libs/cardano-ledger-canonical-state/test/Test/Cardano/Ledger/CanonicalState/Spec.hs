@@ -18,6 +18,7 @@ import Cardano.Ledger.CanonicalState.BasicTypes (CanonicalExUnits (..))
 import Cardano.Ledger.CanonicalState.Conway ()
 import qualified Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 as Blocks.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0 as Committee.V0
+import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.FutureParams.V0 as EntitiesStakePools.FutureParams.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.V0 as EntitiesStakePools.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 as GovCommittee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovConstitution.V0 as GovConstitution.V0
@@ -25,9 +26,11 @@ import qualified Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 as GovPPa
 import qualified Cardano.Ledger.CanonicalState.Namespace.UTxO.V0 as UTxO.V0
 import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Core (
+  AccountAddress,
   AccountId,
   KeyHash,
   PParams,
+  StakePool,
   StakePoolVRF,
   Staking,
   VRFVerKeyHash,
@@ -78,6 +81,26 @@ spec = do
       isCanonical @"entities/stake_pools/v0" @EntitiesStakePools.V0.CanonicalStakePool
       validateType @"entities/stake_pools/v0" @EntitiesStakePools.V0.CanonicalStakePool
         "stake_pool"
+    describe "entities/stake_pools/future_params/v0" $ do
+      isCanonical @"entities/stake_pools/future_params/v0" @(KeyHash StakePool)
+      validateType @"entities/stake_pools/future_params/v0" @(KeyHash StakePool) "pool_keyhash"
+      isCanonical @"entities/stake_pools/future_params/v0" @(VRFVerKeyHash StakePoolVRF)
+      validateType @"entities/stake_pools/future_params/v0" @(VRFVerKeyHash StakePoolVRF) "vrf_keyhash"
+      isCanonical @"entities/stake_pools/future_params/v0" @UnitInterval
+      validateType @"entities/stake_pools/future_params/v0" @UnitInterval "unit_interval"
+      isCanonical @"entities/stake_pools/future_params/v0" @(KeyHash Staking)
+      validateType @"entities/stake_pools/future_params/v0" @(KeyHash Staking) "staking_keyhash"
+      isCanonical @"entities/stake_pools/future_params/v0" @StakePoolRelay
+      validateType @"entities/stake_pools/future_params/v0" @StakePoolRelay "relay"
+      isCanonical @"entities/stake_pools/future_params/v0" @PoolMetadata
+      validateType @"entities/stake_pools/future_params/v0" @PoolMetadata "pool_metadata"
+      isCanonical @"entities/stake_pools/future_params/v0" @AccountAddress
+      validateType @"entities/stake_pools/future_params/v0" @AccountAddress "address"
+      isCanonical @"entities/stake_pools/future_params/v0"
+        @EntitiesStakePools.FutureParams.V0.CanonicalStakePoolParams
+      validateType @"entities/stake_pools/future_params/v0"
+        @EntitiesStakePools.FutureParams.V0.CanonicalStakePoolParams
+        "stake_pool_params"
     describe "gov/committee/v0" $ do
       isCanonical @"gov/committee/v0" @GovCommittee.V0.CanonicalCommittee
       validateType @"gov/committee/v0" @GovCommittee.V0.CanonicalCommittee "committee"

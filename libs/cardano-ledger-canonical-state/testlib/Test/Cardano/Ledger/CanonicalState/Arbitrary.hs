@@ -15,6 +15,7 @@ import Cardano.Ledger.CanonicalState.BasicTypes (
 import Cardano.Ledger.CanonicalState.Conway ()
 import qualified Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 as Blocks.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0 as EntitiesCommittee.V0
+import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.FutureParams.V0 as EntitiesStakePools.FutureParams.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.V0 as EntitiesStakePools.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 as GovCommittee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 as GovPParams.V0 ()
@@ -61,4 +62,7 @@ instance Arbitrary EntitiesStakePools.V0.CanonicalStakePool where
   arbitrary = genericArbitraryU
 
 instance Arbitrary EntitiesStakePools.V0.EntitiesStakePoolsOut where
+  arbitrary = genericArbitraryU
+
+instance Arbitrary EntitiesStakePools.FutureParams.V0.CanonicalStakePoolParams where
   arbitrary = genericArbitraryU
