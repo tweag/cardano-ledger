@@ -67,7 +67,6 @@ import Cardano.Ledger.Shelley.Rules.Utxo (
   UtxoEnv (..),
   UtxoEvent,
  )
-import qualified Cardano.Ledger.Shelley.SoftForks as SoftForks
 import Cardano.Ledger.Shelley.TxCert (isInstantaneousRewards)
 import Cardano.Ledger.Shelley.UTxO (
   EraUTxO (..),
@@ -78,7 +77,6 @@ import Cardano.Ledger.Shelley.UTxO (
  )
 import Cardano.Ledger.State (EraCertState (..), dsGenDelegs)
 import Control.DeepSeq
-import Control.Monad (when)
 import Control.Monad.Trans.Reader (asks)
 import Control.State.Transition (
   Embed,
@@ -107,7 +105,6 @@ import Data.Typeable (Typeable)
 import Data.Word (Word64, Word8)
 import GHC.Generics (Generic)
 import Lens.Micro
-import NoThunks.Class (NoThunks (..))
 import Validation
 
 -- =========================================
@@ -152,12 +149,6 @@ newtype ShelleyUtxowEvent era
 deriving instance Eq (Event (EraRule "UTXO" era)) => Eq (ShelleyUtxowEvent era)
 
 instance NFData (Event (EraRule "UTXO" era)) => NFData (ShelleyUtxowEvent era)
-
-instance
-  ( NoThunks (PredicateFailure (EraRule "UTXO" era))
-  , Era era
-  ) =>
-  NoThunks (ShelleyUtxowPredFailure era)
 
 instance
   ( NFData (PredicateFailure (EraRule "UTXO" era))
@@ -447,9 +438,7 @@ validateMetadata pp tx =
             [ failureUnless (hashTxAuxData md' == mdh) $
                 ConflictingMetadataHash $
                   Mismatch {mismatchSupplied = mdh, mismatchExpected = hashTxAuxData md'}
-            , -- check metadata value sizes
-              when (SoftForks.validMetadata pv) $
-                failureUnless (validateTxAuxData pv md') InvalidMetadata
+            , failureUnless (validateTxAuxData pv md') InvalidMetadata
             ]
 
 -- | check genesis keys signatures for instantaneous rewards certificates

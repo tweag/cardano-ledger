@@ -46,11 +46,12 @@ import Cardano.Ledger.Binary (EncCBOR, encCBOR, serialize')
 import Cardano.Ledger.CanonicalState.LedgerCBOR
 import Cardano.Ledger.CanonicalState.Namespace (Era, NamespaceEra)
 import Cardano.Ledger.Coin (Coin (..), CompactForm (CompactCoin))
-import Cardano.Ledger.Core (eraProtVerLow)
+import Cardano.Ledger.Core (AccountAddress, AccountId, StakePoolVRF, VRFVerKeyHash, eraProtVerLow)
 import Cardano.Ledger.Credential (Credential (..))
 import Cardano.Ledger.Hashes (KeyHash (..), ScriptHash (..))
 import qualified Cardano.Ledger.Hashes as H
 import Cardano.Ledger.Plutus.ExUnits (ExUnits (..), ExUnits' (..))
+import Cardano.Ledger.State (PoolMetadata, StakePoolRelay)
 import Cardano.SCLS.CBOR.Canonical (CanonicalDecoder)
 import Cardano.SCLS.CBOR.Canonical.Decoder (
   FromCanonicalCBOR (..),
@@ -285,3 +286,53 @@ decodeNamespacedTag :: forall v a s. FromCanonicalCBOR v a => Word -> CanonicalD
 decodeNamespacedTag expectedTag = do
   decodeWordCanonicalOf expectedTag
   unVer <$> fromCanonicalCBOR @v
+
+deriving via
+  LedgerCBOR v (VRFVerKeyHash StakePoolVRF)
+  instance
+    (Era era, NamespaceEra v ~ era) => ToCanonicalCBOR v (VRFVerKeyHash StakePoolVRF)
+
+deriving via
+  LedgerCBOR v (VRFVerKeyHash StakePoolVRF)
+  instance
+    (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v (VRFVerKeyHash StakePoolVRF)
+
+deriving via
+  LedgerCBOR v StakePoolRelay
+  instance
+    (Era era, NamespaceEra v ~ era) => ToCanonicalCBOR v StakePoolRelay
+
+deriving via
+  LedgerCBOR v StakePoolRelay
+  instance
+    (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v StakePoolRelay
+
+deriving via
+  LedgerCBOR v PoolMetadata
+  instance
+    (Era era, NamespaceEra v ~ era) => ToCanonicalCBOR v PoolMetadata
+
+deriving via
+  LedgerCBOR v PoolMetadata
+  instance
+    (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v PoolMetadata
+
+deriving via
+  LedgerCBOR v AccountId
+  instance
+    (Era era, NamespaceEra v ~ era) => ToCanonicalCBOR v AccountId
+
+deriving via
+  LedgerCBOR v AccountId
+  instance
+    (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v AccountId
+
+deriving via
+  LedgerCBOR v AccountAddress
+  instance
+    (Era era, NamespaceEra v ~ era) => ToCanonicalCBOR v AccountAddress
+
+deriving via
+  LedgerCBOR v AccountAddress
+  instance
+    (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v AccountAddress

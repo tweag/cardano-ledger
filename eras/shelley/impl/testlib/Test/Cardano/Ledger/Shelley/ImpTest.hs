@@ -70,6 +70,8 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   withTxsInFailingBlock,
   withTxsInFailingBlockM,
   withTxsInBlockEither,
+  withIssuerAndTxsInBlock_,
+  withIssuerAndTxsInBlock,
   tryTxsInBlock,
   impShelleyExpectTxSuccess,
   modifyNES,
@@ -180,7 +182,6 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
 import qualified Cardano.Chain.Common as Byron
 import qualified Cardano.Chain.UTxO as Byron (empty)
 import Cardano.Ledger.Address (BootstrapAddress (..), bootstrapKeyHash)
-import Cardano.Ledger.BHeaderView (BHeaderView (..))
 import Cardano.Ledger.BaseTypes
 import Cardano.Ledger.Binary (DecCBOR, EncCBOR)
 import Cardano.Ledger.Block (Block (..))
@@ -197,7 +198,11 @@ import Cardano.Ledger.Keys (
  )
 import Cardano.Ledger.Shelley (ShelleyEra)
 import Cardano.Ledger.Shelley.API.ByronTranslation (translateToShelleyLedgerStateFromUtxo)
-import Cardano.Ledger.Shelley.API.Validation (BlockTransitionError (..), applyBlockEither)
+import Cardano.Ledger.Shelley.API.Validation (
+  ApplyBlock,
+  BlockTransitionError (..),
+  applyBlockEither,
+ )
 import Cardano.Ledger.Shelley.AdaPots (sumAdaPots, totalAdaPotsES)
 import Cardano.Ledger.Shelley.Core
 import Cardano.Ledger.Shelley.Genesis (
@@ -292,6 +297,7 @@ import Numeric.Natural (Natural)
 import Prettyprinter (Doc)
 import Prettyprinter.Render.Terminal (AnsiStyle)
 import qualified System.Random.Stateful as R
+import Test.Cardano.Ledger.BlockHeader
 import Test.Cardano.Ledger.Core.Arbitrary ()
 import Test.Cardano.Ledger.Core.Binary.RoundTrip (roundTripEraExpectation)
 import Test.Cardano.Ledger.Core.KeyPair (ByronKeyPair (..), mkStakeRef, mkWitnessesVKey)
@@ -440,7 +446,6 @@ class
   , BaseM (EraRule "BBODY" era) ~ ShelleyBase
   , Environment (EraRule "BBODY" era) ~ BbodyEnv era
   , State (EraRule "BBODY" era) ~ ShelleyBbodyState era
-  , Signal (EraRule "BBODY" era) ~ Block BHeaderView era
   , Eq (Event (EraRule "BBODY" era))
   , ToExpr (Event (EraRule "BBODY" era))
   , Typeable (Event (EraRule "BBODY" era))
@@ -495,6 +500,7 @@ class
   , InjectRuleFailure "LEDGER" ShelleyUtxoPredFailure era
   , InjectRuleFailure "LEDGER" ShelleyPoolPredFailure era
   , InjectRuleFailure "BBODY" ShelleyPoolPredFailure era
+  , ApplyBlock TestBlockHeader era
   ) =>
   ShelleyEraImp era
   where
@@ -827,7 +833,7 @@ instance
                 & ppA0L .~ (3 %! 10)
                 & ppRhoL .~ (3 %! 1000)
                 & ppTauL .~ (2 %! 10)
-                & ppDL .~ (1 %! 1)
+                & ppDL .~ minBound
                 & ppExtraEntropyL .~ NeutralNonce
                 & ppMinUTxOValueL .~ Coin 2_000_000
                 & ppMinPoolCostL .~ Coin 340_000_000
@@ -1334,7 +1340,7 @@ submitBlock ::
   , ShelleyEraImp era
   ) =>
   [Tx TopTx era] ->
-  ImpTestM era (Block BHeaderView era)
+  ImpTestM era (Block TestBlockHeader era)
 submitBlock = withTxsInBlock . traverse_ submitTx_
 
 -- | Submit a list of transactions as a block that's expected to fail
@@ -1357,9 +1363,19 @@ submitFailingBlockM ::
   , ShelleyEraImp era
   ) =>
   [Tx TopTx era] ->
-  (Block BHeaderView era -> ImpTestM era (NonEmpty (PredicateFailure (EraRule "BBODY" era)))) ->
+  (Block TestBlockHeader era -> ImpTestM era (NonEmpty (PredicateFailure (EraRule "BBODY" era)))) ->
   ImpTestM era ()
 submitFailingBlockM = withTxsInFailingBlockM . traverse_ submitTx_
+
+-- | Gather all the txs submitted by @act@ and resubmit them as a block that's expected to succeed.
+withIssuerAndTxsInBlock_ ::
+  ( HasCallStack
+  , ShelleyEraImp era
+  ) =>
+  KeyHash BlockIssuer ->
+  ImpTestM era a ->
+  ImpTestM era ()
+withIssuerAndTxsInBlock_ blockIssuer = void . withIssuerAndTxsInBlock blockIssuer . void
 
 -- | Gather all the txs submitted by @act@ and resubmit them as a block that's expected to succeed.
 withTxsInBlock_ ::
@@ -1370,14 +1386,23 @@ withTxsInBlock_ ::
   ImpTestM era ()
 withTxsInBlock_ = void . withTxsInBlock . void
 
+withIssuerAndTxsInBlock ::
+  ( HasCallStack
+  , ShelleyEraImp era
+  ) =>
+  KeyHash BlockIssuer ->
+  ImpTestM era () ->
+  ImpTestM era (Block TestBlockHeader era)
+withIssuerAndTxsInBlock blockIssuer = expectRightDeepExpr <=< withTxsInBlockEither (Just blockIssuer)
+
 -- | Gather all the txs submitted by @act@ and resubmit them as a block that's expected to succeed.
 withTxsInBlock ::
   ( HasCallStack
   , ShelleyEraImp era
   ) =>
   ImpTestM era () ->
-  ImpTestM era (Block BHeaderView era)
-withTxsInBlock = expectRightDeepExpr <=< withTxsInBlockEither
+  ImpTestM era (Block TestBlockHeader era)
+withTxsInBlock = expectRightDeepExpr <=< withTxsInBlockEither Nothing
 
 -- | Gather all the txs submitted by @act@ and resubmit them as a block
 -- that's expected to fail with the given predicate failures.
@@ -1397,10 +1422,10 @@ withTxsInFailingBlockM ::
   , ShelleyEraImp era
   ) =>
   ImpTestM era () ->
-  (Block BHeaderView era -> ImpTestM era (NonEmpty (PredicateFailure (EraRule "BBODY" era)))) ->
+  (Block TestBlockHeader era -> ImpTestM era (NonEmpty (PredicateFailure (EraRule "BBODY" era)))) ->
   ImpTestM era ()
 withTxsInFailingBlockM act mkExpectedFailures = do
-  (predFailures, block) <- expectLeftDeepExpr <=< withTxsInBlockEither $ act
+  (predFailures, block) <- expectLeftDeepExpr <=< withTxsInBlockEither Nothing $ act
   expectedFailures <- mkExpectedFailures block
   predFailures `shouldBeExpr` expectedFailures
 
@@ -1410,19 +1435,22 @@ withTxsInFailingBlockM act mkExpectedFailures = do
 withTxsInBlockEither ::
   forall era.
   ShelleyEraImp era =>
+  Maybe (KeyHash BlockIssuer) ->
   ImpTestM era () ->
   ImpTestM
     era
     ( Either
-        (NonEmpty (PredicateFailure (EraRule "BBODY" era)), Block BHeaderView era)
-        (Block BHeaderView era)
+        (NonEmpty (PredicateFailure (EraRule "BBODY" era)), Block TestBlockHeader era)
+        (Block TestBlockHeader era)
     )
-withTxsInBlockEither act = do
+withTxsInBlockEither mIssuer act = do
   stateBefore <- get
   txs <- impRecordSubmittedTxs act
   stateAfter <- get
   put stateBefore
-  tryTxsInBlock txs stateAfter
+  case mIssuer of
+    Nothing -> tryTxsInBlock txs stateAfter
+    Just blockIssuer -> tryTxsInBlock' txs stateAfter blockIssuer
 
 -- | Given a sequence of fixed-up transactions and an expected final test state,
 -- try to submit the transactions as a block.
@@ -1436,25 +1464,40 @@ tryTxsInBlock ::
   ImpTestM
     era
     ( Either
-        (NonEmpty (PredicateFailure (EraRule "BBODY" era)), Block BHeaderView era)
-        (Block BHeaderView era)
+        (NonEmpty (PredicateFailure (EraRule "BBODY" era)), Block TestBlockHeader era)
+        (Block TestBlockHeader era)
     )
 tryTxsInBlock txs finalState = do
   blockIssuer <- freshKeyHash
+  tryTxsInBlock' txs finalState blockIssuer
+
+tryTxsInBlock' ::
+  forall era.
+  ShelleyEraImp era =>
+  StrictSeq (Tx TopTx era) ->
+  ImpTestState era ->
+  KeyHash BlockIssuer ->
+  ImpTestM
+    era
+    ( Either
+        (NonEmpty (PredicateFailure (EraRule "BBODY" era)), Block TestBlockHeader era)
+        (Block TestBlockHeader era)
+    )
+tryTxsInBlock' txs finalState blockIssuer = do
   slotNo <- use impCurSlotNoG
   nes <- use impNESL
 
   let
     blockBody = mkBasicBlockBody @era & txSeqBlockBodyL .~ txs
     blockHeader =
-      BHeaderView
-        { bhviewID = blockIssuer
-        , bhviewBSize = fromIntegral $ bBodySize (ProtVer (eraProtVerLow @era) 0) blockBody
-        , bhviewHSize = 0
-        , bhviewBHash = hashBlockBody blockBody
-        , bhviewSlot = slotNo
-        , bhviewPrevEpochNonce = Nothing
-        , bhviewProtVer = nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
+      TestBlockHeader
+        { tbhIssuer = blockIssuer
+        , tbhBSize = fromIntegral $ bBodySize (ProtVer (eraProtVerLow @era) 0) blockBody
+        , tbhHSize = 0
+        , tbhBHash = hashBlockBody blockBody
+        , tbhSlot = slotNo
+        , tbhPrevNonce = Nothing
+        , tbhProtVer = nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
         }
     block = Block {blockHeader, blockBody}
 
@@ -1644,7 +1687,7 @@ passNEpochs ::
 passNEpochs n =
   impAnn ("Passing " <> show n <> " epochs") $
     forM_ ([1 .. n] :: [Natural]) $ \i ->
-      impAnn ("Passing epoch (" <> show i <> ")") $ passEpoch
+      impAnn ("Passing epoch (" <> show i <> ")") passEpoch
 
 -- | Runs the TICK rule until the `n` epochs are passed, running the `checks`
 -- each time.

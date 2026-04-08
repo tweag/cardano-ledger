@@ -2,9 +2,40 @@
 
 ## 0.3.0.0
 
-* Add `SubLedgerEnv` and `SubUtxowEnv`
+* Add `WrongNetworkInDirectDeposit` constructor to `DijkstraUtxoPredFailure`
+* Add `SubWrongNetworkInDirectDeposit` constructor to `DijkstraSubUtxoPredFailure`
+* Add `validateWrongNetworkInDirectDeposit`
+* Add `checkPointerPresentInOutput`
+* Add `SubTxIsNotSupported` and `transFailSubTxIsNotSupported`
+* Remove `transPlutusPurposeV3` and `transPlutusPurposeV1V2`.
+* `DijkstraTxInfoResult` changed its content type to `PlutusTxInfoResult`
+* Add `EraForecast` instance for `DijkstraEra`.
+* Deprecate `BHeaderView` in favour of `DijkstraEraBlockHeader` typeclass.
+  - Add `PerasCert`, `PerasKey` and `validatePerasCert` to `Dijkstra.BlockBody` (moved from core).
+  - Add `DijkstraEraBlockHeader` typeclass and the `DijkstraBbodySignal` GADT.
+  - Remove `PrevEpochNonceNotPresent` from `DijkstraBbodyPredFailure`.
+* Add `SubLedgerEnv` and `SubUtxoEnv`
 * Remove `OutputTooSmallUTxO` constructor from `DijkstraUtxoPredFailure`
 * Remove `SubOutputTooSmallUTxO` constructor from `DijkstraSubUtxoPredFailure`
+* Remove `NoThunks` instances for all predicate failure types:
+  - `DijkstraBbodyPredFailure`
+  - `DijkstraGovPredFailure`
+  - `DijkstraGovCertPredFailure`
+  - `DijkstraLedgerPredFailure`
+  - `DijkstraSubCertPredFailure`
+  - `DijkstraSubCertsPredFailure`
+  - `DijkstraSubDelegPredFailure`
+  - `DijkstraSubGovPredFailure`
+  - `DijkstraSubGovCertPredFailure`
+  - `DijkstraSubLedgerPredFailure`
+  - `DijkstraSubLedgersPredFailure`
+  - `DijkstraSubPoolPredFailure`
+  - `DijkstraSubUtxoPredFailure`
+  - `DijkstraSubUtxowPredFailure`
+  - `DijkstraUtxoPredFailure`
+  - `DijkstraUtxowPredFailure`
+* Remove `NoThunks` instance for `DijkstraContextError`
+* Make `DijkstraContextError` constructors lazy
 
 ## 0.2.0.0
 

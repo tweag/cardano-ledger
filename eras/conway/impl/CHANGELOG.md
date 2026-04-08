@@ -2,7 +2,33 @@
 
 ## 1.22.0.0
 
+* Add `ConwayUtxosEnv`
+* Change `STS` instance of `ConwayUTXOS`: use `ConwayUtxosEnv` as `Environment` and `()` as `State`
+* Add `updateTreasuryDonation`
+* Add `checkReferenceInputsNotDisjointFromInputs`
+* Add `ConwayEraScript` superclass to `ConwayEraPlutusTxInfo`
+* Change `transPlutusPurposeV1V2` to work only with `ScriptPurpose` for any era and change it from `AsItem` to `AsIxItem`.
+* Change `transPlutusPurposeV3` to work only with `PlutusV3`, but with `ScriptPurpose` for any era.
+* `ConwayTxInfoResult` changed its content type to `PlutusTxInfoResult`
+* Add `EraForecast` instance for `ConwayEra`.
+* Update `PredicateFailure` for `ConwayTICKF` to `Void` and remove `ConwayTickfPredFailure`.
+* Change `ConwayBBODY` `Signal` to `BbodySignal`.
+* Add `validateRefScriptSize`.
 * Remove `ToCBOR` and `FromCBOR` instances for `DefaultVote`
+* Remove `NoThunks` instances for all predicate failure types:
+  - `ConwayBbodyPredFailure`
+  - `ConwayCertPredFailure`
+  - `ConwayCertsPredFailure`
+  - `ConwayDelegPredFailure`
+  - `ConwayGovPredFailure`
+  - `ConwayGovCertPredFailure`
+  - `ConwayLedgerPredFailure`
+  - `ConwayTickfPredFailure`
+  - `ConwayUtxoPredFailure`
+  - `ConwayUtxosPredFailure`
+  - `ConwayUtxowPredFailure`
+* Remove `NoThunks` instance for `ConwayContextError`
+* Make `ConwayContextError` constructors lazy
 
 ## 1.21.0.0
 

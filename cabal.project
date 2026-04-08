@@ -16,7 +16,7 @@ source-repository-package
   subdir: hs
   -- !WARNING!:
   -- MAKE SURE THIS POINTS TO A COMMIT IN `*-artifacts` BEFORE MERGE!
-  tag: 6158038b8ee2574c04e164aa9bdfd4db4f505793
+  tag: f478f2206df3c12c062bd6674d206456f3206ceb
 
 source-repository-package
   type: git
@@ -104,8 +104,8 @@ source-repository-package
   type: git
   location: https://github.com/tweag/cardano-cls.git
   subdir: merkle-tree-incremental mempack-scls scls-cbor scls-cardano scls-format scls-core
-  --sha256: sha256-gLN0+wEWU2Jtvo+Gbx6RnRBMSmilX3iMYviaxevbEWU=
-  tag: 5a9c0674cc35fbf0f54ebbf161b4a0c81b767ab6
+  --sha256: sha256-t1OClzK4mTxWlZu3+pe24g3t7rTR7RSLOBAjw241bdM=
+  tag: a0124ce21d3a701466dae1e041d909a84bbf0907
 
 if impl(ghc >=9.14)
   source-repository-package

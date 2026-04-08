@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -17,9 +18,10 @@ module Cardano.Ledger.Chain (
   chainChecks,
 ) where
 
-import Cardano.Ledger.BHeaderView (BHeaderView (..))
 import Cardano.Ledger.BaseTypes (ProtVer (..), Version)
+import Cardano.Ledger.Block (Block, EraBlockHeader (..))
 import Cardano.Ledger.Core
+import Control.DeepSeq (NFData)
 import Control.Monad (unless)
 import Control.Monad.Except (MonadError, throwError)
 import Data.Word (Word16, Word32)
@@ -32,7 +34,8 @@ data ChainChecksPParams = ChainChecksPParams
   , ccMaxBBSize :: Word32
   , ccProtocolVersion :: ProtVer
   }
-  deriving (Show, Eq, Generic, NoThunks)
+  deriving stock (Show, Eq, Generic)
+  deriving anyclass (NFData, NoThunks)
 
 pparamsToChainChecksPParams ::
   EraPParams era =>
@@ -57,21 +60,21 @@ data ChainPredicateFailure
       Version -- max protocol version
   deriving (Generic, Show, Eq, Ord)
 
-instance NoThunks ChainPredicateFailure
-
 chainChecks ::
-  MonadError ChainPredicateFailure m =>
+  (MonadError ChainPredicateFailure m, EraBlockHeader h era) =>
   Version ->
   ChainChecksPParams ->
-  BHeaderView ->
+  Block h era ->
   m ()
-chainChecks maxpv ccd bhv = do
+chainChecks maxpv ccd blk = do
   unless (m <= maxpv) $ throwError (ObsoleteNodeCHAIN m maxpv)
-  unless (bhviewHSize bhv <= (fromIntegral :: Word16 -> Int) (ccMaxBHSize ccd)) $
+  let bhHSize = blk ^. blockHeaderSizeBlockHeaderG
+      bhBSize = blk ^. blockBodySizeBlockHeaderL
+  unless (bhHSize <= (fromIntegral :: Word16 -> Int) (ccMaxBHSize ccd)) $
     throwError $
-      HeaderSizeTooLargeCHAIN (bhviewHSize bhv) (ccMaxBHSize ccd)
-  unless (bhviewBSize bhv <= ccMaxBBSize ccd) $
+      HeaderSizeTooLargeCHAIN bhHSize (ccMaxBHSize ccd)
+  unless (bhBSize <= ccMaxBBSize ccd) $
     throwError $
-      BlockSizeTooLargeCHAIN (bhviewBSize bhv) (ccMaxBBSize ccd)
+      BlockSizeTooLargeCHAIN bhBSize (ccMaxBBSize ccd)
   where
     ProtVer m _ = ccProtocolVersion ccd

@@ -101,6 +101,41 @@
         "type": "github"
       }
     },
+    "cardano-ledger-release-tool": {
+      "inputs": {
+        "flake-utils": [
+          "flake-utils"
+        ],
+        "hackage": [
+          "hackageNix"
+        ],
+        "haskell-nix": [
+          "haskellNix"
+        ],
+        "nixpkgs": [
+          "cardano-ledger-release-tool",
+          "haskell-nix",
+          "nixpkgs"
+        ],
+        "pre-commit-hooks": [
+          "pre-commit-hooks"
+        ]
+      },
+      "locked": {
+        "lastModified": 1775087180,
+        "narHash": "sha256-eAwb3ZXkcRO83gP9/fiiWxC05eAhSZ4ntkLVxpv7qEY=",
+        "owner": "input-output-hk",
+        "repo": "cardano-ledger-release-tool",
+        "rev": "e8011391f49e927f1b69878b75b69cc656e6b9cb",
+        "type": "github"
+      },
+      "original": {
+        "owner": "input-output-hk",
+        "ref": "0.3.0.0",
+        "repo": "cardano-ledger-release-tool",
+        "type": "github"
+      }
+    },
     "cardano-mainnet-mirror": {
       "flake": false,
       "locked": {
@@ -204,11 +239,11 @@
     "formal-ledger-specifications": {
       "flake": false,
       "locked": {
-        "lastModified": 1773729185,
-        "narHash": "sha256-8erTBXhv+m6kbDLTtt6oouniB97T2ZW2Ui2QAqwTxGQ=",
+        "lastModified": 1775115298,
+        "narHash": "sha256-uJwq9v5QFHlN9yWmgV2fo6JCK716RUpQBu1ltmKadxI=",
         "owner": "IntersectMBO",
         "repo": "formal-ledger-specifications",
-        "rev": "6158038b8ee2574c04e164aa9bdfd4db4f505793",
+        "rev": "f478f2206df3c12c062bd6674d206456f3206ceb",
         "type": "github"
       },
       "original": {
@@ -241,11 +276,11 @@
     "hackage-for-stackage": {
       "flake": false,
       "locked": {
-        "lastModified": 1765412858,
-        "narHash": "sha256-KvOKr+JsQKQ+RtomBpREWPNmbgRFFw3sjSypUqAekqE=",
+        "lastModified": 1772152490,
+        "narHash": "sha256-TStSJ2aE8bV6SgoTTdJ2ZPfIQ4IrlzT/FhlqATe7934=",
         "owner": "input-output-hk",
         "repo": "hackage.nix",
-        "rev": "a22af4bf00b639ba2a52102dfaabb34d56db25ff",
+        "rev": "d39bf77720893fcdeccddc01b09ee46fa801a75d",
         "type": "github"
       },
       "original": {
@@ -305,6 +340,7 @@
         "hls-2.0": "hls-2.0",
         "hls-2.10": "hls-2.10",
         "hls-2.11": "hls-2.11",
+        "hls-2.12": "hls-2.12",
         "hls-2.2": "hls-2.2",
         "hls-2.3": "hls-2.3",
         "hls-2.4": "hls-2.4",
@@ -330,11 +366,11 @@
         "stackage": "stackage"
       },
       "locked": {
-        "lastModified": 1765414349,
-        "narHash": "sha256-2c8Rt9l7u9Q/tjT+m/LDdimKXNKXcT3sPRKY2N+li4s=",
+        "lastModified": 1772153772,
+        "narHash": "sha256-6GFJNg5y49yzKQU4u2uioS9ah+RyYGLIqseX3Lt+1aY=",
         "owner": "input-output-hk",
         "repo": "haskell.nix",
-        "rev": "4725218269bb7fb5be6b805e9d4e0d00769271ac",
+        "rev": "b2761679eab374a229daede9790e07af480d6bbf",
         "type": "github"
       },
       "original": {
@@ -423,6 +459,23 @@
       "original": {
         "owner": "haskell",
         "ref": "2.11.0.0",
+        "repo": "haskell-language-server",
+        "type": "github"
+      }
+    },
+    "hls-2.12": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1758709460,
+        "narHash": "sha256-xkI8MIIVEVARskfWbGAgP5sHG/lyeKnkm0LIOJ19X5w=",
+        "owner": "haskell",
+        "repo": "haskell-language-server",
+        "rev": "7d983de4fa7ff54369f6dd31444bdb9869aec83e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "haskell",
+        "ref": "2.12.0.0",
         "repo": "haskell-language-server",
         "type": "github"
       }
@@ -603,11 +656,11 @@
     "iserv-proxy": {
       "flake": false,
       "locked": {
-        "lastModified": 1755243078,
-        "narHash": "sha256-GLbl1YaohKdpzZVJFRdcI1O1oE3F3uBer4lFv3Yy0l8=",
+        "lastModified": 1770174258,
+        "narHash": "sha256-x6QYupvHZM7rRpVO4AIC5gUWFprFQ59A95FPC7/Owjg=",
         "owner": "stable-haskell",
         "repo": "iserv-proxy",
-        "rev": "150605195cb7183a6fb7bed82f23fedf37c6f52a",
+        "rev": "91ef7ffdeedfb141a4d69dcf9e550abe3e1160c6",
         "type": "github"
       },
       "original": {
@@ -801,6 +854,7 @@
     "root": {
       "inputs": {
         "CHaP": "CHaP",
+        "cardano-ledger-release-tool": "cardano-ledger-release-tool",
         "cardano-mainnet-mirror": "cardano-mainnet-mirror",
         "flake-compat": "flake-compat",
         "flake-utils": "flake-utils",
@@ -852,11 +906,11 @@
     "stackage": {
       "flake": false,
       "locked": {
-        "lastModified": 1765412050,
-        "narHash": "sha256-mami5nxSfHpkBKqSUQmmwgKmdviCvXJ3POWIaee4L38=",
+        "lastModified": 1771978803,
+        "narHash": "sha256-MjJ97bWqWHuvyKGVAoDbO8w+RHdrmpZ+5lbS70TO6Uc=",
         "owner": "input-output-hk",
         "repo": "stackage.nix",
-        "rev": "90ee92c0a2563844f078873e9b977bc1619ae9a1",
+        "rev": "b103acdef61ccd96e5b1a8c3026ab0b10ee8e971",
         "type": "github"
       },
       "original": {

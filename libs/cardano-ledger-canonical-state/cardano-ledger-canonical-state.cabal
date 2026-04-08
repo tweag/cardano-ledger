@@ -44,9 +44,10 @@ library
     Cardano.Ledger.CanonicalState.LedgerCBOR
     Cardano.Ledger.CanonicalState.Namespace
     Cardano.Ledger.CanonicalState.Namespace.Blocks.V0
-    Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0
     Cardano.Ledger.CanonicalState.Namespace.EntitiesAccounts.V0
+    Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0
     Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0
+    Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.FutureParams.V0
     Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.V0
     Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0
     Cardano.Ledger.CanonicalState.Namespace.GovConstitution.V0

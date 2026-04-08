@@ -25,6 +25,7 @@ module Cardano.Ledger.Shelley.Rules.Utxo (
   PredicateFailure,
   validSizeComputationCheck,
   updateUTxOState,
+  updateUTxOStateNoFees,
 
   -- * Validations
   validateInputSetEmptyUTxO,
@@ -101,7 +102,6 @@ import Data.Word (Word32)
 import GHC.Generics (Generic)
 import Lens.Micro
 import Lens.Micro.Extras (view)
-import NoThunks.Class (NoThunks (..))
 import Validation (failureUnless)
 
 data UtxoEnv era = UtxoEnv
@@ -208,13 +208,6 @@ deriving stock instance
   , Eq (EraRuleFailure "PPUP" era)
   ) =>
   Eq (ShelleyUtxoPredFailure era)
-
-instance
-  ( NoThunks (Value era)
-  , NoThunks (TxOut era)
-  , NoThunks (EraRuleFailure "PPUP" era)
-  ) =>
-  NoThunks (ShelleyUtxoPredFailure era)
 
 instance
   ( Era era
@@ -586,7 +579,11 @@ validateMaxTxSizeUTxO pp tx =
 -- be called on the @deposit - refund@ change, which is normally used to emit the
 -- `TotalDeposits` event.
 updateUTxOState ::
-  (EraTxBody era, EraStake era, EraCertState era, Monad m) =>
+  ( EraTxBody era
+  , EraStake era
+  , EraCertState era
+  , Monad m
+  ) =>
   PParams era ->
   UTxOState era ->
   TxBody TopTx era ->
@@ -596,6 +593,27 @@ updateUTxOState ::
   (UTxO era -> UTxO era -> m ()) ->
   m (UTxOState era)
 updateUTxOState pp utxos txBody certState govState depositChangeEvent txUtxODiffEvent = do
+  newUtxoState <-
+    updateUTxOStateNoFees pp utxos txBody certState govState depositChangeEvent txUtxODiffEvent
+  pure $ newUtxoState {utxosFees = utxosFees newUtxoState <> txBody ^. feeTxBodyL}
+
+-- | Like 'updateUTxOState', but does not collect fees. This is used for sub-transactions
+-- where fees are not applicable.
+updateUTxOStateNoFees ::
+  ( EraTxBody era
+  , EraStake era
+  , EraCertState era
+  , Monad m
+  ) =>
+  PParams era ->
+  UTxOState era ->
+  TxBody l era ->
+  CertState era ->
+  GovState era ->
+  (Coin -> m ()) ->
+  (UTxO era -> UTxO era -> m ()) ->
+  m (UTxOState era)
+updateUTxOStateNoFees pp utxos txBody certState govState depositChangeEvent txUtxODiffEvent = do
   let UTxOState {utxosUtxo, utxosDeposited, utxosFees, utxosDonation} = utxos
       UTxO utxo = utxosUtxo
       !utxoAdd = txouts txBody -- These will be inserted into the UTxO
@@ -613,7 +631,7 @@ updateUTxOState pp utxos txBody certState govState depositChangeEvent txUtxODiff
     UTxOState
       { utxosUtxo = UTxO newUTxO
       , utxosDeposited = utxosDeposited <> depositChange
-      , utxosFees = utxosFees <> txBody ^. feeTxBodyL
+      , utxosFees = utxosFees
       , utxosGovState = govState
       , utxosInstantStake =
           deleteInstantStake deletedUTxO (addInstantStake utxoAdd (utxos ^. instantStakeL))

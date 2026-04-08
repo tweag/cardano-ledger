@@ -134,7 +134,6 @@ import Data.Set.NonEmpty (NonEmptySet)
 import qualified Data.Set.NonEmpty as NES
 import GHC.Generics (Generic (..))
 import Lens.Micro
-import NoThunks.Class (NoThunks (..))
 
 data DijkstraLedgerPredFailure era
   = DijkstraUtxowFailure (PredicateFailure (EraRule "UTXOW" era))
@@ -246,15 +245,6 @@ deriving instance
   , Show (PredicateFailure (EraRule "SUBLEDGERS" era))
   ) =>
   Show (DijkstraLedgerPredFailure era)
-
-instance
-  ( Era era
-  , NoThunks (PredicateFailure (EraRule "UTXOW" era))
-  , NoThunks (PredicateFailure (EraRule "CERTS" era))
-  , NoThunks (PredicateFailure (EraRule "GOV" era))
-  , NoThunks (PredicateFailure (EraRule "SUBLEDGERS" era))
-  ) =>
-  NoThunks (DijkstraLedgerPredFailure era)
 
 instance
   ( Era era
@@ -435,7 +425,7 @@ dijkstraLedgerTransition = do
   ledgerStateAfterSubledgers <-
     trans @(EraRule "SUBLEDGERS" era) $
       TRC
-        ( SubLedgerEnv slot mbCurEpochNo txIx pp chainAccountState scriptsProvided
+        ( SubLedgerEnv slot mbCurEpochNo txIx pp chainAccountState scriptsProvided utxo (tx ^. isValidTxL)
         , ledgerState
         , subTxs
         )
@@ -514,6 +504,11 @@ instance
   , InjectRuleFailure "SUBUTXOW" AlonzoUtxowPredFailure era
   , InjectRuleFailure "SUBUTXOW" ShelleyUtxowPredFailure era
   , InjectRuleFailure "SUBUTXOW" BabbageUtxowPredFailure era
+  , InjectRuleFailure "SUBUTXO" ShelleyUtxoPredFailure era
+  , InjectRuleFailure "SUBUTXO" AllegraUtxoPredFailure era
+  , InjectRuleFailure "SUBUTXO" AlonzoUtxoPredFailure era
+  , InjectRuleFailure "SUBUTXO" BabbageUtxoPredFailure era
+  , InjectRuleFailure "SUBUTXO" DijkstraUtxoPredFailure era
   , TxCert era ~ DijkstraTxCert era
   , ScriptsNeeded era ~ AlonzoScriptsNeeded era
   ) =>
@@ -595,7 +590,7 @@ instance
 instance
   ( AlonzoEraTx era
   , AlonzoEraUTxO era
-  , ConwayEraTxBody era
+  , DijkstraEraTxBody era
   , ConwayEraGov era
   , ConwayEraCertState era
   , EraPlutusContext era
@@ -630,6 +625,11 @@ instance
   , InjectRuleFailure "SUBUTXOW" AlonzoUtxowPredFailure era
   , InjectRuleFailure "SUBUTXOW" ShelleyUtxowPredFailure era
   , InjectRuleFailure "SUBUTXOW" BabbageUtxowPredFailure era
+  , InjectRuleFailure "SUBUTXO" ShelleyUtxoPredFailure era
+  , InjectRuleFailure "SUBUTXO" AllegraUtxoPredFailure era
+  , InjectRuleFailure "SUBUTXO" AlonzoUtxoPredFailure era
+  , InjectRuleFailure "SUBUTXO" BabbageUtxoPredFailure era
+  , InjectRuleFailure "SUBUTXO" DijkstraUtxoPredFailure era
   , TxCert era ~ DijkstraTxCert era
   , ScriptsNeeded era ~ AlonzoScriptsNeeded era
   ) =>

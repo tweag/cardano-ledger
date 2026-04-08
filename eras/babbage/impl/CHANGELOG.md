@@ -1,8 +1,26 @@
 # Version history for `cardano-ledger-babbage`
 
-## 1.13.1.0
+## 1.14.0.0
 
+* `BabbageTxInfoResult` changed its content type to `PlutusTxInfoResult`
+* Deprecate the use of `GetLedgerView`:
+  - Add `BabbageForecast` to deprecate `LedgerView` for Praos.
+    + `mkBabbageForecast`
+    + `bfPoolDistrL`
+    + `bfMaxBlockHeaderSizeL`
+    + `bfMaxBlockBodySizeL`
+    + `bfProtocolVersionL`
+  - Add `EraForecast` instance with `BabbageForecast`.
 * Add `validateScriptsWellFormedTxOuts`
+* Remove `NoThunks` instances for predicate failure types:
+  - `BabbageUtxoPredFailure`
+  - `BabbageUtxowPredFailure`
+* Remove `NoThunks` instance for `BabbageContextError`
+* Make `BabbageContextError` constructors lazy
+
+### `testlib`
+
+* Add `Test.Cardano.Ledger.Babbage.Imp.PoolSpec` module with `babbageEraSpecificSpec`
 
 ## 1.13.0.0
 

@@ -88,6 +88,8 @@ type instance NamespaceEra "entities/dreps/v0" = ConwayEra
 
 type instance NamespaceEra "entities/stake_pools/v0" = ConwayEra
 
+type instance NamespaceEra "entities/stake_pools/future_params/v0" = ConwayEra
+
 type instance NamespaceEra "gov/committee/v0" = ConwayEra
 
 type instance NamespaceEra "gov/constitution/v0" = ConwayEra

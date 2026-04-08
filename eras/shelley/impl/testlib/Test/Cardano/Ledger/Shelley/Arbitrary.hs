@@ -84,14 +84,14 @@ import Cardano.Ledger.Shelley.TxOut
 import Cardano.Ledger.Shelley.TxWits (ShelleyTxWits (ShelleyTxWits))
 import Control.Exception (assert)
 import Control.Monad.Identity (Identity)
-import qualified Data.ByteString.Char8 as BS (length, pack)
 import qualified Data.ListMap as LM
 import qualified Data.Map.Strict as Map (fromList)
 import Data.Sequence.Strict (fromList)
 import qualified Data.Text as T (pack)
-import qualified Data.Text.Encoding as T (encodeUtf8)
+import qualified Data.Text.Foreign as T (lengthWord8)
 import Data.Word (Word64)
 import Generic.Random (genericArbitraryU)
+import Test.Cardano.Base.Bytes (genByteArray)
 import Test.Cardano.Chain.UTxO.Gen (genCompactTxOut)
 import Test.Cardano.Data.Arbitrary ()
 import Test.Cardano.Ledger.Common
@@ -357,8 +357,8 @@ genMetadatum = do
     <$> arbitrary
     <*> oneof
       [ genDatumInt
-      , genDatumString
-      , genDatumBytestring
+      , genMetadatumText
+      , genMetadatumByteArray
       , genMetadatumList
       , genMetadatumMap
       ]
@@ -376,13 +376,13 @@ genDatumInt =
     minVal = -maxVal
     maxVal = fromIntegral (maxBound :: Word64)
 
-genDatumString :: Gen Metadatum
-genDatumString =
+genMetadatumText :: Gen Metadatum
+genMetadatumText =
   sized $ \sz -> do
     n <- choose (0, min sz 64)
     cs <- genUtf8StringOfSize n
     let s = T.pack cs
-    assert (BS.length (T.encodeUtf8 s) == n) $
+    assert (T.lengthWord8 s == n) $
       return (S s)
 
 -- | Produce an arbitrary Unicode string such that it's UTF8 encoding size in
@@ -404,11 +404,11 @@ genUtf8StringOfSize n = do
   cs <- genUtf8StringOfSize (n - cz)
   return (c : cs)
 
-genDatumBytestring :: Gen Metadatum
-genDatumBytestring =
+genMetadatumByteArray :: Gen Metadatum
+genMetadatumByteArray =
   sized $ \sz -> do
     n <- choose (0, min sz 64)
-    B . BS.pack <$> vectorOf n arbitrary
+    B <$> genByteArray n
 
 -- | Generate a 'MD.List [Metadatum]'
 --
@@ -430,8 +430,8 @@ vectorOfMetadatumSimple = do
     n
     ( oneof
         [ genDatumInt
-        , genDatumString
-        , genDatumBytestring
+        , genMetadatumText
+        , genMetadatumByteArray
         ]
     )
 
@@ -536,8 +536,8 @@ sizedMetadatum :: Int -> Gen Metadatum
 sizedMetadatum 0 =
   oneof
     [ I <$> arbitrary
-    , B <$> arbitrary
-    , S . T.pack <$> arbitrary
+    , genMetadatumByteArray
+    , genMetadatumText
     ]
 sizedMetadatum n =
   let xsGen = listOf (sizedMetadatum (n - 1))
@@ -545,8 +545,8 @@ sizedMetadatum n =
         [ Map <$> (zip <$> resize maxMetadatumListLens xsGen <*> xsGen)
         , List <$> resize maxMetadatumListLens xsGen
         , I <$> arbitrary
-        , B <$> arbitrary
-        , S . T.pack <$> arbitrary
+        , genMetadatumByteArray
+        , genMetadatumText
         ]
 
 instance Arbitrary VotingPeriod where

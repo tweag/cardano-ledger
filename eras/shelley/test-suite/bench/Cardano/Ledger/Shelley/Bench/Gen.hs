@@ -10,11 +10,13 @@ module Cardano.Ledger.Shelley.Bench.Gen (
   genChainState,
 ) where
 
+import Cardano.Ledger.Block (EraBlockHeader)
 import Cardano.Ledger.Coin
 import Cardano.Ledger.Shelley.API (
   ApplyBlock,
   Block,
   DelplEnv,
+  ShelleyEraForecast,
   ShelleyLEDGERS,
  )
 import Cardano.Ledger.Shelley.Core
@@ -23,12 +25,12 @@ import Cardano.Ledger.Shelley.LedgerState (
   NewEpochState (..),
  )
 import Cardano.Ledger.Shelley.State
-import Cardano.Protocol.TPraos.API (GetLedgerView)
 import Cardano.Protocol.TPraos.BHeader (BHeader)
 import Control.State.Transition.Extended
 import Data.Either (fromRight)
 import qualified Data.Map.Strict as Map
 import Data.Proxy
+import Test.Cardano.Ledger.BlockHeader (TestBlockHeader)
 import Test.Cardano.Ledger.Shelley.BenchmarkFunctions (ledgerEnv)
 import Test.Cardano.Ledger.Shelley.ConcreteCryptoTypes (MockCrypto)
 import Test.Cardano.Ledger.Shelley.Constants (
@@ -50,8 +52,6 @@ import Test.Cardano.Ledger.Shelley.Rules.Chain (ChainState (..))
 import Test.Cardano.Ledger.Shelley.Serialisation.Generators ()
 import qualified Test.Control.State.Transition.Trace.Generator.QuickCheck as QC
 import Test.QuickCheck (generate)
-
--- ===============================================================
 
 -- | Generate a genesis chain state given a UTxO size
 genChainState ::
@@ -80,10 +80,11 @@ genChainState n ge =
 genBlock ::
   ( EraGen era
   , MinLEDGER_STS era
-  , GetLedgerView era
+  , ShelleyEraForecast era
   , EraRule "LEDGERS" era ~ ShelleyLEDGERS era
   , QC.HasTrace (ShelleyLEDGERS era) (GenEnv MockCrypto era)
-  , ApplyBlock era
+  , ApplyBlock TestBlockHeader era
+  , EraBlockHeader (BHeader MockCrypto) era
   ) =>
   GenEnv MockCrypto era ->
   ChainState era ->

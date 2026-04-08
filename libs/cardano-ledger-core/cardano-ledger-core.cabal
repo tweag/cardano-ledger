@@ -136,7 +136,7 @@ library
     microlens,
     mtl,
     non-integral >=1.0,
-    nothunks >=0.1.5 && <0.4,
+    nothunks >=0.1.5 && <0.3.2,
     partial-order,
     plutus-core,
     plutus-ledger-api >=1.56,
@@ -147,7 +147,7 @@ library
     scientific,
     serialise,
     small-steps >=1.1,
-    text,
+    text >=2.0,
     time,
     transformers,
     utf8-string,
@@ -193,6 +193,7 @@ library cddl
 
   build-depends:
     QuickCheck,
+    antigen,
     base,
     bytestring,
     cardano-ledger-binary,
@@ -201,12 +202,14 @@ library cddl
     cuddle >=1.2,
     heredoc,
     mempack,
+    quickcheck-transformer,
     random,
-    text,
+    text >=2.0,
 
 library testlib
   import: warnings
   exposed-modules:
+    Test.Cardano.Ledger.BlockHeader
     Test.Cardano.Ledger.Common
     Test.Cardano.Ledger.Core.Address
     Test.Cardano.Ledger.Core.Arbitrary
@@ -257,13 +260,13 @@ library testlib
     hspec,
     microlens,
     mtl,
-    nothunks,
+    nothunks <0.3.2,
     plutus-ledger-api:{plutus-ledger-api, plutus-ledger-api-testlib},
     primitive,
     quickcheck-transformer,
     random >=1.2,
     small-steps >=1.1,
-    text,
+    text >=2.0,
     time,
     tree-diff,
     unliftio,
