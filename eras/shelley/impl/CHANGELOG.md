@@ -1,8 +1,46 @@
 # Version history for `cardano-ledger-shelley`
 
-## 1.18.0.1
+## 1.19.0.0
 
-*
+* Remove `validMetadata` from `SoftForks`
+* Add `updateUTxOStateNoFees`
+* Add `Shelley.API.Forecast` and `Shelley.Forecast`:
+  - Add `EraForecast` and `ShelleyEraForecast` typeclasses to deprecate `GetLedgerView` from `cardano-ledger-tpraos`.
+  - Add `currentForecast` and `futureForecast` functions to deprecate `currentLedgerView` and `futureLedgerView`.
+  - Add `ShelleyForecast` to deprecate `LedgerView` for TPraos.
+    + `mkShelleyForecast`
+    + `sfPoolDistrL`
+    + `sfMaxBlockHeaderSizeL`
+    + `sfMaxBlockBodySizeL`
+    + `sfProtocolVersionL`
+    + `sfGenDelegsL`
+    + `sfDecentralizationL`
+    + `sfExtraEntropyL`
+* Deprecate `BHeaderView` in favour of `EraBlockHeader`.
+  - Add `wrapBlockSignal` to `ApplyBlock` typeclass for use within `applyBlock` to generalise over `Signal`.
+  - `chainChecks` now takes a `Block h era` instead.
+  - `ApplyBlock era` now takes another parameter (block header) to become `ApplyBlock h era`.
+    + `applyBlock*` functions and `applyTickNoEvents` now take `Block h era` instead.
+  - Update `incrBlocks` to `:: SlotNo -> UnitInterval -> SlotNo -> KeyHash StakePool -> BlocksMake -> BlocksMade`.
+  - Change `ShelleyBBODY` `Signal` to `BbodySignal`.
+  - Add `validateBlockBodySize` and `validateBlockBodyHash`.
+* Remove `NoThunks` instances for all predicate failure types:
+  - `ShelleyUtxoPredFailure`
+  - `ShelleyUtxowPredFailure`
+  - `ShelleyBbodyPredFailure`
+  - `ShelleyDelegPredFailure`
+  - `ShelleyDelegsPredFailure`
+  - `ShelleyDelplPredFailure`
+  - `ShelleyLedgerPredFailure`
+  - `ShelleyLedgersPredFailure`
+  - `ShelleyPoolPredFailure`
+  - `ShelleyPpupPredFailure`
+  - `ChainPredicateFailure`
+
+### `testlib`
+
+* Add `withIssuerAndTxsInBlock_` and `withIssuerAndTxsInBlock`
+* Add a `Maybe (KeyHash BlockIssuer)` parameter to `withTxsInBlockEither`
 
 ## 1.18.0.0
 

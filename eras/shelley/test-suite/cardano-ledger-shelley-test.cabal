@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name: cardano-ledger-shelley-test
-version: 1.8.0.0
+version: 1.9.0.0
 license: Apache-2.0
 maintainer: operations@iohk.io
 author: IOHK
@@ -80,14 +80,15 @@ library
     QuickCheck >=2.13.2,
     base >=4.18 && <5,
     bytestring,
+    cardano-base:testlib,
     cardano-crypto,
     cardano-crypto-class,
     cardano-crypto-wrapper,
     cardano-data >=1.2,
     cardano-ledger-binary:{cardano-ledger-binary, testlib} >=1.7,
     cardano-ledger-byron,
-    cardano-ledger-core:{cardano-ledger-core, tasty-compat, testlib} >=1.19,
-    cardano-ledger-shelley:{cardano-ledger-shelley, testlib} >=1.18,
+    cardano-ledger-core:{cardano-ledger-core, tasty-compat, testlib} >=1.20,
+    cardano-ledger-shelley:{cardano-ledger-shelley, testlib} >=1.19,
     cardano-protocol-tpraos:{cardano-protocol-tpraos, testlib} >=1.4,
     cardano-slotting:{cardano-slotting, testlib},
     cardano-strict-containers,
@@ -125,7 +126,6 @@ test-suite cardano-ledger-shelley-test
     Test.Cardano.Ledger.Shelley.Examples.NetworkID
     Test.Cardano.Ledger.Shelley.Examples.PoolLifetime
     Test.Cardano.Ledger.Shelley.Examples.PoolReReg
-    Test.Cardano.Ledger.Shelley.Examples.TwoPools
     Test.Cardano.Ledger.Shelley.Examples.Updates
     Test.Cardano.Ledger.Shelley.MultiSigExamples
     Test.Cardano.Ledger.Shelley.RulesTests
@@ -211,7 +211,7 @@ benchmark mainbench
     QuickCheck,
     base,
     cardano-data,
-    cardano-ledger-core,
+    cardano-ledger-core:{cardano-ledger-core, testlib},
     cardano-ledger-shelley:{cardano-ledger-shelley, testlib},
     cardano-ledger-shelley-test,
     cardano-protocol-tpraos,

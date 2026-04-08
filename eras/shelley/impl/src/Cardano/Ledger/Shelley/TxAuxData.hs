@@ -5,7 +5,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
@@ -25,7 +24,6 @@ module Cardano.Ledger.Shelley.TxAuxData (
 
   -- * Re-exports
   Metadatum (..),
-  validMetadatum,
 ) where
 
 import Cardano.Ledger.Binary (Annotator, DecCBOR (..), EncCBOR (..))
@@ -42,7 +40,7 @@ import Cardano.Ledger.MemoBytes (
   lensMemoRawType,
   mkMemoizedEra,
  )
-import Cardano.Ledger.Metadata (Metadatum (..), validMetadatum)
+import Cardano.Ledger.Metadata (Metadatum (..))
 import Cardano.Ledger.Shelley.Era (ShelleyEra)
 import Control.DeepSeq (NFData)
 import Data.Map.Strict (Map)
@@ -95,7 +93,7 @@ instance EraTxAuxData ShelleyEra where
     lensMemoRawType @ShelleyEra stadrMetadata $
       \txAuxDataRaw md -> txAuxDataRaw {stadrMetadata = md}
 
-  validateTxAuxData _ (ShelleyTxAuxData m) = all validMetadatum m
+  validateTxAuxData _ _ = True
 
 instance EqRaw (ShelleyTxAuxData era)
 

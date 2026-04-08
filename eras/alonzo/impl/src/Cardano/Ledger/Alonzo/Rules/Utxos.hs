@@ -206,11 +206,15 @@ scriptsTransition ::
 scriptsTransition slot pp tx utxo action = do
   sysSt <- liftSTS $ asks systemStart
   ei <- liftSTS $ asks epochInfo
-  case collectPlutusScriptsWithContext (unsafeLinearExtendEpochInfo slot ei) sysSt pp tx utxo of
-    Right sLst ->
-      when2Phase $ action $ evalPlutusScripts sLst
-    Left info ->
-      failOnNonEmpty (NonEmpty.filter isNotBadTranslation info) CollectErrors
+  let
+    scriptsWithContext =
+      collectPlutusScriptsWithContext (unsafeLinearExtendEpochInfo slot ei) sysSt pp tx utxo
+  failOnNonEmpty
+    (either (NonEmpty.filter isNotBadTranslation) (const []) scriptsWithContext)
+    CollectErrors
+  when2Phase $
+    whenFailureFree $
+      mapM_ (action . evalPlutusScripts) scriptsWithContext
   where
     -- BadTranslation was introduced in Babbage, thus we need to filter those failures out.
     isNotBadTranslation = \case
@@ -422,15 +426,6 @@ deriving stock instance
   , Eq (EraRuleFailure "PPUP" era)
   ) =>
   Eq (AlonzoUtxosPredFailure era)
-
-instance
-  ( AlonzoEraScript era
-  , NoThunks (TxCert era)
-  , NoThunks (ContextError era)
-  , NoThunks (Shelley.UTxOState era)
-  , NoThunks (EraRuleFailure "PPUP" era)
-  ) =>
-  NoThunks (AlonzoUtxosPredFailure era)
 
 instance
   ( AlonzoEraScript era

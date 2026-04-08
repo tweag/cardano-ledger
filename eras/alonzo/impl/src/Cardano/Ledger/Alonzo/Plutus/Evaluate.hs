@@ -68,7 +68,6 @@ import Data.Text (Text)
 import qualified Debug.Trace as Debug
 import GHC.Generics
 import Lens.Micro
-import NoThunks.Class (NoThunks)
 import qualified PlutusLedgerApi.Common as P
 
 -- ===============================================================
@@ -90,10 +89,6 @@ deriving instance
 deriving instance
   (AlonzoEraScript era, Show (ContextError era)) =>
   Show (CollectError era)
-
-deriving instance
-  (AlonzoEraScript era, NoThunks (ContextError era)) =>
-  NoThunks (CollectError era)
 
 deriving instance
   (AlonzoEraScript era, NFData (ContextError era)) =>
@@ -141,7 +136,7 @@ instance
       kindObject "BadTranslation" ["error" .= toJSON err]
 
 collectPlutusScriptsWithContext ::
-  forall era.
+  forall era l.
   ( AlonzoEraTxBody era
   , AlonzoEraTxWits era
   , AlonzoEraUTxO era
@@ -151,7 +146,7 @@ collectPlutusScriptsWithContext ::
   EpochInfo (Either Text) ->
   SystemStart ->
   PParams era ->
-  Tx TopTx era ->
+  Tx l era ->
   UTxO era ->
   Either (NonEmpty (CollectError era)) [PlutusWithContext]
 collectPlutusScriptsWithContext epochInfo systemStart pp tx utxo =

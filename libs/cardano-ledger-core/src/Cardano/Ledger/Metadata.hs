@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -6,10 +7,10 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Cardano.Ledger.Metadata (
   Metadatum (..),
-  validMetadatum,
 ) where
 
 import Cardano.Ledger.Binary (
@@ -21,7 +22,6 @@ import Cardano.Ledger.Binary (
   TokenType (..),
   cborError,
   decodeBreakOr,
-  decodeBytes,
   decodeBytesIndef,
   decodeInteger,
   decodeListLen,
@@ -30,18 +30,21 @@ import Cardano.Ledger.Binary (
   decodeMapLenIndef,
   decodeString,
   decodeStringIndef,
-  encodeBytes,
   encodeInteger,
   encodeListLen,
   encodeMapLen,
   encodeString,
+  getDecoderVersion,
+  natVersion,
   peekTokenType,
  )
+import Cardano.Ledger.Orphans ()
 import Control.DeepSeq (NFData (rnf))
-import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
+import Control.Monad (when)
+import Data.Array.Byte (ByteArray (..))
+import qualified Data.Primitive.ByteArray as Prim
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
+import qualified Data.Text.Foreign as TF
 import GHC.Generics (Generic)
 import NoThunks.Class (NoThunks (..))
 
@@ -50,7 +53,7 @@ data Metadatum
   = Map ![(Metadatum, Metadatum)]
   | List ![Metadatum]
   | I !Integer
-  | B !BS.ByteString
+  | B !ByteArray
   | S !T.Text
   deriving stock (Show, Eq, Ord, Generic)
 
@@ -70,28 +73,12 @@ instance EncCBOR Metadatum where
 instance DecCBOR Metadatum where
   decCBOR = decodeMetadatum
 
--- Validation of sizes
-
-validMetadatum :: Metadatum -> Bool
--- The integer size/representation checks are enforced in the decoder.
-validMetadatum (I _) = True
-validMetadatum (B b) = BS.length b <= 64
-validMetadatum (S s) = BS.length (T.encodeUtf8 s) <= 64
-validMetadatum (List xs) = all validMetadatum xs
-validMetadatum (Map kvs) =
-  all
-    ( \(k, v) ->
-        validMetadatum k
-          && validMetadatum v
-    )
-    kvs
-
 -------------------------------------------------------------------------------
 -- CBOR encoding and decoding
 
 encodeMetadatum :: Metadatum -> Encoding
 encodeMetadatum (I n) = encodeInteger n
-encodeMetadatum (B b) = encodeBytes b
+encodeMetadatum (B ba) = encCBOR ba
 encodeMetadatum (S s) = encodeString s
 encodeMetadatum (List xs) =
   encodeListLen (fromIntegral (length xs))
@@ -108,21 +95,18 @@ encodeMetadatum (Map kvs) =
 
 -- | Decode a transaction matadatum value from its CBOR representation.
 --
--- The CDDL for the CBOR is
---
--- > transaction_metadatum =
--- >     int
--- >   / bytes .size (0..64)
--- >   / text .size (0..64)
--- >   / [ * transaction_metadatum ]
--- >   / { * transaction_metadatum => transaction_metadatum }
---
 -- We do not require canonical representations, just like everywhere else
--- on the chain. We accept both definte and indefinite representations.
+-- on the chain. We accept both definite and indefinite representations.
 --
--- The byte and string length checks are not enforced in this decoder, but
+-- The byte and string length checks are enforced in this decoder as per
+-- the CDDL spec.
+--
+-- starting with Allegra era we enforce the length of strings and bytestrings
+-- to be no more than 64 bytes
 decodeMetadatum :: Decoder s Metadatum
 decodeMetadatum = do
+  dv <- getDecoderVersion
+  let checkSizes = dv > natVersion @2
   tkty <- peekTokenType
   case tkty of
     -- We support -(2^64-1) .. 2^64-1, but not big integers
@@ -131,21 +115,27 @@ decodeMetadatum = do
     TypeUInt64 -> I <$> decodeInteger
     TypeNInt -> I <$> decodeInteger
     TypeNInt64 -> I <$> decodeInteger
-    -- Note that we do not enforce byte and string lengths here in the
-    -- decoder. We enforce that in the tx validation rules.
     TypeBytes -> do
-      !x <- decodeBytes
-      return (B x)
+      !ba <- decCBOR
+      when (checkSizes && Prim.sizeofByteArray ba > 64) $
+        decodeError "bytes .size (0..64): bytestring exceeds 64 bytes"
+      return (B ba)
     TypeBytesIndef -> do
       decodeBytesIndef
-      !x <- decodeBytesIndefLen []
-      return (B x)
+      !ba <- decodeBytesIndefLen []
+      when (checkSizes && Prim.sizeofByteArray ba > 64) $
+        decodeError "bytes .size (0..64): bytestring exceeds 64 bytes"
+      return (B ba)
     TypeString -> do
       !x <- decodeString
+      when (checkSizes && TF.lengthWord8 x > 64) $
+        decodeError "text .size (0..64): text exceeds 64 bytes"
       return (S x)
     TypeStringIndef -> do
       decodeStringIndef
       !x <- decodeStringIndefLen []
+      when (checkSizes && TF.lengthWord8 x > 64) $
+        decodeError "text .size (0..64): text exceeds 64 bytes"
       return (S x)
 
     -- Why does it work to do the same thing here for 32 and 64bit list len
@@ -184,14 +174,14 @@ decodeMetadatum = do
   where
     decodeError msg = cborError (DecoderErrorCustom "metadata" msg)
 
-decodeBytesIndefLen :: [BS.ByteString] -> Decoder s ByteString
+decodeBytesIndefLen :: [ByteArray] -> Decoder s ByteArray
 decodeBytesIndefLen acc = do
   stop <- decodeBreakOr
   if stop
-    then return $! BS.concat (reverse acc)
+    then return $! mconcat $ reverse acc
     else do
-      !bs <- decodeBytes
-      decodeBytesIndefLen (bs : acc)
+      !ba <- decCBOR
+      decodeBytesIndefLen (ba : acc)
 
 decodeStringIndefLen :: [T.Text] -> Decoder s T.Text
 decodeStringIndefLen acc = do

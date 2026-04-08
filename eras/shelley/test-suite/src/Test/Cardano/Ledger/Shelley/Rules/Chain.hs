@@ -6,7 +6,6 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
@@ -28,7 +27,6 @@ module Test.Cardano.Ledger.Shelley.Rules.Chain (
   chainStateNesL,
 ) where
 
-import Cardano.Ledger.BHeaderView (BHeaderView)
 import Cardano.Ledger.BaseTypes (
   BlocksMade (..),
   Nonce (..),
@@ -36,7 +34,7 @@ import Cardano.Ledger.BaseTypes (
   StrictMaybe (..),
  )
 import Cardano.Ledger.Binary (EncCBORGroup)
-import Cardano.Ledger.Block (Block (..))
+import Cardano.Ledger.Block (BbodySignal (..), Block (..), EraBlockHeader)
 import Cardano.Ledger.Chain (
   ChainPredicateFailure (..),
   chainChecks,
@@ -82,7 +80,6 @@ import Cardano.Protocol.TPraos.BHeader (
   bheaderBlockNo,
   bheaderSlotNo,
   lastAppliedHash,
-  makeHeaderView,
   prevHashToNonce,
  )
 import Cardano.Protocol.TPraos.Rules.Prtcl (
@@ -111,7 +108,6 @@ import Data.Void (Void)
 import Data.Word (Word64)
 import GHC.Generics (Generic)
 import Lens.Micro (Lens', lens, (&), (.~), (^.))
-import NoThunks.Class (NoThunks (..))
 import Test.Cardano.Ledger.Shelley.ConcreteCryptoTypes (MockCrypto)
 import Test.Cardano.Ledger.Shelley.TreeDiff ()
 import Test.Cardano.Ledger.TreeDiff (ToExpr (toExpr), defaultExprViaShow)
@@ -169,14 +165,6 @@ deriving stock instance
   , Eq (PredicateFailure (EraRule "TICKN" era))
   ) =>
   Eq (TestChainPredicateFailure era)
-
-instance
-  ( Era era
-  , NoThunks (PredicateFailure (EraRule "BBODY" era))
-  , NoThunks (PredicateFailure (EraRule "TICK" era))
-  , NoThunks (PredicateFailure (EraRule "TICKN" era))
-  ) =>
-  NoThunks (TestChainPredicateFailure era)
 
 -- | Creates a valid initial chain state
 initialShelleyState ::
@@ -254,7 +242,7 @@ instance
   , Embed (EraRule "BBODY" era) (CHAIN era)
   , Environment (EraRule "BBODY" era) ~ BbodyEnv era
   , State (EraRule "BBODY" era) ~ ShelleyBbodyState era
-  , Signal (EraRule "BBODY" era) ~ Block BHeaderView era
+  , Signal (EraRule "BBODY" era) ~ BbodySignal era
   , Embed (EraRule "TICKN" era) (CHAIN era)
   , Environment (EraRule "TICKN" era) ~ TicknEnv
   , State (EraRule "TICKN" era) ~ TicknState
@@ -268,6 +256,7 @@ instance
   , AtMostEra "Alonzo" era
   , State (EraRule "LEDGERS" era) ~ LedgerState era
   , EraCertState era
+  , EraBlockHeader (BHeader MockCrypto) era
   ) =>
   STS (CHAIN era)
   where
@@ -289,7 +278,7 @@ chainTransition ::
   ( Embed (EraRule "BBODY" era) (CHAIN era)
   , Environment (EraRule "BBODY" era) ~ BbodyEnv era
   , State (EraRule "BBODY" era) ~ ShelleyBbodyState era
-  , Signal (EraRule "BBODY" era) ~ Block BHeaderView era
+  , Signal (EraRule "BBODY" era) ~ BbodySignal era
   , Embed (EraRule "TICKN" era) (CHAIN era)
   , Environment (EraRule "TICKN" era) ~ TicknEnv
   , State (EraRule "TICKN" era) ~ TicknState
@@ -303,6 +292,7 @@ chainTransition ::
   , State (EraRule "LEDGERS" era) ~ LedgerState era
   , EraGov era
   , EraCertState era
+  , EraBlockHeader (BHeader MockCrypto) era
   ) =>
   TransitionRule (CHAIN era)
 chainTransition =
@@ -317,7 +307,7 @@ chainTransition =
                    etaC
                    etaH
                    lab
-               , Block bh txs
+               , blk@(Block bh _)
                )
            ) -> do
         case prtlSeqChecks lab bh of
@@ -326,7 +316,6 @@ chainTransition =
 
         let pp = nes ^. nesEpochStateL . curPParamsEpochStateL
             chainChecksData = pparamsToChainChecksPParams pp
-            bhView = makeHeaderView bh Nothing
 
         -- We allow one protocol version higher than the current era's maximum, because
         -- that is the way we can get out of the current era into the next one. We test
@@ -334,7 +323,7 @@ chainTransition =
         -- to the next era. This, of course, works properly only with HFC (Hard Fork
         -- Combinator), which is implemented in consensus, but for the purpose of the
         -- CHAIN test this is OK.
-        case chainChecks (succ (eraProtVerHigh @era)) chainChecksData bhView of
+        case chainChecks (succ (eraProtVerHigh @era)) chainChecksData blk of
           Right () -> pure ()
           Left e -> failBecause (RealChainPredicateFailure e)
 
@@ -369,7 +358,7 @@ chainTransition =
 
         BbodyState ls' bcur' <-
           trans @(EraRule "BBODY" era) $
-            TRC (BbodyEnv pp' account, BbodyState ls bcur, Block bhView txs)
+            TRC (BbodyEnv pp' account, BbodyState ls bcur, BbodySignal blk)
 
         let nes'' = updateNES nes' bcur' ls'
             bhb = bhbody bh
@@ -397,7 +386,7 @@ instance
 instance
   ( Era era
   , Era era
-  , PredicateFailure (EraRule "TICKN" era) ~ TicknPredicateFailure
+  , PredicateFailure (EraRule "TICKN" era) ~ Void
   , Event (EraRule "TICKN" era) ~ Void
   ) =>
   Embed TICKN (CHAIN era)

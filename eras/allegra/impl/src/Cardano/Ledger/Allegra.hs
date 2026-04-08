@@ -1,7 +1,9 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -16,6 +18,7 @@ module Cardano.Ledger.Allegra (
 
 import Cardano.Ledger.Allegra.BlockBody ()
 import Cardano.Ledger.Allegra.Era (AllegraEra)
+import Cardano.Ledger.Allegra.Forecast ()
 import Cardano.Ledger.Allegra.PParams ()
 import Cardano.Ledger.Allegra.Rules ()
 import Cardano.Ledger.Allegra.Scripts ()
@@ -25,15 +28,12 @@ import Cardano.Ledger.Allegra.Translation ()
 import Cardano.Ledger.Allegra.Tx (Tx (..))
 import Cardano.Ledger.Allegra.UTxO ()
 import Cardano.Ledger.Binary (DecCBOR, EncCBOR)
+import Cardano.Ledger.Block (EraBlockHeader)
 import Cardano.Ledger.Shelley.API
 import Cardano.Ledger.Shelley.Rules (ShelleyLedgerPredFailure)
 import Data.Bifunctor (Bifunctor (first))
 import Data.List.NonEmpty (NonEmpty)
 import GHC.Generics (Generic)
-
---------------------------------------------------------------------------------
--- Mempool instances
---------------------------------------------------------------------------------
 
 instance ApplyTx AllegraEra where
   newtype ApplyTxError AllegraEra = AllegraApplyTxError (NonEmpty (ShelleyLedgerPredFailure AllegraEra))
@@ -43,4 +43,4 @@ instance ApplyTx AllegraEra where
     first AllegraApplyTxError $
       ruleApplyTxValidation @"LEDGER" validationPolicy globals env state tx
 
-instance ApplyBlock AllegraEra
+instance EraBlockHeader h AllegraEra => ApplyBlock h AllegraEra

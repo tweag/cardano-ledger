@@ -29,7 +29,6 @@ import Cardano.Ledger.CanonicalState.BasicTypes (
   CanonicalCoin (..),
   decodeNamespacedField,
  )
-import Cardano.Ledger.CanonicalState.LedgerCBOR (LedgerCBOR (..))
 import Cardano.Ledger.CanonicalState.Namespace (Era, NamespaceEra)
 import Cardano.Ledger.Compactible (Compactible (fromCompact), toCompactPartial)
 import Cardano.Ledger.Core (
@@ -176,46 +175,6 @@ instance (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v CanonicalStakePo
     Versioned cspsAccountId <- decodeNamespacedField @v "account_id"
     Versioned cspsDelegators <- decodeNamespacedField @v "delegators"
     pure $ Versioned CanonicalStakePoolState {..}
-
-deriving via
-  LedgerCBOR v (VRFVerKeyHash StakePoolVRF)
-  instance
-    (Era era, NamespaceEra v ~ era) => ToCanonicalCBOR v (VRFVerKeyHash StakePoolVRF)
-
-deriving via
-  LedgerCBOR v (VRFVerKeyHash StakePoolVRF)
-  instance
-    (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v (VRFVerKeyHash StakePoolVRF)
-
-deriving via
-  LedgerCBOR v StakePoolRelay
-  instance
-    (Era era, NamespaceEra v ~ era) => ToCanonicalCBOR v StakePoolRelay
-
-deriving via
-  LedgerCBOR v StakePoolRelay
-  instance
-    (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v StakePoolRelay
-
-deriving via
-  LedgerCBOR v PoolMetadata
-  instance
-    (Era era, NamespaceEra v ~ era) => ToCanonicalCBOR v PoolMetadata
-
-deriving via
-  LedgerCBOR v PoolMetadata
-  instance
-    (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v PoolMetadata
-
-deriving via
-  LedgerCBOR v AccountId
-  instance
-    (Era era, NamespaceEra v ~ era) => ToCanonicalCBOR v AccountId
-
-deriving via
-  LedgerCBOR v AccountId
-  instance
-    (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v AccountId
 
 mkCanonicalStakePoolState :: StakePoolState -> CanonicalStakePoolState
 mkCanonicalStakePoolState (StakePoolState {..}) =

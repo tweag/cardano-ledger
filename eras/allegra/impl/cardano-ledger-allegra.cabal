@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name: cardano-ledger-allegra
-version: 1.9.0.0
+version: 1.10.0.0
 license: Apache-2.0
 maintainer: operations@iohk.io
 author: IOHK
@@ -36,6 +36,7 @@ library
   other-modules:
     Cardano.Ledger.Allegra.BlockBody
     Cardano.Ledger.Allegra.Era
+    Cardano.Ledger.Allegra.Forecast
     Cardano.Ledger.Allegra.PParams
     Cardano.Ledger.Allegra.Rules.Bbody
     Cardano.Ledger.Allegra.Rules.Deleg
@@ -75,8 +76,8 @@ library
     bytestring,
     cardano-data,
     cardano-ledger-binary >=1.4,
-    cardano-ledger-core:{cardano-ledger-core, internal} >=1.19,
-    cardano-ledger-shelley ^>=1.18,
+    cardano-ledger-core:{cardano-ledger-core, internal} >=1.20,
+    cardano-ledger-shelley ^>=1.19,
     cardano-slotting,
     cardano-strict-containers,
     cborg,
@@ -139,7 +140,6 @@ library testlib
     Test.Cardano.Ledger.Allegra.Era
     Test.Cardano.Ledger.Allegra.Examples
     Test.Cardano.Ledger.Allegra.Imp
-    Test.Cardano.Ledger.Allegra.Imp.UtxowSpec
     Test.Cardano.Ledger.Allegra.ImpTest
     Test.Cardano.Ledger.Allegra.TreeDiff
 
@@ -179,7 +179,6 @@ library testlib
     generic-random,
     microlens,
     small-steps,
-    text,
     tree-diff,
 
 test-suite tests
