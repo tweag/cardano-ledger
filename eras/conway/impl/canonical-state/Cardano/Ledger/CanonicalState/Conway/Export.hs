@@ -29,6 +29,11 @@ import Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0 (
   EntitiesDRepsOut (EntitiesDRepsOut),
   mkCanonicalDRepState,
  )
+import Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.FutureParams.V0 (
+  EntitiesStakePoolsFutureParamsIn (EntitiesStakePoolsFutureParamsIn),
+  EntitiesStakePoolsFutureParamsOut (EntitiesStakePoolsFutureParamsOut),
+  mkCanonicalStakePoolParams,
+ )
 import Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.V0 (
   CanonicalStakePool (..),
   EntitiesStakePoolsIn (..),
@@ -67,6 +72,7 @@ import Cardano.Ledger.Conway.State (
   FuturePParams (..),
   UTxO (unUTxO),
   csCommitteeCredsL,
+  psFutureStakePoolParamsL,
   psRetiringL,
   psStakePoolsL,
   vsCommitteeStateL,
@@ -311,6 +317,35 @@ addStakePools nes =
         )
         stakePools
 
+addStakePoolsFutureParams ::
+  (Monad m, era ~ ConwayEra) =>
+  NewEpochState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+addStakePoolsFutureParams nes =
+  addNamespacedChunks
+    (Proxy :: Proxy "entities/stake_pools/future_params/v0")
+    stakePoolsFutureParamsEntries
+  where
+    stakePoolsFutureParams =
+      S.each $
+        Map.toList
+          ( nes
+              ^. nesEsL
+              . esLStateL
+              . lsCertStateL
+              . certPStateL
+              . psFutureStakePoolParamsL
+          )
+    stakePoolsFutureParamsEntries =
+      S.map
+        ( \(k, stakePoolParams) ->
+            ChunkEntry
+              (EntitiesStakePoolsFutureParamsIn k)
+              (EntitiesStakePoolsFutureParamsOut $ mkCanonicalStakePoolParams stakePoolParams)
+        )
+        stakePoolsFutureParams
+
 instance ExportState ConwayEra where
   type ExportLedgerState ConwayEra = LedgerState ConwayEra
   type ExportNewEpochState ConwayEra = NewEpochState ConwayEra
@@ -329,5 +364,6 @@ instance ExportState ConwayEra where
       & addAccounts nes
       & addDReps nes
       & addStakePools nes
+      & addStakePoolsFutureParams nes
   getProtocolVersion nes =
     pvMajor $ nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
