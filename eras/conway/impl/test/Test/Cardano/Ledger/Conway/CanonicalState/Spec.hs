@@ -15,8 +15,8 @@ import Cardano.Ledger.BaseTypes (EpochInterval, NonNegativeInterval, UnitInterva
 import Cardano.Ledger.CanonicalState.BasicTypes (CanonicalExUnits (..))
 import Cardano.Ledger.CanonicalState.Conway ()
 import qualified Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 as Blocks.V0
-import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0 as Committee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesAccounts.V0 as EntitiesAccounts.V0
+import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0 as Committee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0 as EntitiesDReps.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.FutureParams.V0 as EntitiesStakePools.FutureParams.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.V0 as EntitiesStakePools.V0
@@ -135,6 +135,7 @@ spec = do
     testNS @"utxo/v0"
     testNS @"entities/committee/v0"
     testNS @"entities/stake_pools/v0"
+    testNS @"entities/stake_pools/future_params/v0"
     testNS @"gov/constitution/v0"
     testNS @"gov/committee/v0"
     testNS @"gov/pparams/v0"

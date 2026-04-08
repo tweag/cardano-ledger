@@ -77,3 +77,6 @@ instance Arbitrary EntitiesStakePools.V0.EntitiesStakePoolsOut where
 
 instance Arbitrary EntitiesStakePools.FutureParams.V0.CanonicalStakePoolParams where
   arbitrary = genericArbitraryU
+
+instance Arbitrary EntitiesStakePools.FutureParams.V0.EntitiesStakePoolsFutureParamsOut where
+  arbitrary = genericArbitraryU
