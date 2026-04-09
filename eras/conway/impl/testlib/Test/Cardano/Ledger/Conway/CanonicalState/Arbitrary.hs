@@ -21,6 +21,7 @@ import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0 as
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0 as EntitiesDReps.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.FutureParams.V0 as EntitiesStakePools.FutureParams.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.V0 as EntitiesStakePools.V0
+import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.VRFKeyHashes.V0 as EntitiesStakePoolsVRFKeyHashes.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 as GovCommittee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovConstitution.V0 as GovConstitution.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 as GovPParams.V0
@@ -79,4 +80,7 @@ instance Arbitrary EntitiesStakePools.FutureParams.V0.CanonicalStakePoolParams w
   arbitrary = genericArbitraryU
 
 instance Arbitrary EntitiesStakePools.FutureParams.V0.EntitiesStakePoolsFutureParamsOut where
+  arbitrary = genericArbitraryU
+
+instance Arbitrary EntitiesStakePoolsVRFKeyHashes.V0.EntitiesStakePoolsVRFKeyHashesOut where
   arbitrary = genericArbitraryU
