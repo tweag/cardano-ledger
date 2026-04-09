@@ -74,7 +74,7 @@ instance
 newtype EntitiesStakePoolsVRFKeyHashesIn = EntitiesStakePoolsVRFKeyHashesIn (VRFVerKeyHash StakePoolVRF)
   deriving (Eq, Ord, Show)
 
-type instance NamespaceKeySize "entities/stake_pools/vrf_key_hashes/v0" = 28
+type instance NamespaceKeySize "entities/stake_pools/vrf_key_hashes/v0" = 32
 
 instance IsKey EntitiesStakePoolsVRFKeyHashesIn where
   keySize = namespaceKeySize @"entities/stake_pools/vrf_key_hashes/v0"
