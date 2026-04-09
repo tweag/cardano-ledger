@@ -40,6 +40,10 @@ import Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.V0 (
   EntitiesStakePoolsOut (..),
   mkCanonicalStakePoolState,
  )
+import Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.VRFKeyHashes.V0 (
+  EntitiesStakePoolsVRFKeyHashesIn (EntitiesStakePoolsVRFKeyHashesIn),
+  EntitiesStakePoolsVRFKeyHashesOut (EntitiesStakePoolsVRFKeyHashesOut),
+ )
 import Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 (
   CanonicalCommittee (..),
   GovCommitteeIn (..),
@@ -75,6 +79,7 @@ import Cardano.Ledger.Conway.State (
   psFutureStakePoolParamsL,
   psRetiringL,
   psStakePoolsL,
+  psVRFKeyHashesL,
   vsCommitteeStateL,
   vsDRepsL,
  )
@@ -346,6 +351,35 @@ addStakePoolsFutureParams nes =
         )
         stakePoolsFutureParams
 
+addStakePoolsVRFKeyHashes ::
+  (Monad m, era ~ ConwayEra) =>
+  NewEpochState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+addStakePoolsVRFKeyHashes nes =
+  addNamespacedChunks
+    (Proxy :: Proxy "entities/stake_pools/vrf_key_hashes/v0")
+    stakePoolsVRFKeyHashesEntries
+  where
+    stakePoolsVRFKeyHashes =
+      S.each $
+        Map.toList
+          ( nes
+              ^. nesEsL
+              . esLStateL
+              . lsCertStateL
+              . certPStateL
+              . psVRFKeyHashesL
+          )
+    stakePoolsVRFKeyHashesEntries =
+      S.map
+        ( \(k, n) ->
+            ChunkEntry
+              (EntitiesStakePoolsVRFKeyHashesIn k)
+              (EntitiesStakePoolsVRFKeyHashesOut n)
+        )
+        stakePoolsVRFKeyHashes
+
 instance ExportState ConwayEra where
   type ExportLedgerState ConwayEra = LedgerState ConwayEra
   type ExportNewEpochState ConwayEra = NewEpochState ConwayEra
@@ -365,5 +399,6 @@ instance ExportState ConwayEra where
       & addDReps nes
       & addStakePools nes
       & addStakePoolsFutureParams nes
+      & addStakePoolsVRFKeyHashes nes
   getProtocolVersion nes =
     pvMajor $ nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
