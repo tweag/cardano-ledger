@@ -23,6 +23,8 @@ module Cardano.Ledger.CanonicalState.Conway (
   fromGovActionState,
   mkGovProposalIn,
   fromGovProposalIn,
+  fromCanonicalAccountState,
+  mkCanonicalAccountState,
 ) where
 
 import Cardano.Ledger.BaseTypes (EpochNo (..))
@@ -39,8 +41,8 @@ import Cardano.Ledger.CanonicalState.BasicTypes (
   mkCanonicalExUnits,
   mkOnChain,
  )
-import Cardano.Ledger.CanonicalState.LedgerCBOR (LedgerCBOR (..))
 import Cardano.Ledger.CanonicalState.Namespace
+import Cardano.Ledger.CanonicalState.Namespace.EntitiesAccounts.V0 (CanonicalAccountState (..))
 import Cardano.Ledger.CanonicalState.Namespace.GovConstitution.V0
 import Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0
 import Cardano.Ledger.CanonicalState.Namespace.GovProposals.V0
@@ -57,7 +59,6 @@ import Cardano.Ledger.Conway.State (
     casDeposit,
     casStakePoolDelegation
   ),
-  DRep,
  )
 import Cardano.Ledger.Credential (Credential (..))
 import Cardano.SCLS.CBOR.Canonical (
@@ -391,30 +392,24 @@ instance FromCanonicalCBOR v Vote where
       2 -> return (Versioned Abstain)
       _ -> fail "Invalid CanonicalVote"
 
-deriving via
-  LedgerCBOR v DRep
-  instance
-    (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v DRep
+mkCanonicalAccountState ::
+  ConwayAccountState era ->
+  CanonicalAccountState
+mkCanonicalAccountState ConwayAccountState {..} =
+  CanonicalAccountState
+    { casBalance = CanonicalCoin casBalance
+    , casDeposit = CanonicalCoin casDeposit
+    , casDRepDelegation = casDRepDelegation
+    , casStakePoolDelegation = casStakePoolDelegation
+    }
 
-deriving via
-  LedgerCBOR v DRep
-  instance
-    (Era era, NamespaceEra v ~ era) => ToCanonicalCBOR v DRep
-
-instance ToCanonicalCBOR "entities/accounts/v0" (ConwayAccountState ConwayEra) where
-  toCanonicalCBOR v ConwayAccountState {..} =
-    encodeAsMap
-      [ mkEncodablePair v ("balance" :: Text) (CanonicalCoin casBalance)
-      , mkEncodablePair v ("deposit" :: Text) (CanonicalCoin casDeposit)
-      , mkEncodablePair v ("drep_delegation" :: Text) casDRepDelegation
-      , mkEncodablePair v ("stake_pool_delegation" :: Text) casStakePoolDelegation
-      ]
-
-instance FromCanonicalCBOR "entities/accounts/v0" (ConwayAccountState ConwayEra) where
-  fromCanonicalCBOR = do
-      decodeMapLenCanonicalOf 4
-      Versioned (CanonicalCoin casBalance) <- decodeNamespacedField @"entities/accounts/v0" "balance"
-      Versioned (CanonicalCoin casDeposit) <- decodeNamespacedField @"entities/accounts/v0" "deposit"
-      Versioned casDRepDelegation <- decodeNamespacedField @"entities/accounts/v0" "drep_delegation"
-      Versioned casStakePoolDelegation <- decodeNamespacedField @"entities/accounts/v0" "stake_pool_delegation"
-      pure $ Versioned ConwayAccountState {..}
+fromCanonicalAccountState ::
+  CanonicalAccountState ->
+  ConwayAccountState era
+fromCanonicalAccountState CanonicalAccountState {..} =
+  ConwayAccountState
+    { casBalance = unCoin casBalance
+    , casDeposit = unCoin casDeposit
+    , casDRepDelegation = casDRepDelegation
+    , casStakePoolDelegation = casStakePoolDelegation
+    }
