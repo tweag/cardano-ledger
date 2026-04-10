@@ -10,6 +10,7 @@ module Cardano.Ledger.CanonicalState.Conway.Export () where
 import Cardano.Ledger.BaseTypes (ProtVer (..), StrictMaybe (..))
 import Cardano.Ledger.CanonicalState.Conway (
   fromGovActionState,
+  mkCanonicalAccountState,
   mkCanonicalConstitution,
  )
 import Cardano.Ledger.CanonicalState.Export (ExportState (..))
@@ -243,7 +244,9 @@ addAccounts nes =
   where
     accounts =
       S.map
-        (\(cred, accountState) -> ChunkEntry (EntitiesAccountsIn cred) (EntitiesAccountsOut accountState))
+        ( \(cred, accountState) ->
+            ChunkEntry (EntitiesAccountsIn cred) (EntitiesAccountsOut $ mkCanonicalAccountState accountState)
+        )
         $ S.each
         $ Map.toList
         $ nes
