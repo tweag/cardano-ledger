@@ -66,9 +66,12 @@ spec = do
     describe "entities/accounts/v0" $ do
       isCanonical @"entities/accounts/v0" @DRep
       validateType @"entities/accounts/v0" @DRep "drep"
-      isCanonical @"entities/accounts/v0" @(EntitiesAccounts.V0.EntitiesAccountsOut ConwayEra)
-      validateType @"entities/accounts/v0" @(EntitiesAccounts.V0.EntitiesAccountsOut ConwayEra)
+      isCanonical @"entities/accounts/v0" @EntitiesAccounts.V0.CanonicalAccountState
+      validateType @"entities/accounts/v0" @EntitiesAccounts.V0.CanonicalAccountState
         "account_state"
+      isCanonical @"entities/accounts/v0" @EntitiesAccounts.V0.EntitiesAccountsOut
+      validateType @"entities/accounts/v0" @EntitiesAccounts.V0.EntitiesAccountsOut
+        "record_entry"
     describe "entities/dreps/v0" $ do
       isCanonical @"entities/dreps/v0" @EntitiesDReps.V0.CanonicalDRepState
       validateType @"entities/dreps/v0" @EntitiesDReps.V0.CanonicalDRepState "drep_state"

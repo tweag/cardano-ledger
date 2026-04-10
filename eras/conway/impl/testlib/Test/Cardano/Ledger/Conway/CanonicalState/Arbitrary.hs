@@ -61,7 +61,10 @@ instance Arbitrary CanonicalExUnits where
 instance Arbitrary (GovProposals.V0.GovProposalOut CanonicalGovActionState) where
   arbitrary = snd . fromGovActionState <$> arbitrary @(GovActionState ConwayEra)
 
-instance Arbitrary (EntitiesAccounts.V0.EntitiesAccountsOut ConwayEra) where
+instance Arbitrary EntitiesAccounts.V0.CanonicalAccountState where
+  arbitrary = genericArbitraryU
+
+instance Arbitrary EntitiesAccounts.V0.EntitiesAccountsOut where
   arbitrary = genericArbitraryU
 
 instance Arbitrary EntitiesDReps.V0.CanonicalDRepState where
