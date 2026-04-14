@@ -104,8 +104,8 @@ source-repository-package
   type: git
   location: https://github.com/tweag/cardano-cls.git
   subdir: merkle-tree-incremental mempack-scls scls-cbor scls-cardano scls-format scls-core
-  --sha256: sha256-BoAotLgxMipOIMcZrmlr6EtQzqC5HyEA0ZpK8nvCmJs=
-  tag: 5161deb34247a51160f2e8d58b6cc2d48044ea2c
+  --sha256: sha256-fasMDDKpCU9P0PALMOpX4Vutt9EZfmPdMRldEEPiTII=
+  tag: b607576e149318518c8de7136bcd908551d4bc27
 
 constraints:
   -- Happy version 2.2.1 fails to compile haskell-src-exts
