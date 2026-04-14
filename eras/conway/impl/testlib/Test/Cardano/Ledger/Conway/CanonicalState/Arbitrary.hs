@@ -59,7 +59,7 @@ instance Arbitrary CanonicalExUnits where
   arbitrary = mkCanonicalExUnits <$> arbitrary
 
 instance Arbitrary (GovProposals.V0.GovProposalOut CanonicalGovActionState) where
-  arbitrary = snd . fromGovActionState <$> arbitrary @(GovActionState ConwayEra)
+  arbitrary = snd . fromGovActionState 0 <$> arbitrary
 
 instance Arbitrary EntitiesAccounts.V0.CanonicalAccountState where
   arbitrary = genericArbitraryU
@@ -87,3 +87,4 @@ instance Arbitrary EntitiesStakePools.FutureParams.V0.EntitiesStakePoolsFuturePa
 
 instance Arbitrary EntitiesStakePoolsVRFKeyHashes.V0.EntitiesStakePoolsVRFKeyHashesOut where
   arbitrary = genericArbitraryU
+

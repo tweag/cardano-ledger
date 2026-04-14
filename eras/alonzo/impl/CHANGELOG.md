@@ -2,6 +2,7 @@
 
 ## 1.16.0.0
 
+* Add `ApplyTick` instance for `AlonzoEra`
 * Add `mkPlutusTxInfoFromResult` and `toPlutusTxInfoForPurpose` helpers
 * Make `PlutusPurpose` injective in the selector type.
 * `LedgerTxInfo` now supports any transaction level
@@ -26,6 +27,7 @@
 
 ### `testlib`
 
+* Added `Proxy era` argument to `exUnitsRule`
 * `TranslationInstance` has a new field `tiPlutusPurpose`
 
 ## 1.15.0.0
