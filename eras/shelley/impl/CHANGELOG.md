@@ -2,6 +2,7 @@
 
 ## 1.19.0.0
 
+* Add `ApplyTick` typeclass with `applyTick` method, extracted from `ApplyBlock`.
 * Remove `validMetadata` from `SoftForks`
 * Add `updateUTxOStateNoFees`
 * Add `Shelley.API.Forecast` and `Shelley.Forecast`:
@@ -36,9 +37,12 @@
   - `ShelleyPoolPredFailure`
   - `ShelleyPpupPredFailure`
   - `ChainPredicateFailure`
+* Add protocol version validation to `createInitialState`:
+  - Validate that current protocol version is within the era's bounds
 
 ### `testlib`
 
+* Add `HuddleRule "int32" ShelleyEra` instance
 * Add `withIssuerAndTxsInBlock_` and `withIssuerAndTxsInBlock`
 * Add a `Maybe (KeyHash BlockIssuer)` parameter to `withTxsInBlockEither`
 

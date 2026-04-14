@@ -1,7 +1,8 @@
 # Version history for `cardano-ledger-conway`
 
-## 1.22.0.0
+## 1.23.0.0
 
+* Add `ApplyTick` instance for `ConwayEra`
 * Add `ConwayUtxosEnv`
 * Change `STS` instance of `ConwayUTXOS`: use `ConwayUtxosEnv` as `Environment` and `()` as `State`
 * Add `updateTreasuryDonation`
@@ -29,6 +30,11 @@
   - `ConwayUtxowPredFailure`
 * Remove `NoThunks` instance for `ConwayContextError`
 * Make `ConwayContextError` constructors lazy
+
+## 1.22.0.0
+
+* Switch `ConwayAccountState` to use `Maybe` instead of `StrictMaybe`
+* Add `balanceConwayAccountStateL`, `depositConwayAccountStateL`, `stakePoolDelegationConwayAccountStateL` and `dRepDelegationConwayAccountStateL`.
 
 ## 1.21.0.0
 
