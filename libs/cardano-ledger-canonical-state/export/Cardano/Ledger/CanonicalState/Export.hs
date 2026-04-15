@@ -1,41 +1,92 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
-module Cardano.Ledger.CanonicalState.Export where
+module Cardano.Ledger.CanonicalState.Export (
+  withScls,
+  EraTestImp (..),
+  ExportState (..),
+  Metadata (..),
+  TestFixture (..),
+  dump,
+  ExportHooks (..),
+  toGlobals,
+  ExportGlobals,
+) where
 
-import Cardano.Ledger.BaseTypes (Version)
+import Cardano.Ledger.BaseTypes (
+  EpochNo (EpochNo),
+  EpochSize,
+  Globals (..),
+  SlotNo (SlotNo),
+  Version,
+  epochInfo,
+  epochInfoPure,
+ )
 import Cardano.Ledger.Binary (
   EncCBOR (encCBOR),
+  Encoding,
   toLazyByteString,
   toPlainEncoding,
  )
-import Cardano.Ledger.Core (Era (eraName))
+import Cardano.Ledger.Core (
+  Era (eraName),
+  EraRule,
+  EraTx (Tx),
+  KeyHash,
+  KeyRole (BlockIssuer),
+  TopTx,
+ )
 import Cardano.SCLS.CDDL (knownNamespaceKeySizes)
 import Cardano.SCLS.Internal.Entry.ChunkEntry (SomeChunkEntry)
 import Cardano.SCLS.Internal.Serializer.Dump.Plan (
   SerializationPlan,
  )
 import Cardano.SCLS.Internal.Serializer.External.Impl (serialize)
-import Cardano.Types.SlotNo (SlotNo (SlotNo))
-import Control.Monad (void)
+import Cardano.Slotting.EpochInfo (epochInfoSize, epochInfoSlotLength, fixedEpochInfo)
+import Cardano.Slotting.Time (SlotLength)
+import Cardano.Types.Namespace (Namespace)
+import qualified Cardano.Types.SlotNo as SSlotNo
+import Control.Monad (forM)
 import Control.Monad.Trans.Resource (ResIO, runResourceT)
+import Control.State.Transition (PredicateFailure)
 import Data.Aeson (
-  FromJSON,
-  ToJSON (toEncoding),
+  FromJSON (parseJSON),
+  KeyValue (explicitToField),
+  ToJSON (..),
   decodeFileStrict,
   defaultOptions,
   encode,
+  genericParseJSON,
   genericToEncoding,
+  genericToJSON,
+  object,
+  pairs,
+  withObject,
+  (.:),
+  (.=),
  )
+import Data.Bifunctor (Bifunctor (first))
 import qualified Data.ByteString.Lazy as BSL
+import Data.Function ((&))
+import Data.Functor.Identity (Identity (runIdentity))
 import Data.MemPack.Extra (RawBytes)
+import Data.Sequence.Strict (StrictSeq)
+import GHC.Base (NonEmpty)
 import GHC.Generics (Generic)
+import GHC.IsList (IsList (toList))
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath (joinPath, (</>))
 import Test.Hspec.Core.Spec (
@@ -44,16 +95,118 @@ import Test.Hspec.Core.Spec (
   Tree (Leaf, Node, NodeWithCleanup),
   mapSpecForest,
  )
-import Test.ImpSpec (ImpInit (impInitEnv), ImpSpec (ImpSpecEnv))
+import Test.ImpSpec (ImpInit (ImpInit, impInitEnv), ImpSpec (ImpSpecEnv))
+
+data TestFixture = TestFixture
+  { epochNo :: EpochNo
+  , initialState :: FilePath
+  , transactions :: Either FilePath (FilePath, [FilePath])
+  , finalState :: FilePath
+  }
+  deriving (Generic, Show)
+
+instance ToJSON TestFixture where
+  toEncoding = genericToEncoding defaultOptions
+
+instance FromJSON TestFixture
+
+data ExportGlobals = ExportGlobals
+  { eFixedEpochSize :: EpochSize
+  , eFixedSlotLength :: SlotLength
+  , eGlobals :: Globals
+  }
+
+toGlobals :: ExportGlobals -> Globals
+toGlobals (ExportGlobals {..}) =
+  eGlobals
+    { epochInfo = fixedEpochInfo eFixedEpochSize eFixedSlotLength
+    }
+
+fromGlobals :: Globals -> ExportGlobals
+fromGlobals globals =
+  ExportGlobals
+    { eFixedEpochSize = runIdentity $ epochInfoSize (epochInfoPure globals) (EpochNo 0)
+    , eFixedSlotLength = runIdentity $ epochInfoSlotLength (epochInfoPure globals) (SlotNo 0)
+    , eGlobals = globals
+    }
+
+instance ToJSON ExportGlobals where
+  toEncoding (ExportGlobals {eFixedEpochSize, eFixedSlotLength, eGlobals = Globals {..}}) =
+    pairs
+      ( "fixedEpochSize" .= eFixedEpochSize
+          <> explicitToField (genericToEncoding defaultOptions) "fixedSlotLength" eFixedSlotLength
+          <> "slotsPerKESPeriod" .= slotsPerKESPeriod
+          <> "stabilityWindow" .= stabilityWindow
+          <> "randomnessStabilisationWindow" .= randomnessStabilisationWindow
+          <> "securityParameter" .= securityParameter
+          <> "maxKESEvo" .= maxKESEvo
+          <> "quorum" .= quorum
+          <> "maxLovelaceSupply" .= maxLovelaceSupply
+          <> explicitToField (genericToEncoding defaultOptions) "activeSlotCoeff" activeSlotCoeff
+          <> "networkId" .= networkId
+          <> "systemStart" .= systemStart
+      )
+  toJSON (ExportGlobals {eFixedEpochSize, eFixedSlotLength, eGlobals = Globals {..}}) =
+    object
+      [ "fixedEpochSize" .= eFixedEpochSize
+      , explicitToField (genericToJSON defaultOptions) "fixedSlotLength" eFixedSlotLength
+      , "slotsPerKESPeriod" .= slotsPerKESPeriod
+      , "stabilityWindow" .= stabilityWindow
+      , "randomnessStabilisationWindow" .= randomnessStabilisationWindow
+      , "securityParameter" .= securityParameter
+      , "maxKESEvo" .= maxKESEvo
+      , "quorum" .= quorum
+      , "maxLovelaceSupply" .= maxLovelaceSupply
+      , explicitToField (genericToJSON defaultOptions) "activeSlotCoeff" activeSlotCoeff
+      , "networkId" .= networkId
+      , "systemStart" .= systemStart
+      ]
+
+instance FromJSON ExportGlobals where
+  parseJSON = withObject "ExportGlobals" $ \v ->
+    ( \eFixedEpochSize eFixedSlotLength slotsPerKESPeriod stabilityWindow randomnessStabilisationWindow securityParameter maxKESEvo quorum maxLovelaceSupply activeSlotCoeff networkId systemStart ->
+        ExportGlobals
+          { eFixedEpochSize
+          , eFixedSlotLength
+          , eGlobals =
+              Globals
+                { epochInfo = fixedEpochInfo eFixedEpochSize eFixedSlotLength
+                , slotsPerKESPeriod
+                , stabilityWindow
+                , randomnessStabilisationWindow
+                , securityParameter
+                , maxKESEvo
+                , quorum
+                , maxLovelaceSupply
+                , activeSlotCoeff
+                , networkId
+                , systemStart
+                }
+          }
+    )
+      <$> v .: "fixedEpochSize"
+      <*> (v .: "fixedSlotLength" >>= genericParseJSON defaultOptions)
+      <*> v .: "slotsPerKESPeriod"
+      <*> v .: "stabilityWindow"
+      <*> v .: "randomnessStabilisationWindow"
+      <*> v .: "securityParameter"
+      <*> v .: "maxKESEvo"
+      <*> v .: "quorum"
+      <*> v .: "maxLovelaceSupply"
+      <*> (v .: "activeSlotCoeff" >>= genericParseJSON defaultOptions)
+      <*> v .: "networkId"
+      <*> v .: "systemStart"
 
 data Metadata = Metadata
   { era :: String
+  , eraImp :: String
   , protocolVersion :: Version
   , description :: String
-  , stateCount :: Int
+  , states :: [TestFixture]
   , path :: [String]
+  , globals :: ExportGlobals
   }
-  deriving (Generic, Show)
+  deriving (Generic)
 
 instance ToJSON Metadata where
   toEncoding = genericToEncoding defaultOptions
@@ -64,34 +217,62 @@ dump ::
   FilePath ->
   SlotNo ->
   SerializationPlan (SomeChunkEntry RawBytes) ResIO ->
-  IO ()
-dump filepath slotNo =
-  -- TODO: should we ignore?
-  void
-    . runResourceT
+  IO (Either [Namespace] ())
+dump filepath (SlotNo slotNo) =
+  runResourceT
     . serialize
       filepath
-      slotNo
+      (SSlotNo.SlotNo slotNo)
       knownNamespaceKeySizes
+
+type TxFailures era = NonEmpty (PredicateFailure (EraRule "LEDGER" era))
+
+type BlockFailures era = NonEmpty (PredicateFailure (EraRule "BBODY" era))
 
 class ExportState era where
   type ExportLedgerState era
-  type ExportNewEpochState era
   dumpLedgerState :: ExportLedgerState era -> SerializationPlan (SomeChunkEntry RawBytes) ResIO
-  dumpNewEpochState :: ExportNewEpochState era -> SerializationPlan (SomeChunkEntry RawBytes) ResIO
-  getProtocolVersion :: ExportNewEpochState era -> Version
+  getProtocolVersion :: ExportLedgerState era -> Version
+  getEpochNo :: ExportLedgerState era -> EpochNo
+  encodeTxFailures :: TxFailures era -> Encoding
+  encodeBlockFailures :: BlockFailures era -> Encoding
+
+data EraTestImp
+  = ConwayEraTestImp
+
+eraTestImpName :: EraTestImp -> String
+eraTestImpName = \case
+  ConwayEraTestImp -> "Conway"
 
 withScls ::
-  forall era a tx failures event.
-  (Era era, ExportState era, EncCBOR tx) =>
-  ( ImpSpecEnv a ->
-    (ExportNewEpochState era -> tx -> Either failures (ExportLedgerState era, event) -> IO ()) ->
+  forall era a.
+  (Era era, ExportState era, EncCBOR (Tx TopTx era)) =>
+  EraTestImp ->
+  ( ( Globals ->
+      SlotNo ->
+      ExportLedgerState era ->
+      Tx TopTx era ->
+      Either (TxFailures era) (ExportLedgerState era) ->
+      IO ()
+    ) ->
+    ImpSpecEnv a ->
+    ImpSpecEnv a
+  ) ->
+  ( ( Globals ->
+      SlotNo ->
+      ExportLedgerState era ->
+      KeyHash BlockIssuer ->
+      StrictSeq (Tx TopTx era) ->
+      Either (BlockFailures era) (ExportLedgerState era) ->
+      IO ()
+    ) ->
+    ImpSpecEnv a ->
     ImpSpecEnv a
   ) ->
   FilePath ->
   SpecWith (ImpInit a) ->
   SpecWith (ImpInit a)
-withScls setHook baseDir =
+withScls eraImp setTxHook setBlockHook baseDir =
   mapSpecForest $
     mapForest []
   where
@@ -103,24 +284,37 @@ withScls setHook baseDir =
     mapItem
       path
       item@Item
-        { itemRequirement
+        { itemRequirement = description
         , itemExample = originalItemExample
         } =
         item
           { itemExample = \params hook ->
-              originalItemExample params $ \action ->
-                hook $ \impInit ->
-                  action
-                    ( impInit
-                        { impInitEnv = setHook (impInitEnv impInit) (export (reverse path) itemRequirement)
-                        }
-                    )
+              originalItemExample params $ \hookAction ->
+                hook $ \impInit@ImpInit {impInitEnv} ->
+                  hookAction $
+                    impInit
+                      { impInitEnv =
+                          impInitEnv
+                            & setTxHook (exportTx (reverse path) description)
+                            & setBlockHook (exportBlock (reverse path) description)
+                      }
           }
-    export path description nes tx res = do
+    exportTx path description globals slotNo nes tx res =
+      export path description globals slotNo nes (dumpTx tx) (first (encodeTxFailures @era) res)
+    exportBlock path description globals slotNo nes blockIssuer txs res =
+      export
+        path
+        description
+        globals
+        slotNo
+        nes
+        (dumpBlock blockIssuer txs)
+        (first (encodeBlockFailures @era) res)
+    export path description globals slotNo nes dumpTxOrBlock res = do
       let protocolVersion = getProtocolVersion @era nes
       let dir = joinPath ([baseDir, "Protocol " <> show protocolVersion] ++ path ++ [description])
       let metadataFile = dir </> "metadata.json"
-      ctx@Metadata {stateCount} <-
+      ctx@Metadata {states} <-
         doesFileExist metadataFile >>= \metadataExists ->
           if metadataExists
             then
@@ -129,19 +323,97 @@ withScls setHook baseDir =
                 Nothing -> do
                   -- TODO: clean up the directory if the metadata file is corrupted, to avoid leaving around junk files?
                   error $ "Failed to decode metadata file: " <> metadataFile
-            else pure $ Metadata {era = eraName @era, protocolVersion, description, stateCount = 0, path}
+            else
+              pure $
+                Metadata
+                  { eraImp = eraTestImpName eraImp
+                  , era = eraName @era
+                  , protocolVersion
+                  , description
+                  , states = []
+                  , path
+                  , globals = fromGlobals globals
+                  }
+      let stateCount = length states
       createDirectoryIfMissing True dir
-      let initialSlotNo = SlotNo 1 -- TODO: use the actual slot number if available
-      dump (dir </> ("initial-" <> show stateCount <> ".scls")) initialSlotNo $ dumpNewEpochState @era nes
-      -- Dump tx
-      BSL.writeFile
-        (dir </> ("txn-" <> show stateCount <> ".cbor"))
-        (toLazyByteString (toPlainEncoding protocolVersion (encCBOR tx)))
-      case res of
-        Left _failures -> do
-          -- TODO: dump the failures
-          pure ()
-        Right (st, _) -> do
-          let finalSlotNo = SlotNo 1 -- TODO: use the actual slot number if available
-          dump (dir </> ("final-" <> show stateCount <> ".scls")) finalSlotNo $ dumpLedgerState @era st -- TODO: this should be dumpNewEpochState, but we don't have the final NewEpochState available here.
-      BSL.writeFile metadataFile $ encode $ ctx {stateCount = stateCount + 1}
+      let initialStateFile = "initial-" <> show stateCount <> ".scls"
+      Right () <-
+        dump (dir </> initialStateFile) slotNo $
+          dumpLedgerState @era nes
+      txFiles <- dumpTxOrBlock protocolVersion stateCount dir
+      finalStateFile <-
+        case res of
+          Left failures -> do
+            let failuresFile = "failures-" <> show stateCount <> ".cbor"
+            BSL.writeFile
+              (dir </> failuresFile)
+              (toLazyByteString (toPlainEncoding protocolVersion failures))
+            pure failuresFile
+          Right st -> do
+            let finalStateFile = "final-" <> show stateCount <> ".scls"
+            Right () <-
+              dump (dir </> finalStateFile) slotNo $
+                dumpLedgerState @era st
+            pure finalStateFile
+      let epochNo = getEpochNo @era nes
+      BSL.writeFile metadataFile $
+        encode $
+          ctx
+            { states =
+                ( TestFixture
+                    { epochNo
+                    , initialState = initialStateFile
+                    , finalState = finalStateFile
+                    , transactions = txFiles
+                    }
+                )
+                  : states
+            }
+
+dumpTx ::
+  EncCBOR (Tx TopTx era) =>
+  Tx TopTx era -> Version -> Int -> FilePath -> IO (Either FilePath (FilePath, [FilePath]))
+dumpTx tx protocolVersion stateCount dir = do
+  let txFile = "txn-" <> show stateCount <> ".cbor"
+  BSL.writeFile
+    (dir </> txFile)
+    (toLazyByteString (toPlainEncoding protocolVersion (encCBOR tx)))
+  pure (Left txFile)
+
+dumpBlock ::
+  EncCBOR (Tx TopTx era) =>
+  KeyHash BlockIssuer ->
+  StrictSeq (Tx TopTx era) ->
+  Version ->
+  Int ->
+  FilePath ->
+  IO (Either FilePath (FilePath, [FilePath]))
+dumpBlock blockIssuer txs protocolVersion stateCount dir = do
+  let blockIssuerFile = "block-" <> show stateCount <> "-issuer.cbor"
+  BSL.writeFile
+    (dir </> blockIssuerFile)
+    (toLazyByteString (toPlainEncoding protocolVersion (encCBOR blockIssuer)))
+  fmap (Right . (blockIssuerFile,)) $ forM (zip [0 :: Integer ..] (toList txs)) $ \(i, tx) -> do
+    let txFile = "block-" <> show stateCount <> "-tx-" <> show i <> ".cbor"
+    BSL.writeFile
+      (dir </> txFile)
+      (toLazyByteString (toPlainEncoding protocolVersion (encCBOR tx)))
+    pure txFile
+
+data ExportHooks era = ExportHooks
+  { exportTxHook ::
+      Globals ->
+      SlotNo ->
+      ExportLedgerState era ->
+      Tx TopTx era ->
+      Either (TxFailures era) (ExportLedgerState era) ->
+      IO ()
+  , exportBlockHook ::
+      Globals ->
+      SlotNo ->
+      ExportLedgerState era ->
+      KeyHash BlockIssuer ->
+      StrictSeq (Tx TopTx era) ->
+      Either (BlockFailures era) (ExportLedgerState era) ->
+      IO ()
+  }

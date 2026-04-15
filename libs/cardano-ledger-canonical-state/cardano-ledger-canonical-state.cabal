@@ -105,6 +105,8 @@ library export
     bytestring,
     cardano-ledger-binary,
     cardano-ledger-core,
+    cardano-slotting,
+    cardano-strict-containers,
     directory,
     filepath,
     hspec-core,
@@ -112,3 +114,4 @@ library export
     resourcet,
     scls-cardano,
     scls-format,
+    small-steps,

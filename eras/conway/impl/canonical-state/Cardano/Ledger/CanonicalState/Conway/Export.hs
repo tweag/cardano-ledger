@@ -8,6 +8,7 @@
 module Cardano.Ledger.CanonicalState.Conway.Export () where
 
 import Cardano.Ledger.BaseTypes (ProtVer (..), StrictMaybe (..), strictMaybeToMaybe)
+import Cardano.Ledger.Binary (EncCBOR (encCBOR), encodeList)
 import Cardano.Ledger.CanonicalState.Conway (
   fromGovActionState,
   mkCanonicalAccountState,
@@ -123,10 +124,11 @@ import Cardano.SCLS.Internal.Serializer.Dump.Plan (
  )
 import Data.Data (Proxy (Proxy))
 import Data.Foldable (Foldable (toList))
+import Data.Functor ((<&>))
 import qualified Data.Map.Merge.Strict as Map
 import qualified Data.Map.Strict as Map
 import Data.MemPack.Extra (RawBytes)
-import Lens.Micro ((&), (<&>), (^.))
+import Lens.Micro ((&), (^.))
 import qualified Streaming.Prelude as S
 
 addUtxo ::
@@ -458,12 +460,8 @@ addDormantEpochs nes =
     )
 
 instance ExportState ConwayEra where
-  type ExportLedgerState ConwayEra = LedgerState ConwayEra
-  type ExportNewEpochState ConwayEra = NewEpochState ConwayEra
-  dumpLedgerState ls =
-    defaultSerializationPlan
-      & addUtxo ls
-  dumpNewEpochState nes =
+  type ExportLedgerState ConwayEra = NewEpochState ConwayEra
+  dumpLedgerState nes =
     defaultSerializationPlan
       & addUtxo (nes ^. nesEsL . esLStateL)
       & addBlocks nes
@@ -481,3 +479,6 @@ instance ExportState ConwayEra where
       & addDormantEpochs nes
   getProtocolVersion nes =
     pvMajor $ nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
+  getEpochNo nes = nes ^. nesELL
+  encodeTxFailures = encodeList encCBOR . toList
+  encodeBlockFailures = encodeList encCBOR . toList
