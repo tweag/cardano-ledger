@@ -25,6 +25,7 @@ import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.VRFK
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 as GovCommittee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovConstitution.V0 as GovConstitution.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 as GovPParams.V0
+import qualified Cardano.Ledger.CanonicalState.Namespace.GovProposals.Roots.V0 as GovProposals.Roots.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovProposals.V0 as GovProposals.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.UTxO.V0 as UTxO.V0
 import Cardano.Ledger.Conway (ConwayEra)
@@ -41,6 +42,7 @@ import Cardano.Ledger.Core (
 import Cardano.Ledger.Credential (Credential)
 import Cardano.Ledger.DRep (DRep)
 import Cardano.Ledger.State (PoolMetadata, StakePoolRelay)
+import Cardano.Ledger.TxIn (TxId)
 import Cardano.SCLS.CBOR.Canonical.Encoder (ToCanonicalCBOR (..))
 import Cardano.SCLS.Testlib
 import Data.Typeable
@@ -155,6 +157,13 @@ spec = do
       isCanonical @"gov/proposals/v0" @(GovProposals.V0.GovProposalOut CanonicalGovActionState)
       validateType @"gov/proposals/v0" @(GovProposals.V0.GovProposalOut CanonicalGovActionState)
         "record_entry"
+    describe "gov/proposals/roots/v0" $ do
+      isCanonical @"gov/proposals/roots/v0" @TxId
+      isCanonical @"gov/proposals/roots/v0" @GovProposals.V0.CanonicalGovActionIx
+      isCanonical @"gov/proposals/roots/v0" @GovProposals.V0.CanonicalGovActionId
+      validateType @"gov/proposals/roots/v0" @GovProposals.V0.CanonicalGovActionId "gov_action_id"
+      isCanonical @"gov/proposals/roots/v0" @GovProposals.Roots.V0.GovProposalsRootsOut
+      validateType @"gov/proposals/roots/v0" @GovProposals.Roots.V0.GovProposalsRootsOut "record_entry"
   describe "namespaces" $ do
     testNS @"blocks/v0"
     testNS @"utxo/v0"
@@ -166,6 +175,7 @@ spec = do
     testNS @"gov/committee/v0"
     testNS @"gov/pparams/v0"
     testNS @"gov/proposals/v0"
+    testNS @"gov/proposals/roots/v0"
 
 isCanonical ::
   forall ns a. (KnownSymbol ns, ToCanonicalCBOR ns a, Typeable a, Arbitrary a, Show a) => Spec
