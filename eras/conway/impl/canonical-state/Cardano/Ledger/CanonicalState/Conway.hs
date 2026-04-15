@@ -86,6 +86,7 @@ type instance NamespaceEra "entities/stake_pools/future_params/v0" = ConwayEra
 
 type instance NamespaceEra "entities/stake_pools/vrf_key_hashes/v0" = ConwayEra
 
+type instance NamespaceEra "entities/dormant_epochs/v0" = ConwayEra
 
 type instance NamespaceEra "gov/committee/v0" = ConwayEra
 

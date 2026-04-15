@@ -125,6 +125,12 @@ spec = do
       validateType @"entities/stake_pools/vrf_key_hashes/v0"
         @EntitiesStakePoolsVRFKeyHashes.V0.EntitiesStakePoolsVRFKeyHashesOut
         "record_entry"
+    describe "entities/dormant_epochs/v0" $ do
+      isCanonical @"entities/dormant_epochs/v0" @EpochNo
+      validateType @"entities/dormant_epochs/v0" @EpochNo "epoch_no"
+      isCanonical @"entities/dormant_epochs/v0" @EntitiesDormantEpochs.V0.EntitiesDormantEpochsOut
+      validateType @"entities/dormant_epochs/v0" @EntitiesDormantEpochs.V0.EntitiesDormantEpochsOut
+        "record_entry"
     describe "gov/committee/v0" $ do
       isCanonical @"gov/committee/v0" @GovCommittee.V0.CanonicalCommittee
       validateType @"gov/committee/v0" @GovCommittee.V0.CanonicalCommittee "committee"
