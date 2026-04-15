@@ -31,6 +31,10 @@ import Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0 (
   EntitiesDRepsOut (EntitiesDRepsOut),
   mkCanonicalDRepState,
  )
+import Cardano.Ledger.CanonicalState.Namespace.EntitiesDormantEpochs.V0 (
+  EntitiesDormantEpochsIn (EntitiesDormantEpochsIn),
+  EntitiesDormantEpochsOut (EntitiesDormantEpochsOut),
+ )
 import Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.FutureParams.V0 (
   EntitiesStakePoolsFutureParamsIn (EntitiesStakePoolsFutureParamsIn),
   EntitiesStakePoolsFutureParamsOut (EntitiesStakePoolsFutureParamsOut),
@@ -85,6 +89,7 @@ import Cardano.Ledger.Conway.State (
   psVRFKeyHashesL,
   vsCommitteeStateL,
   vsDRepsL,
+  vsNumDormantEpochsL,
  )
 import Cardano.Ledger.Core (EraPParams (ppProtocolVersionL))
 import Cardano.Ledger.Shelley.LedgerState (
@@ -384,6 +389,29 @@ addStakePoolsVRFKeyHashes nes =
         )
         stakePoolsVRFKeyHashes
 
+addDormantEpochs ::
+  (Monad m, era ~ ConwayEra) =>
+  NewEpochState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+addDormantEpochs nes =
+  addNamespacedChunks
+    (Proxy :: Proxy "entities/dormant_epochs/v0")
+    ( S.yield
+        ( ChunkEntry
+            EntitiesDormantEpochsIn
+            ( EntitiesDormantEpochsOut
+                ( nes
+                    ^. nesEsL
+                    . esLStateL
+                    . lsCertStateL
+                    . certVStateL
+                    . vsNumDormantEpochsL
+                )
+            )
+        )
+    )
+
 instance ExportState ConwayEra where
   type ExportLedgerState ConwayEra = LedgerState ConwayEra
   type ExportNewEpochState ConwayEra = NewEpochState ConwayEra
@@ -404,5 +432,6 @@ instance ExportState ConwayEra where
       & addStakePools nes
       & addStakePoolsFutureParams nes
       & addStakePoolsVRFKeyHashes nes
+      & addDormantEpochs nes
   getProtocolVersion nes =
     pvMajor $ nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
