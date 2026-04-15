@@ -162,9 +162,8 @@ addEntitiesCommittee ::
 addEntitiesCommittee nes =
   addNamespacedChunks
     (Proxy :: Proxy "entities/committee/v0")
-    (S.yield (ChunkEntry (EntitiesCommitteeIn epochNo) (EntitiesCommitteeOut committeeState)))
+    (S.yield (ChunkEntry EntitiesCommitteeIn (EntitiesCommitteeOut committeeState)))
   where
-    epochNo = nes ^. nesELL
     committeeState =
       CanonicalCommitteeState $
         Map.map mkCanonicalCommitteeAuthorization $
@@ -184,9 +183,8 @@ addGovCommittee ::
 addGovCommittee nes =
   addNamespacedChunks
     (Proxy :: Proxy "gov/committee/v0")
-    (S.yield (ChunkEntry (GovCommitteeIn epochNo) (GovCommitteeOut committee)))
+    (S.yield (ChunkEntry GovCommitteeIn (GovCommitteeOut committee)))
   where
-    epochNo = nes ^. nesELL
     committee =
       fmap
         (\Committee {..} -> CanonicalCommittee {committeeMembers, committeeThreshold})
@@ -202,10 +200,9 @@ addGovConstitution ::
 addGovConstitution nes =
   addNamespacedChunks
     (Proxy :: Proxy "gov/constitution/v0")
-    (S.yield (ChunkEntry (GovConstitutionIn epochNo) (GovConstitutionOut canonicalConstitution)))
+    (S.yield (ChunkEntry GovConstitutionIn (GovConstitutionOut canonicalConstitution)))
   where
     constitution = nes ^. newEpochStateGovStateL . constitutionGovStateL
-    epochNo = nes ^. nesELL
     canonicalConstitution = mkCanonicalConstitution constitution
 
 addPParams ::
