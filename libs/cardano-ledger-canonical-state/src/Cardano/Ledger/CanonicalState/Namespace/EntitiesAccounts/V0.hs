@@ -20,7 +20,6 @@ module Cardano.Ledger.CanonicalState.Namespace.EntitiesAccounts.V0 (
   CanonicalAccountState (..),
 ) where
 
-import Cardano.Ledger.BaseTypes (StrictMaybe)
 import Cardano.Ledger.CanonicalState.BasicTypes (CanonicalCoin, decodeNamespacedField)
 import Cardano.Ledger.CanonicalState.LedgerCBOR (LedgerCBOR (LedgerCBOR))
 import Cardano.Ledger.CanonicalState.Namespace (Era, NamespaceEra)
@@ -86,8 +85,8 @@ deriving instance
 data CanonicalAccountState = CanonicalAccountState
   { casBalance :: CanonicalCoin
   , casDeposit :: CanonicalCoin
-  , casDRepDelegation :: StrictMaybe DRep
-  , casStakePoolDelegation :: StrictMaybe (KeyHash StakePool)
+  , casDRepDelegation :: Maybe DRep
+  , casStakePoolDelegation :: Maybe (KeyHash StakePool)
   }
   deriving (Eq, Show, Generic)
 
