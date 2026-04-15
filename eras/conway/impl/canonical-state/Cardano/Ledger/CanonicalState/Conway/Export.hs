@@ -12,6 +12,7 @@ import Cardano.Ledger.CanonicalState.Conway (
   fromGovActionState,
   mkCanonicalAccountState,
   mkCanonicalConstitution,
+  mkCanonicalGovActionId,
  )
 import Cardano.Ledger.CanonicalState.Export (ExportState (..))
 import Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 (BlockIn (BlockIn), BlockOut (BlockOut))
@@ -66,7 +67,8 @@ import Cardano.Ledger.Conway.Governance (
   DRepPulser (DRepPulser, dpProposals),
   DRepPulsingState (DRComplete, DRPulsing),
   cgsCommitteeL,
-  psProposalsL,
+  cgsProposalsL,
+  proposalsActions,
  )
 import Cardano.Ledger.Conway.State (
   CanGetUTxO (utxoG),
@@ -225,13 +227,12 @@ addProposals nes =
   where
     proposals =
       S.each
-        [ uncurry ChunkEntry $ fromGovActionState g
-        | g <-
-            toList
-              ( case nes ^. newEpochStateGovStateL . drepPulsingStateGovStateL of
-                  DRComplete snap _rs -> snap ^. psProposalsL
-                  DRPulsing DRepPulser {..} -> dpProposals
-              )
+        [ uncurry ChunkEntry $ fromGovActionState n govActionState
+        | (n, govActionState) <-
+            zip
+              [0 ..]
+              (toList $ proposalsActions (nes ^. newEpochStateGovStateL . cgsProposalsL))
+        ]
         ]
 
 addAccounts ::
