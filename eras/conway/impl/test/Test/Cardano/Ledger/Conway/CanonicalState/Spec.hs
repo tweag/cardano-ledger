@@ -11,13 +11,14 @@
 
 module Test.Cardano.Ledger.Conway.CanonicalState.Spec (spec) where
 
-import Cardano.Ledger.BaseTypes (EpochInterval, NonNegativeInterval, NonZero, UnitInterval)
+import Cardano.Ledger.BaseTypes (EpochInterval, EpochNo, NonNegativeInterval, NonZero, UnitInterval)
 import Cardano.Ledger.CanonicalState.BasicTypes (CanonicalExUnits (..))
 import Cardano.Ledger.CanonicalState.Conway (CanonicalGovActionState)
 import qualified Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 as Blocks.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesAccounts.V0 as EntitiesAccounts.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0 as Committee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0 as EntitiesDReps.V0
+import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesDormantEpochs.V0 as EntitiesDormantEpochs.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.FutureParams.V0 as EntitiesStakePools.FutureParams.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.V0 as EntitiesStakePools.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.VRFKeyHashes.V0 as EntitiesStakePoolsVRFKeyHashes.V0
@@ -124,6 +125,12 @@ spec = do
         @EntitiesStakePoolsVRFKeyHashes.V0.EntitiesStakePoolsVRFKeyHashesOut
       validateType @"entities/stake_pools/vrf_key_hashes/v0"
         @EntitiesStakePoolsVRFKeyHashes.V0.EntitiesStakePoolsVRFKeyHashesOut
+        "record_entry"
+    describe "entities/dormant_epochs/v0" $ do
+      isCanonical @"entities/dormant_epochs/v0" @EpochNo
+      validateType @"entities/dormant_epochs/v0" @EpochNo "epoch_no"
+      isCanonical @"entities/dormant_epochs/v0" @EntitiesDormantEpochs.V0.EntitiesDormantEpochsOut
+      validateType @"entities/dormant_epochs/v0" @EntitiesDormantEpochs.V0.EntitiesDormantEpochsOut
         "record_entry"
     describe "gov/committee/v0" $ do
       isCanonical @"gov/committee/v0" @GovCommittee.V0.CanonicalCommittee

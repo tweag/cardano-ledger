@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -51,15 +52,7 @@ import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.Core
 import Cardano.Ledger.Conway.Governance
 import Cardano.Ledger.Conway.PParams
-import Cardano.Ledger.Conway.State (
-  ConwayAccountState (
-    ConwayAccountState,
-    casBalance,
-    casDRepDelegation,
-    casDeposit,
-    casStakePoolDelegation
-  ),
- )
+import Cardano.Ledger.Conway.State (ConwayAccountState (..))
 import Cardano.Ledger.Credential (Credential (..))
 import Cardano.SCLS.CBOR.Canonical (
   assumeCanonicalDecoder,
@@ -92,6 +85,8 @@ type instance NamespaceEra "entities/stake_pools/v0" = ConwayEra
 type instance NamespaceEra "entities/stake_pools/future_params/v0" = ConwayEra
 
 type instance NamespaceEra "entities/stake_pools/vrf_key_hashes/v0" = ConwayEra
+
+type instance NamespaceEra "entities/dormant_epochs/v0" = ConwayEra
 
 type instance NamespaceEra "gov/committee/v0" = ConwayEra
 

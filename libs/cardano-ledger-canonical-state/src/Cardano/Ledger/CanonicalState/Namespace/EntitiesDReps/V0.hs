@@ -46,31 +46,18 @@ import Data.Set (Set)
 import Data.Text (Text)
 import GHC.Generics (Generic)
 
-instance
-  ( Era era
-  , NamespaceEra "entities/dreps/v0" ~ era
-  , ToCanonicalCBOR "entities/dreps/v0" CanonicalDRepState
-  , FromCanonicalCBOR "entities/dreps/v0" CanonicalDRepState
-  ) =>
-  KnownNamespace "entities/dreps/v0"
-  where
+instance (Era era, NamespaceEra "entities/dreps/v0" ~ era) => KnownNamespace "entities/dreps/v0" where
   type NamespaceKey "entities/dreps/v0" = EntitiesDRepsIn
   type NamespaceEntry "entities/dreps/v0" = EntitiesDRepsOut
 
 instance
-  ( Era era
-  , NamespaceEra "entities/dreps/v0" ~ era
-  , ToCanonicalCBOR "entities/dreps/v0" CanonicalDRepState
-  ) =>
+  (Era era, NamespaceEra "entities/dreps/v0" ~ era) =>
   CanonicalCBOREntryEncoder "entities/dreps/v0" EntitiesDRepsOut
   where
   encodeEntry (EntitiesDRepsOut n) = toCanonicalCBOR (Proxy @"entities/dreps/v0") n
 
 instance
-  ( Era era
-  , NamespaceEra "entities/dreps/v0" ~ era
-  , FromCanonicalCBOR "entities/dreps/v0" CanonicalDRepState
-  ) =>
+  (Era era, NamespaceEra "entities/dreps/v0" ~ era) =>
   CanonicalCBOREntryDecoder "entities/dreps/v0" EntitiesDRepsOut
   where
   decodeEntry = fmap EntitiesDRepsOut <$> fromCanonicalCBOR

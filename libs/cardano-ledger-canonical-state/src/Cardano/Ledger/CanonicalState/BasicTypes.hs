@@ -48,7 +48,13 @@ import Cardano.Ledger.Binary (DecCBOR, EncCBOR, encCBOR, serialize')
 import Cardano.Ledger.CanonicalState.LedgerCBOR
 import Cardano.Ledger.CanonicalState.Namespace (Era, NamespaceEra)
 import Cardano.Ledger.Coin (Coin (..), CompactForm (CompactCoin))
-import Cardano.Ledger.Core (AccountAddress, AccountId, StakePoolVRF, VRFVerKeyHash, eraProtVerLow)
+import Cardano.Ledger.Core (
+  AccountAddress,
+  AccountId,
+  KeyRoleVRF (StakePoolVRF),
+  VRFVerKeyHash,
+  eraProtVerLow,
+ )
 import Cardano.Ledger.Credential (Credential (..))
 import Cardano.Ledger.Hashes (KeyHash (..), ScriptHash (..))
 import qualified Cardano.Ledger.Hashes as H
@@ -125,6 +131,19 @@ instance FromCanonicalCBOR v CanonicalCoin where
 
 instance ToCanonicalCBOR v CanonicalCoin where
   toCanonicalCBOR v (CanonicalCoin (CompactCoin c)) = toCanonicalCBOR v c
+
+instance ToCanonicalCBOR v a => ToCanonicalCBOR v (Maybe a) where
+  toCanonicalCBOR v Nothing = toCanonicalCBOR v ()
+  toCanonicalCBOR v (Just x) = toCanonicalCBOR v x
+
+instance FromCanonicalCBOR v a => FromCanonicalCBOR v (Maybe a) where
+  fromCanonicalCBOR = do
+    mt <- peekTokenType
+    case mt of
+      D.TypeNull -> do
+        Versioned () <- fromCanonicalCBOR
+        pure (Versioned Nothing)
+      _ -> fmap Just <$> fromCanonicalCBOR
 
 instance ToCanonicalCBOR v a => ToCanonicalCBOR v (StrictMaybe a) where
   toCanonicalCBOR v SNothing = toCanonicalCBOR v ()
@@ -254,41 +273,6 @@ deriving via
   instance
     (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v EpochInterval
 
-data CanonicalExUnits = CanonicalExUnits
-  { exUnitsMem :: !Natural
-  , exUnitsSteps :: !Natural
-  }
-  deriving (Eq, Show, Generic)
-
-instance ToCanonicalCBOR v CanonicalExUnits where
-  toCanonicalCBOR v CanonicalExUnits {..} = toCanonicalCBOR v (exUnitsMem, exUnitsSteps)
-
-instance FromCanonicalCBOR v CanonicalExUnits where
-  fromCanonicalCBOR = do
-    Versioned (exUnitsMem, exUnitsSteps) <- fromCanonicalCBOR @v
-    return $ Versioned CanonicalExUnits {..}
-
-mkCanonicalExUnits :: ExUnits -> CanonicalExUnits
-mkCanonicalExUnits (unWrapExUnits -> ExUnits' {..}) = CanonicalExUnits {exUnitsMem = exUnitsMem', exUnitsSteps = exUnitsSteps'}
-
-fromCanonicalExUnits :: CanonicalExUnits -> ExUnits
-fromCanonicalExUnits CanonicalExUnits {..} = WrapExUnits ExUnits' {exUnitsMem' = exUnitsMem, exUnitsSteps' = exUnitsSteps}
-
-decodeNamespacedField ::
-  forall v s a. FromCanonicalCBOR v a => T.Text -> CanonicalDecoder s (Versioned v a)
-decodeNamespacedField fieldName = do
-  Versioned s <- fromCanonicalCBOR
-  unless (s == fieldName) $
-    fail $
-      T.unpack $
-        "Expected field name " <> fieldName <> " but got " <> s
-  fromCanonicalCBOR
-
-decodeNamespacedTag :: forall v a s. FromCanonicalCBOR v a => Word -> CanonicalDecoder s a
-decodeNamespacedTag expectedTag = do
-  decodeWordCanonicalOf expectedTag
-  unVer <$> fromCanonicalCBOR @v
-
 deriving via
   LedgerCBOR v (VRFVerKeyHash StakePoolVRF)
   instance
@@ -348,3 +332,38 @@ deriving via
   LedgerCBOR v (NonZero a)
   instance
     (Era era, NamespaceEra v ~ era, DecCBOR a, HasZero a) => FromCanonicalCBOR v (NonZero a)
+
+data CanonicalExUnits = CanonicalExUnits
+  { exUnitsMem :: !Natural
+  , exUnitsSteps :: !Natural
+  }
+  deriving (Eq, Show, Generic)
+
+instance ToCanonicalCBOR v CanonicalExUnits where
+  toCanonicalCBOR v CanonicalExUnits {..} = toCanonicalCBOR v (exUnitsMem, exUnitsSteps)
+
+instance FromCanonicalCBOR v CanonicalExUnits where
+  fromCanonicalCBOR = do
+    Versioned (exUnitsMem, exUnitsSteps) <- fromCanonicalCBOR @v
+    return $ Versioned CanonicalExUnits {..}
+
+mkCanonicalExUnits :: ExUnits -> CanonicalExUnits
+mkCanonicalExUnits (unWrapExUnits -> ExUnits' {..}) = CanonicalExUnits {exUnitsMem = exUnitsMem', exUnitsSteps = exUnitsSteps'}
+
+fromCanonicalExUnits :: CanonicalExUnits -> ExUnits
+fromCanonicalExUnits CanonicalExUnits {..} = WrapExUnits ExUnits' {exUnitsMem' = exUnitsMem, exUnitsSteps' = exUnitsSteps}
+
+decodeNamespacedField ::
+  forall v s a. FromCanonicalCBOR v a => T.Text -> CanonicalDecoder s (Versioned v a)
+decodeNamespacedField fieldName = do
+  Versioned s <- fromCanonicalCBOR
+  unless (s == fieldName) $
+    fail $
+      T.unpack $
+        "Expected field name " <> fieldName <> " but got " <> s
+  fromCanonicalCBOR
+
+decodeNamespacedTag :: forall v a s. FromCanonicalCBOR v a => Word -> CanonicalDecoder s a
+decodeNamespacedTag expectedTag = do
+  decodeWordCanonicalOf expectedTag
+  unVer <$> fromCanonicalCBOR @v

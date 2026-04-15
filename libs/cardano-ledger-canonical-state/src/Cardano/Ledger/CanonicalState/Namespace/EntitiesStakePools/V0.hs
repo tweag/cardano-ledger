@@ -134,7 +134,7 @@ instance (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v CanonicalStakePo
 
 data CanonicalStakePoolState = CanonicalStakePoolState
   { cspsVrf :: !(VRFVerKeyHash StakePoolVRF)
-  , cspsPledge :: !CanonicalCoin -- TODO: question: what type should this be? Coin is used in the ledger, is it OK to use CanonicalCoin here?
+  , cspsPledge :: !CanonicalCoin
   , cspsCost :: !CanonicalCoin
   , cspsMargin :: !UnitInterval
   , cspsAccountId :: !AccountId
@@ -180,7 +180,7 @@ mkCanonicalStakePoolState :: StakePoolState -> CanonicalStakePoolState
 mkCanonicalStakePoolState (StakePoolState {..}) =
   CanonicalStakePoolState
     { cspsVrf = spsVrf
-    , cspsPledge = CanonicalCoin (toCompactPartial spsPledge) -- TODO: is it ok to use toCompactPartial here? should we use toCompact instead and handle the case where the value is too large for a CompactCoin?
+    , cspsPledge = CanonicalCoin (toCompactPartial spsPledge)
     , cspsCost = CanonicalCoin (toCompactPartial spsCost)
     , cspsMargin = spsMargin
     , cspsAccountId = spsAccountId

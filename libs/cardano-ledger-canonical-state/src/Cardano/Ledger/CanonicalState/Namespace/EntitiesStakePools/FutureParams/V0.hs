@@ -117,8 +117,8 @@ deriving newtype instance
 data CanonicalStakePoolParams = CanonicalStakePoolParams
   { csppId :: !(KeyHash StakePool)
   , csppVrf :: !(VRFVerKeyHash StakePoolVRF)
-  , csppPledge :: !CanonicalCoin -- TODO: question: what type should this be? Coin is used in the ledger, is it OK to use CanonicalCoin here?
-  , csppCost :: !CanonicalCoin -- TODO: question: what type should this be? Coin is used in the ledger, is it OK to use CanonicalCoin here?
+  , csppPledge :: !CanonicalCoin
+  , csppCost :: !CanonicalCoin
   , csppMargin :: !UnitInterval
   , csppAccountAddress :: !AccountAddress
   , csppOwners :: !(Set (KeyHash Staking))
@@ -174,9 +174,9 @@ fromCanonicalStakePoolParams (CanonicalStakePoolParams {..}) =
   StakePoolParams
     { sppId = csppId
     , sppVrf = csppVrf
-    , sppCost = fromCompact $ unCoin csppCost -- TODO: is it ok to use toCompactPartial here? should we use toCompact instead and handle the case where the value is too large for a CompactCoin?
+    , sppCost = fromCompact $ unCoin csppCost
     , sppMargin = csppMargin
-    , sppPledge = fromCompact $ unCoin csppPledge -- TODO: is it ok to use toCompactPartial here? should we use toCompact instead and handle the case where the value is too large for a CompactCoin?
+    , sppPledge = fromCompact $ unCoin csppPledge
     , sppOwners = csppOwners
     , sppRelays = csppRelays
     , sppMetadata = csppMetadata
