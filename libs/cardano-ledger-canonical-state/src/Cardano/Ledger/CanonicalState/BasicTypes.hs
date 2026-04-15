@@ -48,7 +48,7 @@ import Cardano.Ledger.Binary (DecCBOR, EncCBOR, encCBOR, serialize')
 import Cardano.Ledger.CanonicalState.LedgerCBOR
 import Cardano.Ledger.CanonicalState.Namespace (Era, NamespaceEra)
 import Cardano.Ledger.Coin (Coin (..), CompactForm (CompactCoin))
-import Cardano.Ledger.Core (AccountAddress, AccountId, StakePoolVRF, VRFVerKeyHash, eraProtVerLow)
+import Cardano.Ledger.Core (AccountId, KeyRoleVRF (StakePoolVRF), VRFVerKeyHash, eraProtVerLow)
 import Cardano.Ledger.Credential (Credential (..))
 import Cardano.Ledger.Hashes (KeyHash (..), ScriptHash (..))
 import qualified Cardano.Ledger.Hashes as H
@@ -267,41 +267,6 @@ deriving via
   instance
     (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v EpochInterval
 
-data CanonicalExUnits = CanonicalExUnits
-  { exUnitsMem :: !Natural
-  , exUnitsSteps :: !Natural
-  }
-  deriving (Eq, Show, Generic)
-
-instance ToCanonicalCBOR v CanonicalExUnits where
-  toCanonicalCBOR v CanonicalExUnits {..} = toCanonicalCBOR v (exUnitsMem, exUnitsSteps)
-
-instance FromCanonicalCBOR v CanonicalExUnits where
-  fromCanonicalCBOR = do
-    Versioned (exUnitsMem, exUnitsSteps) <- fromCanonicalCBOR @v
-    return $ Versioned CanonicalExUnits {..}
-
-mkCanonicalExUnits :: ExUnits -> CanonicalExUnits
-mkCanonicalExUnits (unWrapExUnits -> ExUnits' {..}) = CanonicalExUnits {exUnitsMem = exUnitsMem', exUnitsSteps = exUnitsSteps'}
-
-fromCanonicalExUnits :: CanonicalExUnits -> ExUnits
-fromCanonicalExUnits CanonicalExUnits {..} = WrapExUnits ExUnits' {exUnitsMem' = exUnitsMem, exUnitsSteps' = exUnitsSteps}
-
-decodeNamespacedField ::
-  forall v s a. FromCanonicalCBOR v a => T.Text -> CanonicalDecoder s (Versioned v a)
-decodeNamespacedField fieldName = do
-  Versioned s <- fromCanonicalCBOR
-  unless (s == fieldName) $
-    fail $
-      T.unpack $
-        "Expected field name " <> fieldName <> " but got " <> s
-  fromCanonicalCBOR
-
-decodeNamespacedTag :: forall v a s. FromCanonicalCBOR v a => Word -> CanonicalDecoder s a
-decodeNamespacedTag expectedTag = do
-  decodeWordCanonicalOf expectedTag
-  unVer <$> fromCanonicalCBOR @v
-
 deriving via
   LedgerCBOR v (VRFVerKeyHash StakePoolVRF)
   instance
@@ -342,22 +307,37 @@ deriving via
   instance
     (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v AccountId
 
-deriving via
-  LedgerCBOR v AccountAddress
-  instance
-    (Era era, NamespaceEra v ~ era) => ToCanonicalCBOR v AccountAddress
+data CanonicalExUnits = CanonicalExUnits
+  { exUnitsMem :: !Natural
+  , exUnitsSteps :: !Natural
+  }
+  deriving (Eq, Show, Generic)
 
-deriving via
-  LedgerCBOR v AccountAddress
-  instance
-    (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v AccountAddress
+instance ToCanonicalCBOR v CanonicalExUnits where
+  toCanonicalCBOR v CanonicalExUnits {..} = toCanonicalCBOR v (exUnitsMem, exUnitsSteps)
 
-deriving via
-  LedgerCBOR v (NonZero a)
-  instance
-    (Era era, NamespaceEra v ~ era, EncCBOR a) => ToCanonicalCBOR v (NonZero a)
+instance FromCanonicalCBOR v CanonicalExUnits where
+  fromCanonicalCBOR = do
+    Versioned (exUnitsMem, exUnitsSteps) <- fromCanonicalCBOR @v
+    return $ Versioned CanonicalExUnits {..}
 
-deriving via
-  LedgerCBOR v (NonZero a)
-  instance
-    (Era era, NamespaceEra v ~ era, DecCBOR a, HasZero a) => FromCanonicalCBOR v (NonZero a)
+mkCanonicalExUnits :: ExUnits -> CanonicalExUnits
+mkCanonicalExUnits (unWrapExUnits -> ExUnits' {..}) = CanonicalExUnits {exUnitsMem = exUnitsMem', exUnitsSteps = exUnitsSteps'}
+
+fromCanonicalExUnits :: CanonicalExUnits -> ExUnits
+fromCanonicalExUnits CanonicalExUnits {..} = WrapExUnits ExUnits' {exUnitsMem' = exUnitsMem, exUnitsSteps' = exUnitsSteps}
+
+decodeNamespacedField ::
+  forall v s a. FromCanonicalCBOR v a => T.Text -> CanonicalDecoder s (Versioned v a)
+decodeNamespacedField fieldName = do
+  Versioned s <- fromCanonicalCBOR
+  unless (s == fieldName) $
+    fail $
+      T.unpack $
+        "Expected field name " <> fieldName <> " but got " <> s
+  fromCanonicalCBOR
+
+decodeNamespacedTag :: forall v a s. FromCanonicalCBOR v a => Word -> CanonicalDecoder s a
+decodeNamespacedTag expectedTag = do
+  decodeWordCanonicalOf expectedTag
+  unVer <$> fromCanonicalCBOR @v
