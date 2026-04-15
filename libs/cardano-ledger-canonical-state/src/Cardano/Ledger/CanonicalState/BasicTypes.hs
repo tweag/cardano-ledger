@@ -307,6 +307,16 @@ deriving via
   instance
     (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v AccountId
 
+deriving via
+  LedgerCBOR v (NonZero a)
+  instance
+    (Era era, NamespaceEra v ~ era, EncCBOR a) => ToCanonicalCBOR v (NonZero a)
+
+deriving via
+  LedgerCBOR v (NonZero a)
+  instance
+    (Era era, NamespaceEra v ~ era, DecCBOR a, HasZero a) => FromCanonicalCBOR v (NonZero a)
+
 data CanonicalExUnits = CanonicalExUnits
   { exUnitsMem :: !Natural
   , exUnitsSteps :: !Natural
