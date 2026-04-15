@@ -7,7 +7,7 @@
 
 module Cardano.Ledger.CanonicalState.Conway.Export () where
 
-import Cardano.Ledger.BaseTypes (ProtVer (..), StrictMaybe (..))
+import Cardano.Ledger.BaseTypes (ProtVer (..), StrictMaybe (..), strictMaybeToMaybe)
 import Cardano.Ledger.CanonicalState.Conway (
   fromGovActionState,
   mkCanonicalAccountState,
@@ -63,16 +63,25 @@ import Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 (
   GovPParamsIn (..),
   GovPParamsOut (..),
  )
+import Cardano.Ledger.CanonicalState.Namespace.GovProposals.Roots.V0 (
+  GovProposalsRootsIn (..),
+  GovProposalsRootsOut (GovProposalsRootsOut),
+ )
 import Cardano.Ledger.CanonicalState.Namespace.UTxO.V0 (UtxoIn (UtxoKeyIn), mkUtxo)
 import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.Governance (
   Committee (..),
-  ConwayEraGov (constitutionGovStateL, drepPulsingStateGovStateL),
-  DRepPulser (DRepPulser, dpProposals),
-  DRepPulsingState (DRComplete, DRPulsing),
+  ConwayEraGov (constitutionGovStateL),
+  GovPurposeId (unGovPurposeId),
   cgsCommitteeL,
   cgsProposalsL,
+  grCommitteeL,
+  grConstitutionL,
+  grHardForkL,
+  grPParamUpdateL,
+  pRootsL,
   proposalsActions,
+  toPrevGovActionIds,
  )
 import Cardano.Ledger.Conway.State (
   CanGetUTxO (utxoG),
@@ -117,7 +126,7 @@ import Data.Foldable (Foldable (toList))
 import qualified Data.Map.Merge.Strict as Map
 import qualified Data.Map.Strict as Map
 import Data.MemPack.Extra (RawBytes)
-import Lens.Micro ((&), (^.))
+import Lens.Micro ((&), (<&>), (^.))
 import qualified Streaming.Prelude as S
 
 addUtxo ::
@@ -238,7 +247,46 @@ addProposals nes =
               [0 ..]
               (toList $ proposalsActions (nes ^. newEpochStateGovStateL . cgsProposalsL))
         ]
+
+addProposalsRoots ::
+  (Monad m, era ~ ConwayEra) =>
+  NewEpochState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+addProposalsRoots nes =
+  addNamespacedChunks (Proxy :: Proxy "gov/proposals/roots/v0") roots
+  where
+    prevGovActionIds =
+      toPrevGovActionIds $ nes ^. newEpochStateGovStateL . cgsProposalsL . pRootsL
+    roots =
+      S.each
+        [
+          ( GovProposalsRootsInPParamUpdate
+          , fmap unGovPurposeId $
+              prevGovActionIds ^. grPParamUpdateL
+          )
+        ,
+          ( GovProposalsRootsInHardFork
+          , fmap unGovPurposeId $
+              prevGovActionIds ^. grHardForkL
+          )
+        ,
+          ( GovProposalsRootsInCommittee
+          , fmap unGovPurposeId $
+              prevGovActionIds ^. grCommitteeL
+          )
+        ,
+          ( GovProposalsRootsInConstitution
+          , fmap unGovPurposeId $
+              prevGovActionIds ^. grConstitutionL
+          )
         ]
+        & S.mapMaybe
+          ( \(k, mGovActionId) ->
+              strictMaybeToMaybe mGovActionId
+                <&> \govActionId ->
+                  ChunkEntry k (GovProposalsRootsOut (mkCanonicalGovActionId govActionId))
+          )
 
 addAccounts ::
   (Monad m, era ~ ConwayEra) =>
@@ -427,6 +475,7 @@ instance ExportState ConwayEra where
       & addGovConstitution nes
       & addPParams nes
       & addProposals nes
+      & addProposalsRoots nes
       & addAccounts nes
       & addDReps nes
       & addStakePools nes
