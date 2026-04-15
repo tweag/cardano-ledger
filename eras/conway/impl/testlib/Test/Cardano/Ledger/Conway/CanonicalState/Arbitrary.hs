@@ -26,6 +26,7 @@ import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.VRFK
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 as GovCommittee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovConstitution.V0 as GovConstitution.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovPParams.V0 as GovPParams.V0
+import qualified Cardano.Ledger.CanonicalState.Namespace.GovProposals.Roots.V0 as GovProposals.Roots.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovProposals.V0 as GovProposals.V0
 import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.Governance (Constitution)
@@ -61,6 +62,15 @@ instance Arbitrary CanonicalExUnits where
 
 instance Arbitrary (GovProposals.V0.GovProposalOut CanonicalGovActionState) where
   arbitrary = snd . fromGovActionState 0 <$> arbitrary
+
+instance Arbitrary GovProposals.V0.CanonicalGovActionIx where
+  arbitrary = genericArbitraryU
+
+instance Arbitrary GovProposals.V0.CanonicalGovActionId where
+  arbitrary = genericArbitraryU
+
+instance Arbitrary GovProposals.Roots.V0.GovProposalsRootsOut where
+  arbitrary = genericArbitraryU
 
 instance Arbitrary EntitiesAccounts.V0.CanonicalAccountState where
   arbitrary = genericArbitraryU
