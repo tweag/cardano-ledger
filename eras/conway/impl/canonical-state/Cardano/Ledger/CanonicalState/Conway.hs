@@ -2,7 +2,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -26,6 +25,8 @@ module Cardano.Ledger.CanonicalState.Conway (
   fromGovProposalIn,
   fromCanonicalAccountState,
   mkCanonicalAccountState,
+  fromCanonicalGovActionId,
+  mkCanonicalGovActionId,
 ) where
 
 import Cardano.Ledger.BaseTypes (EpochNo (..))
@@ -325,20 +326,27 @@ toGovActionState (govIn, GovProposalOut (n, CanonicalGovActionState {..})) =
       }
   )
 
-mkGovProposalIn :: GovActionId -> GovProposalIn
-mkGovProposalIn GovActionId {gaidGovActionIx = GovActionIx idx, gaidTxId} =
-  GovProposalIn $
-    CanonicalGovActionId
-      { gaidTxId = gaidTxId
-      , gaidGovActionIx = CanonicalGovActionIx idx
-      }
+mkCanonicalGovActionId :: GovActionId -> CanonicalGovActionId
+mkCanonicalGovActionId GovActionId {gaidGovActionIx = GovActionIx idx, gaidTxId} =
+  CanonicalGovActionId
+    { gaidTxId = gaidTxId
+    , gaidGovActionIx = CanonicalGovActionIx idx
+    }
 
-fromGovProposalIn :: GovProposalIn -> GovActionId
-fromGovProposalIn (GovProposalIn CanonicalGovActionId {gaidGovActionIx = CanonicalGovActionIx aix, gaidTxId}) =
+fromCanonicalGovActionId :: CanonicalGovActionId -> GovActionId
+fromCanonicalGovActionId CanonicalGovActionId {gaidGovActionIx = CanonicalGovActionIx idx, gaidTxId} =
   GovActionId
     { gaidTxId = gaidTxId
-    , gaidGovActionIx = GovActionIx aix
+    , gaidGovActionIx = GovActionIx idx
     }
+
+mkGovProposalIn :: GovActionId -> GovProposalIn
+mkGovProposalIn =
+  GovProposalIn . mkCanonicalGovActionId
+
+fromGovProposalIn :: GovProposalIn -> GovActionId
+fromGovProposalIn (GovProposalIn canonicalGovActionId) =
+  fromCanonicalGovActionId canonicalGovActionId
 
 -- | This is the same structure as GovActionState but without the id.
 --
