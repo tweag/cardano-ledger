@@ -1,8 +1,11 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Cardano.Ledger.CanonicalState.Conway.Export () where
@@ -15,7 +18,11 @@ import Cardano.Ledger.CanonicalState.Conway (
   mkCanonicalConstitution,
   mkCanonicalGovActionId,
  )
-import Cardano.Ledger.CanonicalState.Export (ExportState (..))
+import Cardano.Ledger.CanonicalState.Export (
+  ExportCanonicalNamespace (..),
+  ExportState (..),
+  addNamespaceToPlan,
+ )
 import Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 (BlockIn (BlockIn), BlockOut (BlockOut))
 import Cardano.Ledger.CanonicalState.Namespace.EntitiesAccounts.V0 (
   EntitiesAccountsIn (EntitiesAccountsIn),
@@ -103,7 +110,6 @@ import Cardano.Ledger.Conway.State (
  )
 import Cardano.Ledger.Core (EraPParams (ppProtocolVersionL))
 import Cardano.Ledger.Shelley.LedgerState (
-  LedgerState,
   NewEpochState,
   curPParamsEpochStateL,
   esLStateL,
@@ -116,367 +122,279 @@ import Cardano.Ledger.Shelley.LedgerState (
   newEpochStateGovStateL,
   prevPParamsEpochStateL,
  )
-import Cardano.SCLS.Internal.Entry.ChunkEntry (ChunkEntry (ChunkEntry), SomeChunkEntry)
+import Cardano.SCLS.Internal.Entry.ChunkEntry (ChunkEntry (ChunkEntry))
 import Cardano.SCLS.Internal.Serializer.Dump.Plan (
-  SerializationPlan,
-  addNamespacedChunks,
   defaultSerializationPlan,
  )
-import Data.Data (Proxy (Proxy))
 import Data.Foldable (Foldable (toList))
 import Data.Functor ((<&>))
 import qualified Data.Map.Merge.Strict as Map
 import qualified Data.Map.Strict as Map
-import Data.MemPack.Extra (RawBytes)
 import Lens.Micro ((&), (^.))
 import qualified Streaming.Prelude as S
 
-addUtxo ::
-  (Monad m, era ~ ConwayEra) =>
-  LedgerState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-addUtxo t =
-  addNamespacedChunks (Proxy :: Proxy "utxo/v0") utxos
-  where
-    utxos =
-      S.each (Map.toList $ unUTxO $ t ^. utxoG)
-        & S.map (\(txIn, txOut) -> ChunkEntry (UtxoKeyIn txIn) (mkUtxo txOut))
+instance ExportCanonicalNamespace ConwayEra "utxo/v0" where
+  exportNamespace nes =
+    S.each (Map.toList $ unUTxO $ nes ^. utxoG)
+      & S.map (\(txIn, txOut) -> ChunkEntry (UtxoKeyIn txIn) (mkUtxo txOut))
 
-addBlocks ::
-  Monad m =>
-  NewEpochState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-addBlocks nes =
-  addNamespacedChunks (Proxy :: Proxy "blocks/v0") blocks
-  where
-    epochNo = nes ^. nesELL
-    blocks =
-      S.each (Map.toList $ nes ^. nesBcurL)
-        & S.map (\(keyHash, n) -> ChunkEntry (BlockIn keyHash epochNo) (BlockOut n))
+instance ExportCanonicalNamespace ConwayEra "blocks/v0" where
+  exportNamespace nes = blocks
+    where
+      epochNo = nes ^. nesELL
+      blocks =
+        S.each (Map.toList $ nes ^. nesBcurL)
+          & S.map (\(keyHash, n) -> ChunkEntry (BlockIn keyHash epochNo) (BlockOut n))
 
-addEntitiesCommittee ::
-  (Monad m, era ~ ConwayEra) =>
-  NewEpochState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-addEntitiesCommittee nes =
-  addNamespacedChunks
-    (Proxy :: Proxy "entities/committee/v0")
-    (S.yield (ChunkEntry EntitiesCommitteeIn (EntitiesCommitteeOut committeeState)))
-  where
-    committeeState =
-      CanonicalCommitteeState $
-        Map.map mkCanonicalCommitteeAuthorization $
-          nes
-            ^. nesEpochStateL
-            . esLStateL
-            . lsCertStateL
-            . certVStateL
-            . vsCommitteeStateL
-            . csCommitteeCredsL
+instance ExportCanonicalNamespace ConwayEra "entities/committee/v0" where
+  exportNamespace nes =
+    S.yield (ChunkEntry EntitiesCommitteeIn (EntitiesCommitteeOut committeeState))
+    where
+      committeeState =
+        CanonicalCommitteeState $
+          Map.map mkCanonicalCommitteeAuthorization $
+            nes
+              ^. nesEpochStateL
+              . esLStateL
+              . lsCertStateL
+              . certVStateL
+              . vsCommitteeStateL
+              . csCommitteeCredsL
 
-addGovCommittee ::
-  (Monad m, era ~ ConwayEra) =>
-  NewEpochState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-addGovCommittee nes =
-  addNamespacedChunks
-    (Proxy :: Proxy "gov/committee/v0")
-    (S.yield (ChunkEntry GovCommitteeIn (GovCommitteeOut committee)))
-  where
-    committee =
-      fmap
-        (\Committee {..} -> CanonicalCommittee {committeeMembers, committeeThreshold})
-        $ nes
-          ^. newEpochStateGovStateL
-          . cgsCommitteeL
+instance ExportCanonicalNamespace ConwayEra "gov/committee/v0" where
+  exportNamespace nes =
+    S.yield (ChunkEntry GovCommitteeIn (GovCommitteeOut committee))
+    where
+      committee =
+        fmap
+          (\Committee {..} -> CanonicalCommittee {committeeMembers, committeeThreshold})
+          $ nes
+            ^. newEpochStateGovStateL
+            . cgsCommitteeL
 
-addGovConstitution ::
-  (Monad m, era ~ ConwayEra) =>
-  NewEpochState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-addGovConstitution nes =
-  addNamespacedChunks
-    (Proxy :: Proxy "gov/constitution/v0")
-    (S.yield (ChunkEntry GovConstitutionIn (GovConstitutionOut canonicalConstitution)))
-  where
-    constitution = nes ^. newEpochStateGovStateL . constitutionGovStateL
-    canonicalConstitution = mkCanonicalConstitution constitution
+instance ExportCanonicalNamespace ConwayEra "gov/constitution/v0" where
+  exportNamespace nes =
+    S.yield (ChunkEntry GovConstitutionIn (GovConstitutionOut canonicalConstitution))
+    where
+      constitution = nes ^. newEpochStateGovStateL . constitutionGovStateL
+      canonicalConstitution = mkCanonicalConstitution constitution
 
-addPParams ::
-  (Monad m, era ~ ConwayEra) =>
-  NewEpochState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-addPParams nes =
-  addNamespacedChunks (Proxy :: Proxy "gov/pparams/v0") (S.each pparams)
-  where
-    epochState = nes ^. nesEsL
-    currPParams = epochState ^. curPParamsEpochStateL
-    prevPParams = epochState ^. prevPParamsEpochStateL
-    (futurePossiblePParams, futureDefinitePParams) = case epochState ^. futurePParamsEpochStateL of
-      NoPParamsUpdate -> ([], [])
-      DefinitePParamsUpdate p -> ([], [ChunkEntry GovPParamsInDefiniteFuture (GovPParamsOut p)])
-      PotentialPParamsUpdate (Just p) -> ([ChunkEntry GovPParamsInPossibleFuture (GovPParamsOut p)], [])
-      PotentialPParamsUpdate Nothing -> ([], [])
-    pparams =
-      [ ChunkEntry GovPParamsInPrev (GovPParamsOut prevPParams)
-      , ChunkEntry GovPParamsInCurr (GovPParamsOut currPParams)
+instance ExportCanonicalNamespace ConwayEra "gov/pparams/v0" where
+  exportNamespace nes =
+    S.each pparams
+    where
+      epochState = nes ^. nesEsL
+      currPParams = epochState ^. curPParamsEpochStateL
+      prevPParams = epochState ^. prevPParamsEpochStateL
+      (futurePossiblePParams, futureDefinitePParams) = case epochState ^. futurePParamsEpochStateL of
+        NoPParamsUpdate -> ([], [])
+        DefinitePParamsUpdate p -> ([], [ChunkEntry GovPParamsInDefiniteFuture (GovPParamsOut p)])
+        PotentialPParamsUpdate (Just p) -> ([ChunkEntry GovPParamsInPossibleFuture (GovPParamsOut p)], [])
+        PotentialPParamsUpdate Nothing -> ([], [])
+      pparams =
+        [ ChunkEntry GovPParamsInPrev (GovPParamsOut prevPParams)
+        , ChunkEntry GovPParamsInCurr (GovPParamsOut currPParams)
+        ]
+          ++ futurePossiblePParams
+          ++ futureDefinitePParams
+
+instance ExportCanonicalNamespace ConwayEra "gov/proposals/v0" where
+  exportNamespace nes =
+    S.each
+      [ uncurry ChunkEntry $ fromGovActionState n govActionState
+      | (n, govActionState) <-
+          zip
+            [0 ..]
+            (toList $ proposalsActions (nes ^. newEpochStateGovStateL . cgsProposalsL))
       ]
-        ++ futurePossiblePParams
-        ++ futureDefinitePParams
 
-addProposals ::
-  (Monad m, era ~ ConwayEra) =>
-  NewEpochState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-addProposals nes =
-  addNamespacedChunks (Proxy :: Proxy "gov/proposals/v0") proposals
-  where
-    proposals =
-      S.each
-        [ uncurry ChunkEntry $ fromGovActionState n govActionState
-        | (n, govActionState) <-
-            zip
-              [0 ..]
-              (toList $ proposalsActions (nes ^. newEpochStateGovStateL . cgsProposalsL))
-        ]
-
-addProposalsRoots ::
-  (Monad m, era ~ ConwayEra) =>
-  NewEpochState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-addProposalsRoots nes =
-  addNamespacedChunks (Proxy :: Proxy "gov/proposals/roots/v0") roots
-  where
-    prevGovActionIds =
-      toPrevGovActionIds $ nes ^. newEpochStateGovStateL . cgsProposalsL . pRootsL
-    roots =
-      S.each
-        [
-          ( GovProposalsRootsInPParamUpdate
-          , fmap unGovPurposeId $
-              prevGovActionIds ^. grPParamUpdateL
-          )
-        ,
-          ( GovProposalsRootsInHardFork
-          , fmap unGovPurposeId $
-              prevGovActionIds ^. grHardForkL
-          )
-        ,
-          ( GovProposalsRootsInCommittee
-          , fmap unGovPurposeId $
-              prevGovActionIds ^. grCommitteeL
-          )
-        ,
-          ( GovProposalsRootsInConstitution
-          , fmap unGovPurposeId $
-              prevGovActionIds ^. grConstitutionL
-          )
-        ]
-        & S.mapMaybe
-          ( \(k, mGovActionId) ->
-              strictMaybeToMaybe mGovActionId
-                <&> \govActionId ->
-                  ChunkEntry k (GovProposalsRootsOut (mkCanonicalGovActionId govActionId))
-          )
-
-addAccounts ::
-  (Monad m, era ~ ConwayEra) =>
-  NewEpochState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-addAccounts nes =
-  addNamespacedChunks (Proxy :: Proxy "entities/accounts/v0") accounts
-  where
-    accounts =
-      S.map
-        ( \(cred, accountState) ->
-            ChunkEntry (EntitiesAccountsIn cred) (EntitiesAccountsOut $ mkCanonicalAccountState accountState)
+instance ExportCanonicalNamespace ConwayEra "gov/proposals/roots/v0" where
+  exportNamespace nes =
+    S.each
+      [
+        ( GovProposalsRootsInPParamUpdate
+        , fmap unGovPurposeId $
+            prevGovActionIds ^. grPParamUpdateL
         )
-        $ S.each
-        $ Map.toList
-        $ nes
-          ^. nesEsL
-          . esLStateL
-          . lsCertStateL
-          . certDStateL
-          . accountsL
-          . accountsMapL
-
-addDReps ::
-  (Monad m, era ~ ConwayEra) =>
-  NewEpochState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-addDReps nes =
-  addNamespacedChunks (Proxy :: Proxy "entities/dreps/v0") dreps
-  where
-    dreps =
-      S.each
-        ( Map.toList
-            ( nes
-                ^. nesEsL
-                . esLStateL
-                . lsCertStateL
-                . certVStateL
-                . vsDRepsL
-            )
+      ,
+        ( GovProposalsRootsInHardFork
+        , fmap unGovPurposeId $
+            prevGovActionIds ^. grHardForkL
         )
-        & S.map
-          ( \(cred, drepState) -> ChunkEntry (EntitiesDRepsIn cred) (EntitiesDRepsOut $ mkCanonicalDRepState drepState)
-          )
+      ,
+        ( GovProposalsRootsInCommittee
+        , fmap unGovPurposeId $
+            prevGovActionIds ^. grCommitteeL
+        )
+      ,
+        ( GovProposalsRootsInConstitution
+        , fmap unGovPurposeId $
+            prevGovActionIds ^. grConstitutionL
+        )
+      ]
+      & S.mapMaybe
+        ( \(k, mGovActionId) ->
+            strictMaybeToMaybe mGovActionId
+              <&> \govActionId ->
+                ChunkEntry k (GovProposalsRootsOut (mkCanonicalGovActionId govActionId))
+        )
+    where
+      prevGovActionIds =
+        toPrevGovActionIds $ nes ^. newEpochStateGovStateL . cgsProposalsL . pRootsL
 
-addStakePools ::
-  (Monad m, era ~ ConwayEra) =>
-  NewEpochState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-addStakePools nes =
-  addNamespacedChunks (Proxy :: Proxy "entities/stake_pools/v0") stakePoolsEntries
-  where
-    stakePools =
-      S.each $
-        Map.toList $
-          Map.merge
-            (Map.mapMissing (\_ v -> (SJust v, SNothing)))
-            (Map.mapMissing (\_ v -> (SNothing, SJust v)))
-            ( Map.zipWithMatched
-                (\_ stakePoolState retiringEpochNo -> (SJust stakePoolState, SJust retiringEpochNo))
-            )
-            ( nes
-                ^. nesEsL
-                . esLStateL
-                . lsCertStateL
-                . certPStateL
-                . psStakePoolsL
-            )
-            ( nes
-                ^. nesEsL
-                . esLStateL
-                . lsCertStateL
-                . certPStateL
-                . psRetiringL
-            )
-    stakePoolsEntries =
-      S.map
-        ( \(k, (stakePoolState, retiringEpochNo)) ->
-            ChunkEntry
-              (EntitiesStakePoolsIn k)
-              ( EntitiesStakePoolsOut $
-                  CanonicalStakePool
-                    { cspStakePoolState = fmap mkCanonicalStakePoolState stakePoolState
-                    , cspRetiringEpochNo = retiringEpochNo
-                    }
+instance ExportCanonicalNamespace ConwayEra "entities/accounts/v0" where
+  exportNamespace nes =
+    S.map
+      ( \(cred, accountState) ->
+          ChunkEntry (EntitiesAccountsIn cred) (EntitiesAccountsOut $ mkCanonicalAccountState accountState)
+      )
+      $ S.each
+      $ Map.toList
+      $ nes
+        ^. nesEsL
+        . esLStateL
+        . lsCertStateL
+        . certDStateL
+        . accountsL
+        . accountsMapL
+
+instance ExportCanonicalNamespace ConwayEra "entities/dreps/v0" where
+  exportNamespace nes =
+    S.each
+      ( Map.toList
+          ( nes
+              ^. nesEsL
+              . esLStateL
+              . lsCertStateL
+              . certVStateL
+              . vsDRepsL
+          )
+      )
+      & S.map
+        ( \(cred, drepState) -> ChunkEntry (EntitiesDRepsIn cred) (EntitiesDRepsOut $ mkCanonicalDRepState drepState)
+        )
+
+instance ExportCanonicalNamespace ConwayEra "entities/stake_pools/v0" where
+  exportNamespace nes =
+    stakePoolsEntries
+    where
+      stakePools =
+        S.each $
+          Map.toList $
+            Map.merge
+              (Map.mapMissing (\_ v -> (SJust v, SNothing)))
+              (Map.mapMissing (\_ v -> (SNothing, SJust v)))
+              ( Map.zipWithMatched
+                  (\_ stakePoolState retiringEpochNo -> (SJust stakePoolState, SJust retiringEpochNo))
               )
-        )
-        stakePools
-
-addStakePoolsFutureParams ::
-  (Monad m, era ~ ConwayEra) =>
-  NewEpochState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-addStakePoolsFutureParams nes =
-  addNamespacedChunks
-    (Proxy :: Proxy "entities/stake_pools/future_params/v0")
-    stakePoolsFutureParamsEntries
-  where
-    stakePoolsFutureParams =
-      S.each $
-        Map.toList
-          ( nes
-              ^. nesEsL
-              . esLStateL
-              . lsCertStateL
-              . certPStateL
-              . psFutureStakePoolParamsL
-          )
-    stakePoolsFutureParamsEntries =
-      S.map
-        ( \(k, stakePoolParams) ->
-            ChunkEntry
-              (EntitiesStakePoolsFutureParamsIn k)
-              (EntitiesStakePoolsFutureParamsOut $ mkCanonicalStakePoolParams stakePoolParams)
-        )
-        stakePoolsFutureParams
-
-addStakePoolsVRFKeyHashes ::
-  (Monad m, era ~ ConwayEra) =>
-  NewEpochState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-addStakePoolsVRFKeyHashes nes =
-  addNamespacedChunks
-    (Proxy :: Proxy "entities/stake_pools/vrf_key_hashes/v0")
-    stakePoolsVRFKeyHashesEntries
-  where
-    stakePoolsVRFKeyHashes =
-      S.each $
-        Map.toList
-          ( nes
-              ^. nesEsL
-              . esLStateL
-              . lsCertStateL
-              . certPStateL
-              . psVRFKeyHashesL
-          )
-    stakePoolsVRFKeyHashesEntries =
-      S.map
-        ( \(k, n) ->
-            ChunkEntry
-              (EntitiesStakePoolsVRFKeyHashesIn k)
-              (EntitiesStakePoolsVRFKeyHashesOut n)
-        )
-        stakePoolsVRFKeyHashes
-
-addDormantEpochs ::
-  (Monad m, era ~ ConwayEra) =>
-  NewEpochState era ->
-  SerializationPlan (SomeChunkEntry RawBytes) m ->
-  SerializationPlan (SomeChunkEntry RawBytes) m
-addDormantEpochs nes =
-  addNamespacedChunks
-    (Proxy :: Proxy "entities/dormant_epochs/v0")
-    ( S.yield
-        ( ChunkEntry
-            EntitiesDormantEpochsIn
-            ( EntitiesDormantEpochsOut
-                ( nes
-                    ^. nesEsL
-                    . esLStateL
-                    . lsCertStateL
-                    . certVStateL
-                    . vsNumDormantEpochsL
+              ( nes
+                  ^. nesEsL
+                  . esLStateL
+                  . lsCertStateL
+                  . certPStateL
+                  . psStakePoolsL
+              )
+              ( nes
+                  ^. nesEsL
+                  . esLStateL
+                  . lsCertStateL
+                  . certPStateL
+                  . psRetiringL
+              )
+      stakePoolsEntries =
+        S.map
+          ( \(k, (stakePoolState, retiringEpochNo)) ->
+              ChunkEntry
+                (EntitiesStakePoolsIn k)
+                ( EntitiesStakePoolsOut $
+                    CanonicalStakePool
+                      { cspStakePoolState = fmap mkCanonicalStakePoolState stakePoolState
+                      , cspRetiringEpochNo = retiringEpochNo
+                      }
                 )
+          )
+          stakePools
+
+instance ExportCanonicalNamespace ConwayEra "entities/stake_pools/future_params/v0" where
+  exportNamespace nes =
+    stakePoolsFutureParamsEntries
+    where
+      stakePoolsFutureParams =
+        S.each $
+          Map.toList
+            ( nes
+                ^. nesEsL
+                . esLStateL
+                . lsCertStateL
+                . certPStateL
+                . psFutureStakePoolParamsL
             )
-        )
-    )
+      stakePoolsFutureParamsEntries =
+        S.map
+          ( \(k, stakePoolParams) ->
+              ChunkEntry
+                (EntitiesStakePoolsFutureParamsIn k)
+                (EntitiesStakePoolsFutureParamsOut $ mkCanonicalStakePoolParams stakePoolParams)
+          )
+          stakePoolsFutureParams
+
+instance ExportCanonicalNamespace ConwayEra "entities/stake_pools/vrf_key_hashes/v0" where
+  exportNamespace nes =
+    stakePoolsVRFKeyHashesEntries
+    where
+      stakePoolsVRFKeyHashes =
+        S.each $
+          Map.toList
+            ( nes
+                ^. nesEsL
+                . esLStateL
+                . lsCertStateL
+                . certPStateL
+                . psVRFKeyHashesL
+            )
+      stakePoolsVRFKeyHashesEntries =
+        S.map
+          ( \(k, n) ->
+              ChunkEntry
+                (EntitiesStakePoolsVRFKeyHashesIn k)
+                (EntitiesStakePoolsVRFKeyHashesOut n)
+          )
+          stakePoolsVRFKeyHashes
+
+instance ExportCanonicalNamespace ConwayEra "entities/dormant_epochs/v0" where
+  exportNamespace nes =
+    S.yield
+      ( ChunkEntry
+          EntitiesDormantEpochsIn
+          ( EntitiesDormantEpochsOut
+              ( nes
+                  ^. nesEsL
+                  . esLStateL
+                  . lsCertStateL
+                  . certVStateL
+                  . vsNumDormantEpochsL
+              )
+          )
+      )
 
 instance ExportState ConwayEra where
   type ExportLedgerState ConwayEra = NewEpochState ConwayEra
   dumpLedgerState nes =
     defaultSerializationPlan
-      & addUtxo (nes ^. nesEsL . esLStateL)
-      & addBlocks nes
-      & addEntitiesCommittee nes
-      & addGovCommittee nes
-      & addGovConstitution nes
-      & addPParams nes
-      & addProposals nes
-      & addProposalsRoots nes
-      & addAccounts nes
-      & addDReps nes
-      & addStakePools nes
-      & addStakePoolsFutureParams nes
-      & addStakePoolsVRFKeyHashes nes
-      & addDormantEpochs nes
+      & addNamespaceToPlan @ConwayEra @"utxo/v0" nes
+      & addNamespaceToPlan @ConwayEra @"blocks/v0" nes
+      & addNamespaceToPlan @ConwayEra @"gov/committee/v0" nes
+      & addNamespaceToPlan @ConwayEra @"gov/constitution/v0" nes
+      & addNamespaceToPlan @ConwayEra @"gov/pparams/v0" nes
+      & addNamespaceToPlan @ConwayEra @"gov/proposals/v0" nes
+      & addNamespaceToPlan @ConwayEra @"gov/proposals/roots/v0" nes
+      & addNamespaceToPlan @ConwayEra @"entities/accounts/v0" nes
+      & addNamespaceToPlan @ConwayEra @"entities/dreps/v0" nes
+      & addNamespaceToPlan @ConwayEra @"entities/committee/v0" nes
+      & addNamespaceToPlan @ConwayEra @"entities/stake_pools/v0" nes
+      & addNamespaceToPlan @ConwayEra @"entities/stake_pools/future_params/v0" nes
+      & addNamespaceToPlan @ConwayEra @"entities/stake_pools/vrf_key_hashes/v0" nes
+      & addNamespaceToPlan @ConwayEra @"entities/dormant_epochs/v0" nes
   getProtocolVersion nes =
     pvMajor $ nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
   getEpochNo nes = nes ^. nesELL
