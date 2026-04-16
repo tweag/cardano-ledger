@@ -112,6 +112,8 @@ library export
     hspec-core,
     mempack-scls,
     resourcet,
+    scls-core,
     scls-cardano,
     scls-format,
     small-steps,
+    streaming,

@@ -3,15 +3,14 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Cardano.Ledger.CanonicalState.Export (
@@ -24,6 +23,8 @@ module Cardano.Ledger.CanonicalState.Export (
   ExportHooks (..),
   toGlobals,
   ExportGlobals,
+  ExportCanonicalNamespace (..),
+  addNamespaceToPlan,
 ) where
 
 import Cardano.Ledger.BaseTypes (
@@ -50,11 +51,13 @@ import Cardano.Ledger.Core (
   TopTx,
  )
 import Cardano.SCLS.CDDL (knownNamespaceKeySizes)
-import Cardano.SCLS.Internal.Entry.ChunkEntry (SomeChunkEntry)
+import Cardano.SCLS.Internal.Entry.ChunkEntry (ChunkEntry, SomeChunkEntry)
 import Cardano.SCLS.Internal.Serializer.Dump.Plan (
   SerializationPlan,
+  addNamespacedChunks,
  )
 import Cardano.SCLS.Internal.Serializer.External.Impl (serialize)
+import Cardano.SCLS.NamespaceCodec (KnownNamespace (..))
 import Cardano.Slotting.EpochInfo (epochInfoSize, epochInfoSlotLength, fixedEpochInfo)
 import Cardano.Slotting.Time (SlotLength)
 import Cardano.Types.Namespace (Namespace)
@@ -83,10 +86,13 @@ import qualified Data.ByteString.Lazy as BSL
 import Data.Function ((&))
 import Data.Functor.Identity (Identity (runIdentity))
 import Data.MemPack.Extra (RawBytes)
+import Data.Proxy (Proxy (Proxy))
 import Data.Sequence.Strict (StrictSeq)
 import GHC.Base (NonEmpty)
 import GHC.Generics (Generic)
 import GHC.IsList (IsList (toList))
+import GHC.TypeLits (KnownSymbol)
+import Streaming.Prelude (Of, Stream)
 import System.Directory (createDirectoryIfMissing, doesFileExist)
 import System.FilePath (joinPath, (</>))
 import Test.Hspec.Core.Spec (
@@ -417,3 +423,17 @@ data ExportHooks era = ExportHooks
       Either (BlockFailures era) (ExportLedgerState era) ->
       IO ()
   }
+
+class KnownNamespace ns => ExportCanonicalNamespace era ns where
+  exportNamespace ::
+    Monad m =>
+    ExportLedgerState era ->
+    Stream (Of (ChunkEntry (NamespaceKey ns) (NamespaceEntry ns))) m ()
+
+addNamespaceToPlan ::
+  forall era ns m.
+  (Monad m, KnownSymbol ns, ExportCanonicalNamespace era ns) =>
+  ExportLedgerState era ->
+  SerializationPlan (SomeChunkEntry RawBytes) m ->
+  SerializationPlan (SomeChunkEntry RawBytes) m
+addNamespaceToPlan s = addNamespacedChunks (Proxy :: Proxy ns) (exportNamespace @era @ns s)
