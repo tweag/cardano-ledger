@@ -27,6 +27,7 @@ module Cardano.Ledger.CanonicalState.Export (
   addNamespaceToPlan,
   TxFailures,
   BlockFailures,
+  ExportFailures (..),
 ) where
 
 import Cardano.Ledger.BaseTypes (
@@ -40,7 +41,6 @@ import Cardano.Ledger.BaseTypes (
  )
 import Cardano.Ledger.Binary (
   EncCBOR (encCBOR),
-  Encoding,
   toLazyByteString,
   toPlainEncoding,
  )
@@ -242,8 +242,10 @@ class ExportState era where
   dumpLedgerState :: ExportLedgerState era -> SerializationPlan (SomeChunkEntry RawBytes) ResIO
   getProtocolVersion :: ExportLedgerState era -> Version
   getEpochNo :: ExportLedgerState era -> EpochNo
-  encodeTxFailures :: TxFailures era -> Encoding
-  encodeBlockFailures :: BlockFailures era -> Encoding
+
+class ExportFailures era where
+  serializeTxFailures :: Version -> TxFailures era -> BSL.ByteString
+  serializeBlockFailures :: Version -> BlockFailures era -> BSL.ByteString
 
 data EraTestImp
   = ConwayEraTestImp
@@ -254,7 +256,7 @@ eraTestImpName = \case
 
 withScls ::
   forall era a.
-  (Era era, ExportState era, EncCBOR (Tx TopTx era)) =>
+  (Era era, EncCBOR (Tx TopTx era), ExportState era, ExportFailures era) =>
   EraTestImp ->
   ( ( Globals ->
       SlotNo ->
@@ -308,7 +310,7 @@ withScls eraImp setTxHook setBlockHook baseDir =
                       }
           }
     exportTx path description globals slotNo nes tx res =
-      export path description globals slotNo nes (dumpTx tx) (first (encodeTxFailures @era) res)
+      export path description globals slotNo nes (dumpTx tx) (first (flip $ serializeTxFailures @era) res)
     exportBlock path description globals slotNo nes blockIssuer txs res =
       export
         path
@@ -317,7 +319,7 @@ withScls eraImp setTxHook setBlockHook baseDir =
         slotNo
         nes
         (dumpBlock blockIssuer txs)
-        (first (encodeBlockFailures @era) res)
+        (first (flip $ serializeBlockFailures @era) res)
     export path description globals slotNo nes dumpTxOrBlock res = do
       let protocolVersion = getProtocolVersion @era nes
       let dir = joinPath ([baseDir, "Protocol " <> show protocolVersion] ++ path ++ [description])
@@ -351,11 +353,9 @@ withScls eraImp setTxHook setBlockHook baseDir =
       txFiles <- dumpTxOrBlock protocolVersion stateCount dir
       finalStateFile <-
         case res of
-          Left failures -> do
+          Left serializeFailures -> do
             let failuresFile = "failures-" <> show stateCount <> ".cbor"
-            BSL.writeFile
-              (dir </> failuresFile)
-              (toLazyByteString (toPlainEncoding protocolVersion failures))
+            BSL.writeFile (dir </> failuresFile) $ serializeFailures protocolVersion
             pure failuresFile
           Right st -> do
             let finalStateFile = "final-" <> show stateCount <> ".scls"

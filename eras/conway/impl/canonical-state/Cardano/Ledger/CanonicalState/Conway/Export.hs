@@ -11,7 +11,7 @@
 module Cardano.Ledger.CanonicalState.Conway.Export () where
 
 import Cardano.Ledger.BaseTypes (ProtVer (..), StrictMaybe (..), strictMaybeToMaybe)
-import Cardano.Ledger.Binary (EncCBOR (encCBOR), encodeList)
+import Cardano.Ledger.Binary (serialize)
 import Cardano.Ledger.CanonicalState.Conway (
   fromGovActionState,
   mkCanonicalAccountState,
@@ -20,6 +20,7 @@ import Cardano.Ledger.CanonicalState.Conway (
  )
 import Cardano.Ledger.CanonicalState.Export (
   ExportCanonicalNamespace (..),
+  ExportFailures (..),
   ExportState (..),
   addNamespaceToPlan,
  )
@@ -398,5 +399,7 @@ instance ExportState ConwayEra where
   getProtocolVersion nes =
     pvMajor $ nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
   getEpochNo nes = nes ^. nesELL
-  encodeTxFailures = encodeList encCBOR . toList
-  encodeBlockFailures = encodeList encCBOR . toList
+
+instance ExportFailures ConwayEra where
+  serializeTxFailures = serialize
+  serializeBlockFailures = serialize
