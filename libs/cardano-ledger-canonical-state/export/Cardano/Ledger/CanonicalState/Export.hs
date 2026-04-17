@@ -25,6 +25,8 @@ module Cardano.Ledger.CanonicalState.Export (
   ExportGlobals,
   ExportCanonicalNamespace (..),
   addNamespaceToPlan,
+  TxFailures,
+  BlockFailures,
 ) where
 
 import Cardano.Ledger.BaseTypes (
