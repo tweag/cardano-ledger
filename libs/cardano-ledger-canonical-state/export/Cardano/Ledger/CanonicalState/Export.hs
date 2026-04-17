@@ -28,6 +28,7 @@ module Cardano.Ledger.CanonicalState.Export (
   TxFailures,
   BlockFailures,
   ExportFailures (..),
+  TxOrBlock (..),
 ) where
 
 import Cardano.Ledger.BaseTypes (
@@ -105,10 +106,20 @@ import Test.Hspec.Core.Spec (
  )
 import Test.ImpSpec (ImpInit (ImpInit, impInitEnv), ImpSpec (ImpSpecEnv))
 
+data TxOrBlock tx block
+  = OrTx tx
+  | OrBlock block
+  deriving (Show, Generic)
+
+instance (ToJSON tx, ToJSON block) => ToJSON (TxOrBlock tx block) where
+  toEncoding = genericToEncoding defaultOptions
+
+instance (FromJSON tx, FromJSON block) => FromJSON (TxOrBlock tx block)
+
 data TestFixture = TestFixture
   { epochNo :: EpochNo
   , initialState :: FilePath
-  , transactions :: Either FilePath (FilePath, [FilePath])
+  , transactions :: TxOrBlock FilePath (FilePath, [FilePath])
   , finalState :: FilePath
   }
   deriving (Generic, Show)
@@ -380,13 +391,13 @@ withScls eraImp setTxHook setBlockHook baseDir =
 
 dumpTx ::
   EncCBOR (Tx TopTx era) =>
-  Tx TopTx era -> Version -> Int -> FilePath -> IO (Either FilePath (FilePath, [FilePath]))
+  Tx TopTx era -> Version -> Int -> FilePath -> IO (TxOrBlock FilePath (FilePath, [FilePath]))
 dumpTx tx protocolVersion stateCount dir = do
   let txFile = "txn-" <> show stateCount <> ".cbor"
   BSL.writeFile
     (dir </> txFile)
     (toLazyByteString (toPlainEncoding protocolVersion (encCBOR tx)))
-  pure (Left txFile)
+  pure (OrTx txFile)
 
 dumpBlock ::
   EncCBOR (Tx TopTx era) =>
@@ -395,13 +406,13 @@ dumpBlock ::
   Version ->
   Int ->
   FilePath ->
-  IO (Either FilePath (FilePath, [FilePath]))
+  IO (TxOrBlock FilePath (FilePath, [FilePath]))
 dumpBlock blockIssuer txs protocolVersion stateCount dir = do
   let blockIssuerFile = "block-" <> show stateCount <> "-issuer.cbor"
   BSL.writeFile
     (dir </> blockIssuerFile)
     (toLazyByteString (toPlainEncoding protocolVersion (encCBOR blockIssuer)))
-  fmap (Right . (blockIssuerFile,)) $ forM (zip [0 :: Integer ..] (toList txs)) $ \(i, tx) -> do
+  fmap (OrBlock . (blockIssuerFile,)) $ forM (zip [0 :: Integer ..] (toList txs)) $ \(i, tx) -> do
     let txFile = "block-" <> show stateCount <> "-tx-" <> show i <> ".cbor"
     BSL.writeFile
       (dir </> txFile)
