@@ -29,6 +29,8 @@ module Cardano.Ledger.CanonicalState.Export (
   BlockFailures,
   ExportFailures (..),
   TxOrBlock (..),
+  mapTxOrBlock,
+  mapTxOrBlockM,
 ) where
 
 import Cardano.Ledger.BaseTypes (
@@ -116,6 +118,15 @@ instance (ToJSON tx, ToJSON block) => ToJSON (TxOrBlock tx block) where
   toEncoding = genericToEncoding defaultOptions
 
 instance (FromJSON tx, FromJSON block) => FromJSON (TxOrBlock tx block)
+
+mapTxOrBlock :: (tx -> tx') -> (block -> block') -> TxOrBlock tx block -> TxOrBlock tx' block'
+mapTxOrBlock f _ (OrTx tx) = OrTx (f tx)
+mapTxOrBlock _ g (OrBlock block) = OrBlock (g block)
+
+mapTxOrBlockM ::
+  Monad m => (tx -> m tx') -> (block -> m block') -> TxOrBlock tx block -> m (TxOrBlock tx' block')
+mapTxOrBlockM f _ (OrTx tx) = OrTx <$> f tx
+mapTxOrBlockM _ g (OrBlock block) = OrBlock <$> g block
 
 data TestFixture = TestFixture
   { epochNo :: EpochNo
