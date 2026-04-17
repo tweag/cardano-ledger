@@ -18,8 +18,7 @@ import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.SCLS.Internal.Reader (withLatestManifestFrame)
 import Cardano.SCLS.Internal.Record.Manifest (Manifest (..))
 import Data.Aeson (decodeFileStrict)
-import Data.List (isSuffixOf)
-import Data.Maybe (mapMaybe)
+import Data.Either (rights)
 import GHC.IsList (IsList (toList))
 import System.Directory (
   doesDirectoryExist,
@@ -101,20 +100,18 @@ discoverTestCases dumpsDir = findMetadataFiles dumpsDir []
     fixtureToTestCases ::
       FilePath -> [String] -> TestFixture -> [SclsTestCase]
     fixtureToTestCases dir pathSegments fixture =
-      mapMaybe mkTestCase sclsFileNames
+      map mkTestCase sclsFileNames
       where
         sclsFileNames =
-          filter
-            (".scls" `isSuffixOf`)
-            [initialState fixture, finalState fixture]
+          rights
+            [Right (initialState fixture), finalState fixture]
         mkTestCase fileName =
-          Just
-            SclsTestCase
-              { stcSclsFile = dir </> fileName
-              , stcEpochNo = epochNo fixture
-              , stcRelPath = pathSegments
-              , stcLabel = fileName
-              }
+          SclsTestCase
+            { stcSclsFile = dir </> fileName
+            , stcEpochNo = epochNo fixture
+            , stcRelPath = pathSegments
+            , stcLabel = fileName
+            }
 
 buildSpec :: [SclsTestCase] -> Spec
 buildSpec testCases =

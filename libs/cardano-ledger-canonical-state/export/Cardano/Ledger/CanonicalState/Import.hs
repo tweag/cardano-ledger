@@ -6,7 +6,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -31,6 +30,8 @@ import Cardano.Ledger.CanonicalState.Export (
   ExportState (ExportLedgerState),
   TestFixture (..),
   TxFailures,
+  TxOrBlock (..),
+  mapTxOrBlockM,
  )
 import Cardano.Ledger.Core (
   EraTx (Tx),
@@ -43,6 +44,9 @@ import Cardano.SCLS.Internal.Reader (withNamespacedDataHandle)
 import Cardano.SCLS.NamespaceCodec (KnownNamespace (NamespaceEntry, NamespaceKey))
 import Cardano.Types.Namespace (fromSymbol)
 import Control.Monad (forM)
+import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.Trans.Except (ExceptT (ExceptT), except)
+import Data.Bitraversable (bimapM)
 import qualified Data.ByteString.Lazy as BSL
 import Data.Proxy (Proxy)
 import qualified Data.Sequence.Strict as SSeq
@@ -51,7 +55,7 @@ import GHC.IO.Handle (Handle)
 import GHC.TypeLits (KnownSymbol)
 import Streaming.Prelude (Of, Stream)
 import qualified Streaming.Prelude as S
-import System.FilePath (takeExtension, (</>))
+import System.FilePath ((</>))
 
 class KnownNamespace ns => ImportCanonicalNamespace era ns where
   importNamespace ::
@@ -76,13 +80,8 @@ data InMemoryTestFixture era = InMemoryTestFixture
   , imtfTransactions ::
       TxOrBlock (Tx TopTx era) (KeyHash BlockIssuer, SSeq.StrictSeq (Tx TopTx era))
   , imtfFinalState ::
-      Either (TxOrBlock (TxFailures era) (BlockFailures era)) (SlotNo, ExportLedgerState era)
+      Either (TxOrBlock (TxFailures era) (BlockFailures era)) FilePath
   }
-
-data TxOrBlock tx block
-  = OrTx tx
-  | OrBlock block
-  deriving (Show)
 
 loadInMemoryTestFixture ::
   forall era.
@@ -93,67 +92,47 @@ loadInMemoryTestFixture ::
   FilePath ->
   Version ->
   TestFixture ->
-  IO (Either DecoderError (InMemoryTestFixture era))
+  ExceptT DecoderError IO (InMemoryTestFixture era)
 loadInMemoryTestFixture dir protocolVersion TestFixture {..} = do
-  imtfInitialState <- importCanonicalState @era (dir </> initialState) epochNo
+  imtfInitialState <- liftIO $ importCanonicalState @era (dir </> initialState) epochNo
+  imtfTransactions <-
+    mapTxOrBlockM
+      ( \txFile ->
+          decodeTx (dir </> txFile)
+      )
+      ( \(blockIssuerFile, txFiles) -> do
+          blockIssuerBytes <- liftIO $ BSL.readFile (dir </> blockIssuerFile)
+          blockIssuer <- except $ decodeFull protocolVersion blockIssuerBytes
+          t <- forM txFiles (decodeTx . (dir </>))
+          pure (blockIssuer, SSeq.fromList t)
+      )
+      transactions
+  imtfFinalState <- loadStateOrFailures
+  pure $
+    InMemoryTestFixture
+      { imtfEpochNo = epochNo
+      , imtfInitialState
+      , imtfTransactions
+      , imtfFinalState
+      }
+  where
+    decodeTx filepath =
+      except . decodeFullAnnotator protocolVersion (T.pack "Tx") decCBOR
+        =<< liftIO (BSL.readFile filepath)
 
-  txs <- case transactions of
-    Left txFile -> do
-      bytes <- BSL.readFile (dir </> txFile)
-      pure $ OrTx <$> decodeFullAnnotator protocolVersion (T.pack "Tx") decCBOR bytes
-    Right (blockIssuerFile, txFiles) -> do
-      blockIssuer <-
-        decodeFull protocolVersion <$> BSL.readFile (dir </> blockIssuerFile)
-      t <-
-        forM txFiles $
-          fmap
-            (decodeFullAnnotator protocolVersion (T.pack "Tx") decCBOR)
-            . BSL.readFile
-            . (dir </>)
-      pure $
-        blockIssuer >>= \bi ->
-          OrBlock . (bi,) . SSeq.fromList
-            <$> foldr
-              ( \tt acc -> case (acc, tt) of
-                  (Left err, _) -> Left err
-                  (Right _, Left err) -> Left err
-                  (Right acc', Right ttt) -> Right $ ttt : acc'
-              )
-              (Right [])
-              t
-
-  imtfFinalState' <-
-    if takeExtension finalState == ".scls"
-      then
-        Right . Right
-          <$> importCanonicalState @era (dir </> finalState) epochNo
-      else do
-        bs <- BSL.readFile (dir </> finalState)
-        case decodeFullDecoder protocolVersion "TxFailures" (decodeTxFailures @era) bs of
-          Left _err ->
-            case decodeFullDecoder protocolVersion "BlockFailures" (decodeBlockFailures @era) bs of
-              Left err ->
-                pure (Left err)
-              Right blockFailures ->
-                pure (Right (Left (OrBlock blockFailures)))
-          Right txFailures ->
-            pure (Right (Left (OrTx txFailures)))
-
-  case imtfFinalState' of
-    Left err ->
-      pure (Left err)
-    Right imtfFinalState ->
-      pure $
-        fmap
-          ( \imtfTransactions ->
-              InMemoryTestFixture
-                { imtfEpochNo = epochNo
-                , imtfInitialState
-                , imtfTransactions
-                , imtfFinalState
-                }
-          )
-          txs
+    loadStateOrFailures ::
+      ExceptT DecoderError IO (Either (TxOrBlock (TxFailures era) (BlockFailures era)) FilePath)
+    loadStateOrFailures =
+      bimapM
+        ( \failuresFile -> ExceptT $ do
+            bs <- BSL.readFile (dir </> failuresFile)
+            pure $
+              case decodeFullDecoder protocolVersion "TxFailures" (decodeTxFailures @era) bs of
+                Left _ -> OrBlock <$> decodeFullDecoder protocolVersion "BlockFailures" (decodeBlockFailures @era) bs
+                Right txFailures -> Right (OrTx txFailures)
+        )
+        pure
+        finalState
 
 importNamespaceFromHandle ::
   forall era v.
