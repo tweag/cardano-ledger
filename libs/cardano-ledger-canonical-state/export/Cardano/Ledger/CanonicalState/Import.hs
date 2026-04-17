@@ -2,9 +2,11 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
@@ -18,11 +20,18 @@ import Cardano.Ledger.BaseTypes (
 import Cardano.Ledger.Binary (
   Annotator,
   DecCBOR (decCBOR),
+  Decoder,
   DecoderError,
   decodeFull,
   decodeFullAnnotator,
+  decodeFullDecoder,
  )
-import Cardano.Ledger.CanonicalState.Export (ExportState (ExportLedgerState), TestFixture (..))
+import Cardano.Ledger.CanonicalState.Export (
+  BlockFailures,
+  ExportState (ExportLedgerState),
+  TestFixture (..),
+  TxFailures,
+ )
 import Cardano.Ledger.Core (
   EraTx (Tx),
   KeyHash,
@@ -36,7 +45,7 @@ import Cardano.Types.Namespace (fromSymbol)
 import Control.Monad (forM)
 import qualified Data.ByteString.Lazy as BSL
 import Data.Proxy (Proxy)
-import Data.Sequence.Strict (StrictSeq, fromList)
+import qualified Data.Sequence.Strict as SSeq
 import qualified Data.Text as T
 import GHC.IO.Handle (Handle)
 import GHC.TypeLits (KnownSymbol)
@@ -57,22 +66,29 @@ class ImportCanonicalState era where
     EpochNo ->
     IO (SlotNo, ExportLedgerState era)
 
+class ImportFailures era where
+  decodeTxFailures :: Decoder s (TxFailures era)
+  decodeBlockFailures :: Decoder s (BlockFailures era)
+
 data InMemoryTestFixture era = InMemoryTestFixture
   { imtfEpochNo :: EpochNo
   , imtfInitialState :: (SlotNo, ExportLedgerState era)
-  , imtfTransactions :: TxOrBlock (Tx TopTx era)
-  , imtfFinalState :: Either () (SlotNo, ExportLedgerState era)
+  , imtfTransactions ::
+      TxOrBlock (Tx TopTx era) (KeyHash BlockIssuer, SSeq.StrictSeq (Tx TopTx era))
+  , imtfFinalState ::
+      Either (TxOrBlock (TxFailures era) (BlockFailures era)) (SlotNo, ExportLedgerState era)
   }
 
-data TxOrBlock tx
+data TxOrBlock tx block
   = OrTx tx
-  | OrBlock (KeyHash BlockIssuer) (StrictSeq tx)
+  | OrBlock block
   deriving (Show)
 
 loadInMemoryTestFixture ::
   forall era.
   ( ImportCanonicalState era
   , DecCBOR (Annotator (Tx TopTx era))
+  , ImportFailures era
   ) =>
   FilePath ->
   Version ->
@@ -80,12 +96,6 @@ loadInMemoryTestFixture ::
   IO (Either DecoderError (InMemoryTestFixture era))
 loadInMemoryTestFixture dir protocolVersion TestFixture {..} = do
   imtfInitialState <- importCanonicalState @era (dir </> initialState) epochNo
-  imtfFinalState <-
-    if takeExtension finalState == ".scls"
-      then
-        Right <$> importCanonicalState @era (dir </> finalState) epochNo
-      else
-        pure (Left ())
 
   txs <- case transactions of
     Left txFile -> do
@@ -102,7 +112,7 @@ loadInMemoryTestFixture dir protocolVersion TestFixture {..} = do
             . (dir </>)
       pure $
         blockIssuer >>= \bi ->
-          OrBlock bi . fromList
+          OrBlock . (bi,) . SSeq.fromList
             <$> foldr
               ( \tt acc -> case (acc, tt) of
                   (Left err, _) -> Left err
@@ -111,17 +121,39 @@ loadInMemoryTestFixture dir protocolVersion TestFixture {..} = do
               )
               (Right [])
               t
-  pure $
-    fmap
-      ( \imtfTransactions ->
-          InMemoryTestFixture
-            { imtfEpochNo = epochNo
-            , imtfInitialState
-            , imtfTransactions
-            , imtfFinalState
-            }
-      )
-      txs
+
+  imtfFinalState' <-
+    if takeExtension finalState == ".scls"
+      then
+        Right . Right
+          <$> importCanonicalState @era (dir </> finalState) epochNo
+      else do
+        bs <- BSL.readFile (dir </> finalState)
+        case decodeFullDecoder protocolVersion "TxFailures" (decodeTxFailures @era) bs of
+          Left _err ->
+            case decodeFullDecoder protocolVersion "BlockFailures" (decodeBlockFailures @era) bs of
+              Left err ->
+                pure (Left err)
+              Right blockFailures ->
+                pure (Right (Left (OrBlock blockFailures)))
+          Right txFailures ->
+            pure (Right (Left (OrTx txFailures)))
+
+  case imtfFinalState' of
+    Left err ->
+      pure (Left err)
+    Right imtfFinalState ->
+      pure $
+        fmap
+          ( \imtfTransactions ->
+              InMemoryTestFixture
+                { imtfEpochNo = epochNo
+                , imtfInitialState
+                , imtfTransactions
+                , imtfFinalState
+                }
+          )
+          txs
 
 importNamespaceFromHandle ::
   forall era v.

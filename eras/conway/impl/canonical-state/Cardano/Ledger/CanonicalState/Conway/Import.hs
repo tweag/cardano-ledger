@@ -16,6 +16,7 @@ import Cardano.Ledger.BaseTypes (
   StrictMaybe (SJust),
   strictMaybe,
  )
+import Cardano.Ledger.Binary (DecCBOR (decCBOR))
 import Cardano.Ledger.CanonicalState.BasicTypes (OnChain (getValue))
 import Cardano.Ledger.CanonicalState.Conway (
   fromCanonicalAccountState,
@@ -27,6 +28,7 @@ import Cardano.Ledger.CanonicalState.Export (ExportState (ExportLedgerState))
 import Cardano.Ledger.CanonicalState.Import (
   ImportCanonicalNamespace (..),
   ImportCanonicalState (importCanonicalState),
+  ImportFailures (..),
   importNamespaceFromHandle,
  )
 import Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 (BlockIn (BlockIn), BlockOut (BlockOut))
@@ -444,3 +446,7 @@ instance ImportCanonicalState ConwayEra where
         (def @(NewEpochState ConwayEra))
           { nesEL = epochNo
           }
+
+instance ImportFailures ConwayEra where
+  decodeTxFailures = decCBOR
+  decodeBlockFailures = decCBOR
