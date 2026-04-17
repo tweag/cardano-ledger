@@ -85,6 +85,7 @@ import Data.Aeson (
   (.=),
  )
 import Data.Bifunctor (Bifunctor (first))
+import Data.Bitraversable (bimapM)
 import qualified Data.ByteString.Lazy as BSL
 import Data.Function ((&))
 import Data.Functor.Identity (Identity (runIdentity))
@@ -120,7 +121,7 @@ data TestFixture = TestFixture
   { epochNo :: EpochNo
   , initialState :: FilePath
   , transactions :: TxOrBlock FilePath (FilePath, [FilePath])
-  , finalState :: FilePath
+  , finalState :: Either FilePath FilePath
   }
   deriving (Generic, Show)
 
@@ -363,17 +364,20 @@ withScls eraImp setTxHook setBlockHook baseDir =
           dumpLedgerState @era nes
       txFiles <- dumpTxOrBlock protocolVersion stateCount dir
       finalStateFile <-
-        case res of
-          Left serializeFailures -> do
-            let failuresFile = "failures-" <> show stateCount <> ".cbor"
-            BSL.writeFile (dir </> failuresFile) $ serializeFailures protocolVersion
-            pure failuresFile
-          Right st -> do
-            let finalStateFile = "final-" <> show stateCount <> ".scls"
-            Right () <-
-              dump (dir </> finalStateFile) slotNo $
-                dumpLedgerState @era st
-            pure finalStateFile
+        bimapM
+          ( \serializeFailures -> do
+              let failuresFile = "failures-" <> show stateCount <> ".cbor"
+              BSL.writeFile (dir </> failuresFile) $ serializeFailures protocolVersion
+              pure failuresFile
+          )
+          ( \st -> do
+              let finalStateFile = "final-" <> show stateCount <> ".scls"
+              Right () <-
+                dump (dir </> finalStateFile) slotNo $
+                  dumpLedgerState @era st
+              pure finalStateFile
+          )
+          res
       let epochNo = getEpochNo @era nes
       BSL.writeFile metadataFile $
         encode $
