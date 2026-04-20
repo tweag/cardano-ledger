@@ -76,7 +76,7 @@ import Data.Aeson (
   ToJSON (..),
   decodeFileStrict,
   defaultOptions,
-  encode,
+  encodeFile,
   genericParseJSON,
   genericToEncoding,
   genericToJSON,
@@ -390,19 +390,18 @@ withScls eraImp setTxHook setBlockHook baseDir =
           )
           res
       let epochNo = getEpochNo @era nes
-      BSL.writeFile metadataFile $
-        encode $
-          ctx
-            { states =
-                ( TestFixture
-                    { epochNo
-                    , initialState = initialStateFile
-                    , finalState = finalStateFile
-                    , transactions = txFiles
-                    }
-                )
-                  : states
-            }
+      encodeFile metadataFile $
+        ctx
+          { states =
+              ( TestFixture
+                  { epochNo
+                  , initialState = initialStateFile
+                  , finalState = finalStateFile
+                  , transactions = txFiles
+                  }
+              )
+                : states
+          }
 
 dumpTx ::
   EncCBOR (Tx TopTx era) =>
