@@ -18,7 +18,7 @@ module Cardano.Ledger.CanonicalState.Export (
   EraTestImp (..),
   ExportCanonicalState (..),
   Metadata (..),
-  TestFixture (..),
+  StateTransition (..),
   dump,
   ExportHooks (..),
   toGlobals,
@@ -128,7 +128,7 @@ mapTxOrBlockM ::
 mapTxOrBlockM f _ (OrTx tx) = OrTx <$> f tx
 mapTxOrBlockM _ g (OrBlock block) = OrBlock <$> g block
 
-data TestFixture = TestFixture
+data StateTransition = StateTransition
   { epochNo :: EpochNo
   , initialState :: FilePath
   , transactions :: TxOrBlock FilePath (FilePath, [FilePath])
@@ -136,10 +136,10 @@ data TestFixture = TestFixture
   }
   deriving (Generic, Show)
 
-instance ToJSON TestFixture where
+instance ToJSON StateTransition where
   toEncoding = genericToEncoding defaultOptions
 
-instance FromJSON TestFixture
+instance FromJSON StateTransition
 
 data ExportGlobals = ExportGlobals
   { eFixedEpochSize :: EpochSize
@@ -233,7 +233,7 @@ data Metadata = Metadata
   , eraImp :: String
   , protocolVersion :: Version
   , description :: String
-  , states :: [TestFixture]
+  , stateTransitions :: [StateTransition]
   , path :: [String]
   , globals :: ExportGlobals
   }
@@ -347,7 +347,7 @@ withScls eraImp setTxHook setBlockHook baseDir =
       let protocolVersion = getProtocolVersion @era nes
       let dir = joinPath ([baseDir, "Protocol " <> show protocolVersion] ++ path ++ [description])
       let metadataFile = dir </> "metadata.json"
-      ctx@Metadata {states} <-
+      ctx@Metadata {stateTransitions} <-
         doesFileExist metadataFile >>= \metadataExists ->
           if metadataExists
             then
@@ -363,11 +363,11 @@ withScls eraImp setTxHook setBlockHook baseDir =
                   , era = eraName @era
                   , protocolVersion
                   , description
-                  , states = []
+                  , stateTransitions = []
                   , path
                   , globals = fromGlobals globals
                   }
-      let stateCount = length states
+      let stateCount = length stateTransitions
       createDirectoryIfMissing True dir
       let initialStateFile = "initial-" <> show stateCount <> ".scls"
       Right () <-
@@ -392,15 +392,15 @@ withScls eraImp setTxHook setBlockHook baseDir =
       let epochNo = getEpochNo @era nes
       encodeFile metadataFile $
         ctx
-          { states =
-              ( TestFixture
+          { stateTransitions =
+              ( StateTransition
                   { epochNo
                   , initialState = initialStateFile
                   , finalState = finalStateFile
                   , transactions = txFiles
                   }
               )
-                : states
+                : stateTransitions
           }
 
 dumpTx ::
