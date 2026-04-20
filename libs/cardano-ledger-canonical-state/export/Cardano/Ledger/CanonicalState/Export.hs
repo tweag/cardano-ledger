@@ -16,7 +16,7 @@
 module Cardano.Ledger.CanonicalState.Export (
   withScls,
   EraTestImp (..),
-  ExportState (..),
+  ExportCanonicalState (..),
   Metadata (..),
   TestFixture (..),
   dump,
@@ -260,7 +260,7 @@ type TxFailures era = NonEmpty (PredicateFailure (EraRule "LEDGER" era))
 
 type BlockFailures era = NonEmpty (PredicateFailure (EraRule "BBODY" era))
 
-class ExportState era where
+class ExportCanonicalState era where
   type ExportLedgerState era
   dumpLedgerState :: ExportLedgerState era -> SerializationPlan (SomeChunkEntry RawBytes) ResIO
   getProtocolVersion :: ExportLedgerState era -> Version
@@ -279,7 +279,7 @@ eraTestImpName = \case
 
 withScls ::
   forall era a.
-  (Era era, EncCBOR (Tx TopTx era), ExportState era, ExportFailures era) =>
+  (Era era, EncCBOR (Tx TopTx era), ExportCanonicalState era, ExportFailures era) =>
   EraTestImp ->
   ( ( Globals ->
       SlotNo ->

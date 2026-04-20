@@ -21,7 +21,7 @@ import Cardano.Ledger.CanonicalState.Conway (
 import Cardano.Ledger.CanonicalState.Export (
   ExportCanonicalNamespace (..),
   ExportFailures (..),
-  ExportState (..),
+  ExportCanonicalState (..),
   addNamespaceToPlan,
  )
 import Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 (BlockIn (BlockIn), BlockOut (BlockOut))
@@ -378,7 +378,7 @@ instance ExportCanonicalNamespace ConwayEra "entities/dormant_epochs/v0" where
           )
       )
 
-instance ExportState ConwayEra where
+instance ExportCanonicalState ConwayEra where
   type ExportLedgerState ConwayEra = NewEpochState ConwayEra
   dumpLedgerState nes =
     defaultSerializationPlan
