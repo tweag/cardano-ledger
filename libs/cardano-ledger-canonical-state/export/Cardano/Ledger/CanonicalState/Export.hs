@@ -234,7 +234,7 @@ data Metadata = Metadata
   , protocolVersion :: Version
   , description :: String
   , stateTransitions :: [StateTransition]
-  , path :: [String]
+  , dir :: FilePath
   , globals :: ExportGlobals
   }
   deriving (Generic)
@@ -345,9 +345,10 @@ withScls eraImp setTxHook setBlockHook baseDir =
         (first (flip $ serializeBlockFailures @era) res)
     export path description globals slotNo nes dumpTxOrBlock res = do
       let protocolVersion = getProtocolVersion @era nes
-      let dir = joinPath ([baseDir, "Protocol " <> show protocolVersion] ++ path ++ [description])
-      let metadataFile = dir </> "metadata.json"
-      ctx@Metadata {stateTransitions} <-
+          dirLocalPath = joinPath (["Protocol " <> show protocolVersion] ++ path ++ [description])
+          dir = baseDir </> dirLocalPath
+          metadataFile = dir </> "metadata.json"
+      metadata@Metadata {stateTransitions} <-
         doesFileExist metadataFile >>= \metadataExists ->
           if metadataExists
             then
@@ -364,7 +365,7 @@ withScls eraImp setTxHook setBlockHook baseDir =
                   , protocolVersion
                   , description
                   , stateTransitions = []
-                  , path
+                  , dir = dirLocalPath
                   , globals = fromGlobals globals
                   }
       let stateCount = length stateTransitions
@@ -391,7 +392,7 @@ withScls eraImp setTxHook setBlockHook baseDir =
           res
       let epochNo = getEpochNo @era nes
       encodeFile metadataFile $
-        ctx
+        metadata
           { stateTransitions =
               ( StateTransition
                   { epochNo
