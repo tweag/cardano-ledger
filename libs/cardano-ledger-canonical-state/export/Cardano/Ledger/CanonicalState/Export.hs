@@ -277,6 +277,15 @@ eraTestImpName :: EraTestImp -> String
 eraTestImpName = \case
   ConwayEraTestImp -> "Conway"
 
+appendMetadata :: FilePath -> Metadata -> IO ()
+appendMetadata filePath metadata =
+  doesFileExist filePath >>= \case
+    True ->
+      decodeFileStrict filePath >>= \case
+        Just m -> encodeFile filePath (metadata : m)
+        Nothing -> error $ "Failed to decode existing metadata file: " <> filePath
+    False -> encodeFile filePath [metadata]
+
 withScls ::
   forall era a.
   (Era era, EncCBOR (Tx TopTx era), ExportCanonicalState era, ExportFailures era) =>
@@ -347,27 +356,33 @@ withScls eraImp setTxHook setBlockHook baseDir =
       let protocolVersion = getProtocolVersion @era nes
           dirLocalPath = joinPath (["Protocol " <> show protocolVersion] ++ path ++ [description])
           dir = baseDir </> dirLocalPath
-          metadataFile = dir </> "metadata.json"
-      metadata@Metadata {stateTransitions} <-
-        doesFileExist metadataFile >>= \metadataExists ->
-          if metadataExists
-            then
-              decodeFileStrict metadataFile >>= \case
-                Just ctx -> pure ctx
-                Nothing -> do
-                  -- TODO: clean up the directory if the metadata file is corrupted, to avoid leaving around junk files?
-                  error $ "Failed to decode metadata file: " <> metadataFile
-            else
-              pure $
-                Metadata
-                  { eraImp = eraTestImpName eraImp
-                  , era = eraName @era
-                  , protocolVersion
-                  , description
-                  , stateTransitions = []
-                  , dir = dirLocalPath
-                  , globals = fromGlobals globals
-                  }
+          metadataFile = baseDir </> "metadata.json"
+          tmpMetadataFile = baseDir </> "metadata.tmp"
+      metadata@Metadata {stateTransitions} <- do
+        let defaultMetadata =
+              Metadata
+                { eraImp = eraTestImpName eraImp
+                , era = eraName @era
+                , protocolVersion
+                , description
+                , stateTransitions = []
+                , globals = fromGlobals globals
+                , dir = dirLocalPath
+                }
+        doesFileExist tmpMetadataFile >>= \case
+          True ->
+            decodeFileStrict tmpMetadataFile >>= \case
+              Just m
+                | isSameScenario m defaultMetadata ->
+                    pure m
+                | otherwise -> do
+                    appendMetadata metadataFile m
+                    pure defaultMetadata
+              Nothing -> do
+                -- TODO: clean up the directory if the metadata file is corrupted, to avoid leaving around junk files?
+                error $ "Failed to decode metadata file: " <> metadataFile
+          False ->
+            pure defaultMetadata
       let stateCount = length stateTransitions
       createDirectoryIfMissing True dir
       let initialStateFile = "initial-" <> show stateCount <> ".scls"
@@ -391,7 +406,7 @@ withScls eraImp setTxHook setBlockHook baseDir =
           )
           res
       let epochNo = getEpochNo @era nes
-      encodeFile metadataFile $
+      encodeFile tmpMetadataFile $
         metadata
           { stateTransitions =
               ( StateTransition
@@ -403,6 +418,13 @@ withScls eraImp setTxHook setBlockHook baseDir =
               )
                 : stateTransitions
           }
+
+isSameScenario :: Metadata -> Metadata -> Bool
+isSameScenario m1 m2 =
+  era m1 == era m2
+    && eraImp m1 == eraImp m2
+    && protocolVersion m1 == protocolVersion m2
+    && description m1 == description m2
 
 dumpTx ::
   EncCBOR (Tx TopTx era) =>
