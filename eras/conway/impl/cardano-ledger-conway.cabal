@@ -418,7 +418,6 @@ test-suite canonical-ledger-tests
     cardano-ledger-canonical-state:export,
     cardano-ledger-conway:{cardano-ledger-conway, canonical-state},
     cardano-ledger-core:{cardano-ledger-core, testlib},
-    directory,
     filepath,
     scls-format,
     temporary,

@@ -24,7 +24,7 @@ import Cardano.Ledger.CanonicalState.Conway (
   toGovActionState,
  )
 import Cardano.Ledger.CanonicalState.Conway.Export ()
-import Cardano.Ledger.CanonicalState.Export (ExportState (ExportLedgerState))
+import Cardano.Ledger.CanonicalState.Export (ExportCanonicalState (ExportLedgerState))
 import Cardano.Ledger.CanonicalState.Import (
   ImportCanonicalNamespace (..),
   ImportCanonicalState (importCanonicalState),

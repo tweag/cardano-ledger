@@ -27,8 +27,8 @@ import Cardano.Ledger.Binary (
  )
 import Cardano.Ledger.CanonicalState.Export (
   BlockFailures,
-  ExportState (ExportLedgerState),
-  TestFixture (..),
+  ExportCanonicalState (ExportLedgerState),
+  StateTransition (..),
   TxFailures,
   TxOrBlock (..),
   mapTxOrBlockM,
@@ -91,9 +91,9 @@ loadInMemoryTestFixture ::
   ) =>
   FilePath ->
   Version ->
-  TestFixture ->
+  StateTransition ->
   ExceptT DecoderError IO (InMemoryTestFixture era)
-loadInMemoryTestFixture dir protocolVersion TestFixture {..} = do
+loadInMemoryTestFixture dir protocolVersion StateTransition {..} = do
   imtfInitialState <- liftIO $ importCanonicalState @era (dir </> initialState) epochNo
   imtfTransactions <-
     mapTxOrBlockM

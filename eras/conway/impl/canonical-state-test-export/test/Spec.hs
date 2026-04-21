@@ -1,5 +1,6 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Main where
@@ -8,10 +9,10 @@ import Cardano.Ledger.BaseTypes (EpochNo)
 import Cardano.Ledger.CanonicalState.Conway.Export ()
 import Cardano.Ledger.CanonicalState.Conway.Import ()
 import Cardano.Ledger.CanonicalState.Export (
-  ExportState (dumpLedgerState),
+  ExportCanonicalState (dumpLedgerState),
   Metadata (..),
-  TestFixture (..),
-  dump,
+  StateTransition (..),
+  dump, getTestDirFromMetadata,
  )
 import Cardano.Ledger.CanonicalState.Import (ImportCanonicalState (importCanonicalState))
 import Cardano.Ledger.Conway (ConwayEra)
@@ -20,11 +21,6 @@ import Cardano.SCLS.Internal.Record.Manifest (Manifest (..))
 import Data.Aeson (decodeFileStrict)
 import Data.Either (rights)
 import GHC.IsList (IsList (toList))
-import System.Directory (
-  doesDirectoryExist,
-  doesFileExist,
-  listDirectory,
- )
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -64,52 +60,28 @@ data SclsTestCase = SclsTestCase
   }
 
 discoverTestCases :: FilePath -> IO [SclsTestCase]
-discoverTestCases dumpsDir = findMetadataFiles dumpsDir []
+discoverTestCases dumpsDir =
+  decodeFileStrict metadataFile >>= \case
+    Nothing -> do
+      putStrLn $ "Warning: could not parse " ++ metadataFile
+      pure []
+    Just (metadata :: [Metadata]) ->
+      pure $
+        concatMap metadataToTestCases metadata
   where
-    findMetadataFiles :: FilePath -> [String] -> IO [SclsTestCase]
-    findMetadataFiles dir pathSegments = do
-      entries <- listDirectory dir
-      let metadataFile = dir </> "metadata.json"
-      casesHere <-
-        doesFileExist metadataFile >>= \case
-          True -> parseMetadataFile metadataFile dir pathSegments
-          False -> pure []
-      casesBelow <-
-        concat
-          <$> mapM
-            ( \entry -> do
-                let fullPath = dir </> entry
-                isDir <- doesDirectoryExist fullPath
-                if isDir
-                  then findMetadataFiles fullPath (pathSegments ++ [entry])
-                  else pure []
-            )
-            entries
-      pure (casesHere ++ casesBelow)
-
-    parseMetadataFile ::
-      FilePath -> FilePath -> [String] -> IO [SclsTestCase]
-    parseMetadataFile metadataFile dir pathSegments =
-      decodeFileStrict metadataFile >>= \case
-        Nothing -> do
-          putStrLn $ "Warning: could not parse " ++ metadataFile
-          pure []
-        Just metadata ->
-          pure $ concatMap (fixtureToTestCases dir pathSegments) (states metadata)
-
-    fixtureToTestCases ::
-      FilePath -> [String] -> TestFixture -> [SclsTestCase]
-    fixtureToTestCases dir pathSegments fixture =
-      map mkTestCase sclsFileNames
+    metadataFile = dumpsDir </> "metadata.json"
+    metadataToTestCases :: Metadata -> [SclsTestCase]
+    metadataToTestCases metadata =
+      concatMap (\t -> map (mkTestCase t) $ sclsFileNames t) (stateTransitions metadata)
       where
-        sclsFileNames =
+        sclsFileNames transition =
           rights
-            [Right (initialState fixture), finalState fixture]
-        mkTestCase fileName =
+            [Right (initialState transition), finalState transition]
+        mkTestCase transition fileName =
           SclsTestCase
-            { stcSclsFile = dir </> fileName
-            , stcEpochNo = epochNo fixture
-            , stcRelPath = pathSegments
+            { stcSclsFile = dumpsDir </> getTestDirFromMetadata metadata </> fileName
+            , stcEpochNo = epochNo transition
+            , stcRelPath = path metadata
             , stcLabel = fileName
             }
 
