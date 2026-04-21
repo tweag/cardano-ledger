@@ -115,7 +115,7 @@ import GHC.Generics (Generic)
 import GHC.IsList (IsList (toList))
 import GHC.TypeLits (KnownSymbol)
 import Streaming.Prelude (Of, Stream)
-import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
 import System.FilePath (joinPath, (</>))
 import Test.Hspec.Core.Spec (
   Item (..),
@@ -443,6 +443,7 @@ withScls eraImp setTxHook setBlockHook baseDir =
                     pure m
                 | otherwise -> do
                     appendMetadata metadataFile m
+                    removeFile tmpMetadataFile
                     pure defaultMetadata
               Nothing -> do
                 -- TODO: clean up the directory if the metadata file is corrupted, to avoid leaving around junk files?
