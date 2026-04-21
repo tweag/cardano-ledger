@@ -103,7 +103,6 @@ import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (JSONPathElement (Key))
 import Data.Bifunctor (Bifunctor (first))
-import Data.Bitraversable (bimapM)
 import qualified Data.ByteString.Lazy as BSL
 import Data.Function ((&))
 import Data.Functor.Identity (Identity (runIdentity))
@@ -447,31 +446,28 @@ withScls eraImp setTxHook setBlockHook baseDir =
                     pure defaultMetadata
               Nothing -> do
                 -- TODO: clean up the directory if the metadata file is corrupted, to avoid leaving around junk files?
-                error $ "Failed to decode metadata file: " <> metadataFile
+                error $ "Failed to decode metadata file: " <> tmpMetadataFile
           False ->
             pure defaultMetadata
-      let stateCount = length stateTransitions
+      let stateCountStr = show $ length stateTransitions
       createDirectoryIfMissing True dir
-      let initialStateFile = "initial-" <> show stateCount <> ".scls"
+      let initialStateFile = "initial-" <> stateCountStr <> ".scls"
       Right () <-
         dump (dir </> initialStateFile) slotNo $
           dumpLedgerState @era nes
-      txFiles <- dumpTxOrBlock protocolVersion stateCount dir
+      txFiles <- dumpTxOrBlock protocolVersion stateCountStr dir
       finalStateFile <-
-        bimapM
-          ( \serializeFailures -> do
-              let failuresFile = "failures-" <> show stateCount <> ".cbor"
-              BSL.writeFile (dir </> failuresFile) $ serializeFailures protocolVersion
-              pure failuresFile
-          )
-          ( \st -> do
-              let finalStateFile = "final-" <> show stateCount <> ".scls"
-              Right () <-
-                dump (dir </> finalStateFile) slotNo $
-                  dumpLedgerState @era st
-              pure finalStateFile
-          )
-          res
+        case res of
+          Left serializeFailures -> do
+            let failuresFile = "failures-" <> stateCountStr <> ".cbor"
+            BSL.writeFile (dir </> failuresFile) $ serializeFailures protocolVersion
+            pure $ Failures failuresFile
+          Right st -> do
+            let finalStateFile = "final-" <> stateCountStr <> ".scls"
+            Right () <-
+              dump (dir </> finalStateFile) slotNo $
+                dumpLedgerState @era st
+            pure $ FinalState finalStateFile
       let epochNo = getEpochNo @era nes
       encodeFile tmpMetadataFile $
         metadata
@@ -495,9 +491,9 @@ isSameScenario m1 m2 =
 
 dumpTx ::
   EncCBOR (Tx TopTx era) =>
-  Tx TopTx era -> Version -> Int -> FilePath -> IO (TxOrBlock FilePath (FilePath, [FilePath]))
-dumpTx tx protocolVersion stateCount dir = do
-  let txFile = "txn-" <> show stateCount <> ".cbor"
+  Tx TopTx era -> Version -> String -> FilePath -> IO (TxOrBlock FilePath (FilePath, [FilePath]))
+dumpTx tx protocolVersion stateCountStr dir = do
+  let txFile = "txn-" <> stateCountStr <> ".cbor"
   BSL.writeFile
     (dir </> txFile)
     (toLazyByteString (toPlainEncoding protocolVersion (encCBOR tx)))
@@ -508,16 +504,16 @@ dumpBlock ::
   KeyHash BlockIssuer ->
   StrictSeq (Tx TopTx era) ->
   Version ->
-  Int ->
+  String ->
   FilePath ->
   IO (TxOrBlock FilePath (FilePath, [FilePath]))
-dumpBlock blockIssuer txs protocolVersion stateCount dir = do
-  let blockIssuerFile = "block-" <> show stateCount <> "-issuer.cbor"
+dumpBlock blockIssuer txs protocolVersion stateCountStr dir = do
+  let blockIssuerFile = "block-" <> stateCountStr <> "-issuer.cbor"
   BSL.writeFile
     (dir </> blockIssuerFile)
     (toLazyByteString (toPlainEncoding protocolVersion (encCBOR blockIssuer)))
   fmap (OrBlock . (blockIssuerFile,)) $ forM (zip [0 :: Integer ..] (toList txs)) $ \(i, tx) -> do
-    let txFile = "block-" <> show stateCount <> "-tx-" <> show i <> ".cbor"
+    let txFile = "block-" <> stateCountStr <> "-tx-" <> show i <> ".cbor"
     BSL.writeFile
       (dir </> txFile)
       (toLazyByteString (toPlainEncoding protocolVersion (encCBOR tx)))
