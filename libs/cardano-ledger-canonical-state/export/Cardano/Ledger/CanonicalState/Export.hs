@@ -11,6 +11,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ViewPatterns #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Cardano.Ledger.CanonicalState.Export (
@@ -71,21 +72,36 @@ import Control.Monad (forM)
 import Control.Monad.Trans.Resource (ResIO, runResourceT)
 import Control.State.Transition (PredicateFailure)
 import Data.Aeson (
-  FromJSON (parseJSON),
-  KeyValue (explicitToField),
+  FromJSON (..),
+  FromJSON1 (..),
+  FromJSON2 (..),
+  Options (..),
   ToJSON (..),
+  ToJSON1 (..),
+  ToJSON2 (..),
+  Value (Object),
+  camelTo2,
   decodeFileStrict,
   defaultOptions,
   encodeFile,
+  explicitToField,
   genericParseJSON,
   genericToEncoding,
   genericToJSON,
   object,
   pairs,
+  parseJSON2,
+  toEncoding2,
+  toJSON2,
   withObject,
   (.:),
   (.=),
+  (<?>),
  )
+import Data.Aeson.Encoding (pair)
+import qualified Data.Aeson.Key as Key
+import qualified Data.Aeson.KeyMap as KM
+import Data.Aeson.Types (JSONPathElement (Key))
 import Data.Bifunctor (Bifunctor (first))
 import Data.Bitraversable (bimapM)
 import qualified Data.ByteString.Lazy as BSL
@@ -114,10 +130,40 @@ data TxOrBlock tx block
   | OrBlock block
   deriving (Show, Generic)
 
-instance (ToJSON tx, ToJSON block) => ToJSON (TxOrBlock tx block) where
-  toEncoding = genericToEncoding defaultOptions
+instance ToJSON2 TxOrBlock where
+  liftToJSON2 _ toA _ _ _toB _ (OrTx tx) = Object $ KM.singleton "tx" (toA tx)
+  liftToJSON2 _ _toA _ _ toB _ (OrBlock block) = Object $ KM.singleton "block" (toB block)
 
-instance (FromJSON tx, FromJSON block) => FromJSON (TxOrBlock tx block)
+  liftToEncoding2 _ toA _ _ _toB _ (OrTx tx) = pairs $ pair "tx" $ toA tx
+  liftToEncoding2 _ _toA _ _ toB _ (OrBlock block) = pairs $ pair "block" $ toB block
+
+instance ToJSON a => ToJSON1 (TxOrBlock a) where
+  liftToJSON = liftToJSON2 omitField toJSON toJSONList
+  liftToEncoding = liftToEncoding2 omitField toEncoding toEncodingList
+
+instance (ToJSON a, ToJSON b) => ToJSON (TxOrBlock a b) where
+  toJSON = toJSON2
+  toEncoding = toEncoding2
+
+instance FromJSON2 TxOrBlock where
+  liftParseJSON2 _ pA _ _ pB _ (Object (KM.toList -> [(key, value)]))
+    | key == orTx = OrTx <$> pA value <?> Key orTx
+    | key == orBlock = OrBlock <$> pB value <?> Key orBlock
+    where
+      orTx, orBlock :: Key.Key
+      orTx = "tx"
+      orBlock = "block"
+  liftParseJSON2 _ _ _ _ _ _ _ =
+    fail $
+      "expected an object with a single property "
+        ++ "where the property key should be either "
+        ++ "\"tx\" or \"block\""
+
+instance FromJSON a => FromJSON1 (TxOrBlock a) where
+  liftParseJSON = liftParseJSON2 omittedField parseJSON parseJSONList
+
+instance (FromJSON a, FromJSON b) => FromJSON (TxOrBlock a b) where
+  parseJSON = parseJSON2
 
 mapTxOrBlock :: (tx -> tx') -> (block -> block') -> TxOrBlock tx block -> TxOrBlock tx' block'
 mapTxOrBlock f _ (OrTx tx) = OrTx (f tx)
@@ -132,14 +178,33 @@ data StateTransition = StateTransition
   { epochNo :: EpochNo
   , initialState :: FilePath
   , transactions :: TxOrBlock FilePath (FilePath, [FilePath])
-  , finalState :: Either FilePath FilePath
+  , finalState :: FinalStateOrFailuresPath
   }
   deriving (Generic, Show)
 
-instance ToJSON StateTransition where
-  toEncoding = genericToEncoding defaultOptions
+encodingOptions :: Options
+encodingOptions =
+  defaultOptions
+    { fieldLabelModifier = camelTo2 '_'
+    , constructorTagModifier = camelTo2 '_'
+    }
 
-instance FromJSON StateTransition
+instance ToJSON StateTransition where
+  toEncoding = genericToEncoding encodingOptions
+
+instance FromJSON StateTransition where
+  parseJSON = genericParseJSON encodingOptions
+
+data FinalStateOrFailuresPath
+  = FinalState FilePath
+  | Failures FilePath
+  deriving (Generic, Show)
+
+instance ToJSON FinalStateOrFailuresPath where
+  toEncoding = genericToEncoding encodingOptions
+
+instance FromJSON FinalStateOrFailuresPath where
+  parseJSON = genericParseJSON encodingOptions
 
 data ExportGlobals = ExportGlobals
   { eFixedEpochSize :: EpochSize
@@ -164,33 +229,33 @@ fromGlobals globals =
 instance ToJSON ExportGlobals where
   toEncoding (ExportGlobals {eFixedEpochSize, eFixedSlotLength, eGlobals = Globals {..}}) =
     pairs
-      ( "fixedEpochSize" .= eFixedEpochSize
-          <> explicitToField (genericToEncoding defaultOptions) "fixedSlotLength" eFixedSlotLength
-          <> "slotsPerKESPeriod" .= slotsPerKESPeriod
-          <> "stabilityWindow" .= stabilityWindow
-          <> "randomnessStabilisationWindow" .= randomnessStabilisationWindow
-          <> "securityParameter" .= securityParameter
-          <> "maxKESEvo" .= maxKESEvo
+      ( "fixed_epoch_size" .= eFixedEpochSize
+          <> explicitToField (genericToEncoding encodingOptions) "fixed_slot_length" eFixedSlotLength
+          <> "slots_per_kes_period" .= slotsPerKESPeriod
+          <> "stability_window" .= stabilityWindow
+          <> "randomness_stabilisation_window" .= randomnessStabilisationWindow
+          <> "security_parameter" .= securityParameter
+          <> "max_kes_evo" .= maxKESEvo
           <> "quorum" .= quorum
-          <> "maxLovelaceSupply" .= maxLovelaceSupply
-          <> explicitToField (genericToEncoding defaultOptions) "activeSlotCoeff" activeSlotCoeff
-          <> "networkId" .= networkId
-          <> "systemStart" .= systemStart
+          <> "max_lovelace_supply" .= maxLovelaceSupply
+          <> explicitToField (genericToEncoding encodingOptions) "active_slot_coeff" activeSlotCoeff
+          <> "network_id" .= networkId
+          <> "system_start" .= systemStart
       )
   toJSON (ExportGlobals {eFixedEpochSize, eFixedSlotLength, eGlobals = Globals {..}}) =
     object
-      [ "fixedEpochSize" .= eFixedEpochSize
-      , explicitToField (genericToJSON defaultOptions) "fixedSlotLength" eFixedSlotLength
-      , "slotsPerKESPeriod" .= slotsPerKESPeriod
-      , "stabilityWindow" .= stabilityWindow
-      , "randomnessStabilisationWindow" .= randomnessStabilisationWindow
-      , "securityParameter" .= securityParameter
-      , "maxKESEvo" .= maxKESEvo
+      [ "fixed_epoch_size" .= eFixedEpochSize
+      , explicitToField (genericToJSON encodingOptions) "fixed_slot_length" eFixedSlotLength
+      , "slots_per_kes_period" .= slotsPerKESPeriod
+      , "stability_window" .= stabilityWindow
+      , "randomness_stabilisation_window" .= randomnessStabilisationWindow
+      , "security_parameter" .= securityParameter
+      , "max_kes_evo" .= maxKESEvo
       , "quorum" .= quorum
-      , "maxLovelaceSupply" .= maxLovelaceSupply
-      , explicitToField (genericToJSON defaultOptions) "activeSlotCoeff" activeSlotCoeff
-      , "networkId" .= networkId
-      , "systemStart" .= systemStart
+      , "max_lovelace_supply" .= maxLovelaceSupply
+      , explicitToField (genericToJSON encodingOptions) "active_slot_coeff" activeSlotCoeff
+      , "network_id" .= networkId
+      , "system_start" .= systemStart
       ]
 
 instance FromJSON ExportGlobals where
@@ -215,18 +280,18 @@ instance FromJSON ExportGlobals where
                 }
           }
     )
-      <$> v .: "fixedEpochSize"
-      <*> (v .: "fixedSlotLength" >>= genericParseJSON defaultOptions)
-      <*> v .: "slotsPerKESPeriod"
-      <*> v .: "stabilityWindow"
-      <*> v .: "randomnessStabilisationWindow"
-      <*> v .: "securityParameter"
-      <*> v .: "maxKESEvo"
+      <$> v .: "fixed_epoch_size"
+      <*> (v .: "fixed_slot_length" >>= genericParseJSON encodingOptions)
+      <*> v .: "slots_per_kes_period"
+      <*> v .: "stability_window"
+      <*> v .: "randomness_stabilisation_window"
+      <*> v .: "security_parameter"
+      <*> v .: "max_kes_evo"
       <*> v .: "quorum"
-      <*> v .: "maxLovelaceSupply"
-      <*> (v .: "activeSlotCoeff" >>= genericParseJSON defaultOptions)
-      <*> v .: "networkId"
-      <*> v .: "systemStart"
+      <*> v .: "max_lovelace_supply"
+      <*> (v .: "active_slot_coeff" >>= genericParseJSON encodingOptions)
+      <*> v .: "network_id"
+      <*> v .: "system_start"
 
 data Metadata = Metadata
   { era :: String
@@ -240,9 +305,10 @@ data Metadata = Metadata
   deriving (Generic)
 
 instance ToJSON Metadata where
-  toEncoding = genericToEncoding defaultOptions
+  toEncoding = genericToEncoding encodingOptions
 
-instance FromJSON Metadata
+instance FromJSON Metadata where
+  parseJSON = genericParseJSON encodingOptions
 
 dump ::
   FilePath ->
