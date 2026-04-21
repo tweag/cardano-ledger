@@ -183,67 +183,67 @@ instance FromCanonicalCBOR "gov/pparams/v0" (PParams ConwayEra) where
       Versioned $
         emptyPParams @ConwayEra
           & ppTxFeePerByteL
-          .~ CoinPerByte (unCoin txFeePerByte)
+            .~ CoinPerByte (unCoin txFeePerByte)
           & ppTxFeeFixedCompactL
-          .~ unCoin txFeeFixedCompact
+            .~ unCoin txFeeFixedCompact
           & ppMaxBBSizeL
-          .~ maxBBSize
+            .~ maxBBSize
           & ppMaxTxSizeL
-          .~ maxTxSize
+            .~ maxTxSize
           & ppMaxBHSizeL
-          .~ maxBHSize
+            .~ maxBHSize
           & ppKeyDepositCompactL
-          .~ unCoin keyDepositCompact
+            .~ unCoin keyDepositCompact
           & ppPoolDepositCompactL
-          .~ unCoin poolDepositCompact
+            .~ unCoin poolDepositCompact
           & ppEMaxL
-          .~ eMax
+            .~ eMax
           & ppNOptL
-          .~ nOpt
+            .~ nOpt
           & ppA0L
-          .~ a0
+            .~ a0
           & ppRhoL
-          .~ rho
+            .~ rho
           & ppTauL
-          .~ tau
+            .~ tau
           & ppMinPoolCostCompactL
-          .~ unCoin minPoolCostCompact
+            .~ unCoin minPoolCostCompact
           & ppCoinsPerUTxOByteL
-          .~ CoinPerByte (unCoin coinsPerUTxOByte)
+            .~ CoinPerByte (unCoin coinsPerUTxOByte)
           & ppCostModelsL
-          .~ costModels
+            .~ costModels
           & ppPricesL
-          .~ fromCanonicalPrices prices
+            .~ fromCanonicalPrices prices
           & ppMaxTxExUnitsL
-          .~ fromCanonicalExUnits maxTxExUnits
+            .~ fromCanonicalExUnits maxTxExUnits
           & ppMaxBlockExUnitsL
-          .~ fromCanonicalExUnits maxBlockExUnits
+            .~ fromCanonicalExUnits maxBlockExUnits
           & ppMaxValSizeL
-          .~ maxValSize
+            .~ maxValSize
           & ppCollateralPercentageL
-          .~ collateralPercentage
+            .~ collateralPercentage
           & ppMaxCollateralInputsL
-          .~ maxCollateralInputs
+            .~ maxCollateralInputs
           & ppPoolVotingThresholdsL
-          .~ poolVotingThresholds
+            .~ poolVotingThresholds
           & ppDRepVotingThresholdsL
-          .~ dRepVotingThresholds
+            .~ dRepVotingThresholds
           & ppCommitteeMinSizeL
-          .~ committeeMinSize
+            .~ committeeMinSize
           & ppCommitteeMaxTermLengthL
-          .~ committeeMaxTermLength
+            .~ committeeMaxTermLength
           & ppGovActionLifetimeL
-          .~ govActionLifetime
+            .~ govActionLifetime
           & ppGovActionDepositCompactL
-          .~ unCoin govActionDepositCompact
+            .~ unCoin govActionDepositCompact
           & ppDRepDepositCompactL
-          .~ unCoin dRepDepositCompact
+            .~ unCoin dRepDepositCompact
           & ppDRepActivityL
-          .~ dRepActivity
+            .~ dRepActivity
           & ppMinFeeRefScriptCostPerByteL
-          .~ minFeeRefScriptCostPerByte
+            .~ minFeeRefScriptCostPerByte
           & ppProtocolVersionL
-          .~ protVer
+            .~ protVer
     where
 
 instance ToCanonicalCBOR "gov/pparams/v0" DRepVotingThresholds where

@@ -20,8 +20,8 @@ import Cardano.Ledger.CanonicalState.Conway (
  )
 import Cardano.Ledger.CanonicalState.Export (
   ExportCanonicalNamespace (..),
-  ExportFailures (..),
   ExportCanonicalState (..),
+  ExportFailures (..),
   addNamespaceToPlan,
  )
 import Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 (BlockIn (BlockIn), BlockOut (BlockOut))
@@ -156,11 +156,11 @@ instance ExportCanonicalNamespace ConwayEra "entities/committee/v0" where
           Map.map mkCanonicalCommitteeAuthorization $
             nes
               ^. nesEpochStateL
-              . esLStateL
-              . lsCertStateL
-              . certVStateL
-              . vsCommitteeStateL
-              . csCommitteeCredsL
+                . esLStateL
+                . lsCertStateL
+                . certVStateL
+                . vsCommitteeStateL
+                . csCommitteeCredsL
 
 instance ExportCanonicalNamespace ConwayEra "gov/committee/v0" where
   exportNamespace nes =
@@ -171,7 +171,7 @@ instance ExportCanonicalNamespace ConwayEra "gov/committee/v0" where
           (\Committee {..} -> CanonicalCommittee {committeeMembers, committeeThreshold})
           $ nes
             ^. newEpochStateGovStateL
-            . cgsCommitteeL
+              . cgsCommitteeL
 
 instance ExportCanonicalNamespace ConwayEra "gov/constitution/v0" where
   exportNamespace nes =
@@ -253,11 +253,11 @@ instance ExportCanonicalNamespace ConwayEra "entities/accounts/v0" where
       $ Map.toList
       $ nes
         ^. nesEsL
-        . esLStateL
-        . lsCertStateL
-        . certDStateL
-        . accountsL
-        . accountsMapL
+          . esLStateL
+          . lsCertStateL
+          . certDStateL
+          . accountsL
+          . accountsMapL
 
 instance ExportCanonicalNamespace ConwayEra "entities/dreps/v0" where
   exportNamespace nes =
@@ -265,10 +265,10 @@ instance ExportCanonicalNamespace ConwayEra "entities/dreps/v0" where
       ( Map.toList
           ( nes
               ^. nesEsL
-              . esLStateL
-              . lsCertStateL
-              . certVStateL
-              . vsDRepsL
+                . esLStateL
+                . lsCertStateL
+                . certVStateL
+                . vsDRepsL
           )
       )
       & S.map
@@ -290,17 +290,17 @@ instance ExportCanonicalNamespace ConwayEra "entities/stake_pools/v0" where
               )
               ( nes
                   ^. nesEsL
-                  . esLStateL
-                  . lsCertStateL
-                  . certPStateL
-                  . psStakePoolsL
+                    . esLStateL
+                    . lsCertStateL
+                    . certPStateL
+                    . psStakePoolsL
               )
               ( nes
                   ^. nesEsL
-                  . esLStateL
-                  . lsCertStateL
-                  . certPStateL
-                  . psRetiringL
+                    . esLStateL
+                    . lsCertStateL
+                    . certPStateL
+                    . psRetiringL
               )
       stakePoolsEntries =
         S.map
@@ -325,10 +325,10 @@ instance ExportCanonicalNamespace ConwayEra "entities/stake_pools/future_params/
           Map.toList
             ( nes
                 ^. nesEsL
-                . esLStateL
-                . lsCertStateL
-                . certPStateL
-                . psFutureStakePoolParamsL
+                  . esLStateL
+                  . lsCertStateL
+                  . certPStateL
+                  . psFutureStakePoolParamsL
             )
       stakePoolsFutureParamsEntries =
         S.map
@@ -348,10 +348,10 @@ instance ExportCanonicalNamespace ConwayEra "entities/stake_pools/vrf_key_hashes
           Map.toList
             ( nes
                 ^. nesEsL
-                . esLStateL
-                . lsCertStateL
-                . certPStateL
-                . psVRFKeyHashesL
+                  . esLStateL
+                  . lsCertStateL
+                  . certPStateL
+                  . psVRFKeyHashesL
             )
       stakePoolsVRFKeyHashesEntries =
         S.map
@@ -370,10 +370,10 @@ instance ExportCanonicalNamespace ConwayEra "entities/dormant_epochs/v0" where
           ( EntitiesDormantEpochsOut
               ( nes
                   ^. nesEsL
-                  . esLStateL
-                  . lsCertStateL
-                  . certVStateL
-                  . vsNumDormantEpochsL
+                    . esLStateL
+                    . lsCertStateL
+                    . certVStateL
+                    . vsNumDormantEpochsL
               )
           )
       )

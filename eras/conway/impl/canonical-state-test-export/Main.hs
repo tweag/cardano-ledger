@@ -5,7 +5,7 @@
 module Main where
 
 import Cardano.Ledger.CanonicalState.Conway.Export ()
-import Cardano.Ledger.CanonicalState.Export (withScls, EraTestImp (ConwayEraTestImp))
+import Cardano.Ledger.CanonicalState.Export (EraTestImp (ConwayEraTestImp), withScls)
 import Cardano.Ledger.Conway (ConwayEra)
 import Lens.Micro ((.~))
 import System.Environment (lookupEnv)

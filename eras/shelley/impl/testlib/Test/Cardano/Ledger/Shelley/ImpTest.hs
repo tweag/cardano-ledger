@@ -641,11 +641,11 @@ defaultInitNewEpochState modifyPrevEraNewEpochState = do
       prevEraNewEpochState =
         nes
           & nesEsL
-          . curPParamsEpochStateL
-          . ppProtocolVersionL
-          .~ ProtVer majProtVer 0
+            . curPParamsEpochStateL
+            . ppProtocolVersionL
+            .~ ProtVer majProtVer 0
           & nesELL
-          .~ pred (impEraStartEpochNo @era)
+            .~ pred (impEraStartEpochNo @era)
   pure $ translateEra' genesis $ modifyPrevEraNewEpochState prevEraNewEpochState
 
 -- | For debugging purposes we start the era at the epoch number that matches the starting
@@ -722,10 +722,10 @@ shelleyModifyImpInitProtVer ver =
       { impInitState =
           impInitState impInit
             & impNESL
-            . nesEsL
-            . curPParamsEpochStateL
-            . ppProtocolVersionL
-            .~ ProtVer ver 0
+              . nesEsL
+              . curPParamsEpochStateL
+              . ppProtocolVersionL
+              .~ ProtVer ver 0
       }
 
 modifyImpInitPostSubmitTxHook ::
@@ -746,7 +746,7 @@ modifyImpInitPostSubmitTxHook f =
       { impInitEnv =
           impInitEnv impInit
             & itePostSubmitTxHookL
-            .~ f
+              .~ f
       }
 
 disableImpInitPostSubmitTxHook ::
@@ -770,7 +770,7 @@ modifyImpInitPostEpochBoundaryHook f = modifyImpInit $ \impInit ->
     { impInitEnv =
         impInitEnv impInit
           & itePostEpochBoundaryHookL
-          .~ f
+            .~ f
     }
 
 disableImpInitPostEpochBoundaryHook ::
@@ -798,7 +798,7 @@ modifyImpInitSclsDumpTxHook f =
       { impInitEnv =
           impInitEnv impInit
             & iteSclsDumpTxHookL
-            .~ f
+              .~ f
       }
 
 disableImpInitSclsDumpTxHook ::
@@ -827,7 +827,7 @@ modifyImpInitSclsDumpBlockHook f =
       { impInitEnv =
           impInitEnv impInit
             & iteSclsDumpBlockHookL
-            .~ f
+              .~ f
       }
 
 disableImpInitSclsDumpBlockHook ::
@@ -898,35 +898,35 @@ instance
           , sgProtocolParams =
               emptyPParams
                 & ppTxFeePerByteL
-                .~ CoinPerByte (CompactCoin 44)
+                  .~ CoinPerByte (CompactCoin 44)
                 & ppTxFeeFixedL
-                .~ Coin 155_381
+                  .~ Coin 155_381
                 & ppMaxBBSizeL
-                .~ 65_536
+                  .~ 65_536
                 & ppMaxTxSizeL
-                .~ 16_384
+                  .~ 16_384
                 & ppKeyDepositL
-                .~ Coin 2_000_000
+                  .~ Coin 2_000_000
                 & ppPoolDepositL
-                .~ Coin 500_000_000
+                  .~ Coin 500_000_000
                 & ppEMaxL
-                .~ EpochInterval 18
+                  .~ EpochInterval 18
                 & ppNOptL
-                .~ 150
+                  .~ 150
                 & ppA0L
-                .~ (3 %! 10)
+                  .~ (3 %! 10)
                 & ppRhoL
-                .~ (3 %! 1000)
+                  .~ (3 %! 1000)
                 & ppTauL
-                .~ (2 %! 10)
+                  .~ (2 %! 10)
                 & ppDL
-                .~ minBound
+                  .~ minBound
                 & ppExtraEntropyL
-                .~ NeutralNonce
+                  .~ NeutralNonce
                 & ppMinUTxOValueL
-                .~ Coin 2_000_000
+                  .~ Coin 2_000_000
                 & ppMinPoolCostL
-                .~ Coin 340_000_000
+                  .~ Coin 340_000_000
           , -- TODO: Add a top level definition and add private keys to ImpState:
             sgGenDelegs = mempty
           , sgInitialFunds = mempty
@@ -1197,8 +1197,8 @@ addNativeScriptTxWits tx = impAnn "addNativeScriptTxWits" $ do
   pure $
     tx
       & witsTxL
-      . scriptTxWitsL
-      <>~ fmap fromNativeScript scriptsToAdd
+        . scriptTxWitsL
+        <>~ fmap fromNativeScript scriptsToAdd
 
 -- | Adds @TxWits@ that will satisfy all of the required key witnesses
 updateAddrTxWits ::
@@ -1236,10 +1236,10 @@ updateAddrTxWits tx = impAnn "updateAddrTxWits" $ do
   pure $
     tx
       & witsTxL
-      . addrTxWitsL
-      <>~ extraAddrVKeyWits
-      <> extraNativeScriptVKeyWits
-        & witsTxL
+        . addrTxWitsL
+        <>~ extraAddrVKeyWits
+          <> extraNativeScriptVKeyWits
+      & witsTxL
         . bootAddrTxWitsL
         <>~ Set.fromList extraBootAddrWits
 
@@ -1253,8 +1253,8 @@ addRootTxIn tx = impAnn "addRootTxIn" $ do
   pure $
     tx
       & bodyTxL
-      . inputsTxBodyL
-      %~ Set.insert rootTxIn
+        . inputsTxBodyL
+        %~ Set.insert rootTxIn
 
 impNativeScriptKeyPairs ::
   ShelleyEraImp era =>
@@ -1328,19 +1328,19 @@ fixupFees txOriginal = impAnn "fixupFees" $ do
       | change >= getMinCoinTxOut pp changeTxOut =
           txNoWits
             & bodyTxL
-            . outputsTxBodyL
-            .~ (outsBeforeFee :|> changeTxOut)
+              . outputsTxBodyL
+              .~ (outsBeforeFee :|> changeTxOut)
             & bodyTxL
-            . feeTxBodyL
-            .~ fee
+              . feeTxBodyL
+              .~ fee
       | otherwise =
           txNoWits
             & bodyTxL
-            . outputsTxBodyL
-            .~ outsBeforeFee
+              . outputsTxBodyL
+              .~ outsBeforeFee
             & bodyTxL
-            . feeTxBodyL
-            .~ (fee <> change)
+              . feeTxBodyL
+              .~ (fee <> change)
   pure txWithFee
 
 -- | Adds an auxiliary data hash if auxiliary data present, while the hash of it is not.
@@ -1690,9 +1690,9 @@ tryTxsInBlock' txs finalState blockIssuer = do
       put $
         finalState
           & impNESL
-          .~ blockNes
+            .~ blockNes
           & impEventsL
-          .~ blockEvents
+            .~ blockEvents
 
       pure $ Right block
 
@@ -2030,8 +2030,8 @@ sendValueTo addr amount = do
       ("Giving " <> show amount <> " to " <> show addr)
       $ mkBasicTx mkBasicTxBody
         & bodyTxL
-        . outputsTxBodyL
-        .~ SSeq.singleton (mkBasicTxOut addr amount)
+          . outputsTxBodyL
+          .~ SSeq.singleton (mkBasicTxOut addr amount)
   pure $ txInAt 0 tx
 
 sendValueTo_ :: (ShelleyEraImp era, HasCallStack) => Addr -> Value era -> ImpTestM era ()
@@ -2081,8 +2081,8 @@ registerStakeCredential cred = do
   submitTxAnn_ ("Register Staking Address: " <> T.unpack (credToText cred)) $
     mkBasicTx mkBasicTxBody
       & bodyTxL
-      . certsTxBodyL
-      .~ SSeq.fromList [regTxCert]
+        . certsTxBodyL
+        .~ SSeq.fromList [regTxCert]
   networkId <- use (impGlobalsL . to networkId)
   pure $ AccountAddress networkId (AccountId cred)
 
@@ -2095,8 +2095,8 @@ delegateStake cred poolKH = do
   submitTxAnn_ ("Delegate Staking Credential: " <> T.unpack (credToText cred)) $
     mkBasicTx mkBasicTxBody
       & bodyTxL
-      . certsTxBodyL
-      .~ [delegStakeTxCert cred poolKH]
+        . certsTxBodyL
+        .~ [delegStakeTxCert cred poolKH]
 
 expectStakeCredRegistered ::
   (HasCallStack, ShelleyEraImp era) =>
@@ -2218,8 +2218,8 @@ registerPoolWithAccountAddress khPool accountAddress = do
   submitTxAnn_ "Registering a new stake pool" $
     mkBasicTx mkBasicTxBody
       & bodyTxL
-      . certsTxBodyL
-      .~ SSeq.singleton (RegPoolTxCert pps)
+        . certsTxBodyL
+        .~ SSeq.singleton (RegPoolTxCert pps)
 
 registerAndRetirePoolToMakeReward ::
   ShelleyEraImp era =>
@@ -2235,8 +2235,8 @@ registerAndRetirePoolToMakeReward stakingCred = do
   submitTxAnn_ "Retiring the temporary stake pool" $
     mkBasicTx mkBasicTxBody
       & bodyTxL
-      . certsTxBodyL
-      .~ SSeq.singleton (RetirePoolTxCert poolId poolExpiry)
+        . certsTxBodyL
+        .~ SSeq.singleton (RetirePoolTxCert poolId poolExpiry)
   passNEpochs $ fromIntegral poolLifetime
 
 -- | Compose given function with the configured fixup
@@ -2336,8 +2336,8 @@ produceScript scriptHash = do
   let tx =
         mkBasicTx mkBasicTxBody
           & bodyTxL
-          . outputsTxBodyL
-          .~ SSeq.singleton (mkBasicTxOut addr mempty)
+            . outputsTxBodyL
+            .~ SSeq.singleton (mkBasicTxOut addr mempty)
   logString $ "Produced script: " <> show scriptHash
   txInAt 0 <$> submitTx tx
 

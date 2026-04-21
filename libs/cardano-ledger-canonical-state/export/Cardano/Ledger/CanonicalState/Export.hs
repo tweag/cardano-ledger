@@ -15,6 +15,7 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Cardano.Ledger.CanonicalState.Export (
+  getTestDirFromMetadata,
   withScls,
   EraTestImp (..),
   ExportCanonicalState (..),
@@ -103,6 +104,7 @@ import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as KM
 import Data.Aeson.Types (JSONPathElement (Key))
 import Data.Bifunctor (Bifunctor (first))
+import Data.Bitraversable (bimapM)
 import qualified Data.ByteString.Lazy as BSL
 import Data.Function ((&))
 import Data.Functor.Identity (Identity (runIdentity))
@@ -173,14 +175,6 @@ mapTxOrBlockM ::
 mapTxOrBlockM f _ (OrTx tx) = OrTx <$> f tx
 mapTxOrBlockM _ g (OrBlock block) = OrBlock <$> g block
 
-data StateTransition = StateTransition
-  { epochNo :: EpochNo
-  , initialState :: FilePath
-  , transactions :: TxOrBlock FilePath (FilePath, [FilePath])
-  , finalState :: FinalStateOrFailuresPath
-  }
-  deriving (Generic, Show)
-
 encodingOptions :: Options
 encodingOptions =
   defaultOptions
@@ -188,11 +182,52 @@ encodingOptions =
     , constructorTagModifier = camelTo2 '_'
     }
 
+data StateTransition = StateTransition
+  { epochNo :: EpochNo
+  , initialState :: FilePath
+  , transactions :: TxOrBlock FilePath (FilePath, [FilePath])
+  , finalState :: Either FilePath FilePath
+  }
+  deriving (Generic, Show)
+
 instance ToJSON StateTransition where
-  toEncoding = genericToEncoding encodingOptions
+  toEncoding (StateTransition {..}) =
+    pairs $
+      "epoch_no" .= epochNo
+        <> "initial_state" .= initialState
+        <> "transactions" .= transactions
+        <> "final_state"
+          .= ( case finalState of
+                 Left failuresFile -> Failures failuresFile
+                 Right finalStateFile -> FinalState finalStateFile
+             )
+
+  toJSON (StateTransition {..}) =
+    object
+      [ "epoch_no" .= epochNo
+      , "initial_state" .= initialState
+      , "transactions" .= transactions
+      , "final_state"
+          .= ( case finalState of
+                 Left failuresFile -> Failures failuresFile
+                 Right finalStateFile -> FinalState finalStateFile
+             )
+      ]
 
 instance FromJSON StateTransition where
-  parseJSON = genericParseJSON encodingOptions
+  parseJSON = withObject "StateTransition" $ \v ->
+    StateTransition
+      <$> v .: "epoch_no"
+      <*> v .: "initial_state"
+      <*> v .: "transactions"
+      <*> ( v .: "final_state"
+              >>= fmap
+                ( \case
+                    Failures failuresFile -> Left failuresFile
+                    FinalState finalStateFile -> Right finalStateFile
+                )
+                . genericParseJSON encodingOptions
+          )
 
 data FinalStateOrFailuresPath
   = FinalState FilePath
@@ -298,10 +333,14 @@ data Metadata = Metadata
   , protocolVersion :: Version
   , description :: String
   , stateTransitions :: [StateTransition]
-  , dir :: FilePath
+  , path :: [String]
   , globals :: ExportGlobals
   }
   deriving (Generic)
+
+getTestDirFromMetadata :: Metadata -> FilePath
+getTestDirFromMetadata Metadata {..} =
+  joinPath (["Protocol " <> show protocolVersion] ++ path ++ [description])
 
 instance ToJSON Metadata where
   toEncoding = genericToEncoding encodingOptions
@@ -419,8 +458,6 @@ withScls eraImp setTxHook setBlockHook baseDir =
         (first (flip $ serializeBlockFailures @era) res)
     export path description globals slotNo nes dumpTxOrBlock res = do
       let protocolVersion = getProtocolVersion @era nes
-          dirLocalPath = joinPath (["Protocol " <> show protocolVersion] ++ path ++ [description])
-          dir = baseDir </> dirLocalPath
           metadataFile = baseDir </> "metadata.json"
           tmpMetadataFile = baseDir </> "metadata.tmp"
       metadata@Metadata {stateTransitions} <- do
@@ -432,7 +469,7 @@ withScls eraImp setTxHook setBlockHook baseDir =
                 , description
                 , stateTransitions = []
                 , globals = fromGlobals globals
-                , dir = dirLocalPath
+                , path
                 }
         doesFileExist tmpMetadataFile >>= \case
           True ->
@@ -450,6 +487,7 @@ withScls eraImp setTxHook setBlockHook baseDir =
           False ->
             pure defaultMetadata
       let stateCountStr = show $ length stateTransitions
+          dir = baseDir </> getTestDirFromMetadata metadata
       createDirectoryIfMissing True dir
       let initialStateFile = "initial-" <> stateCountStr <> ".scls"
       Right () <-
@@ -457,17 +495,20 @@ withScls eraImp setTxHook setBlockHook baseDir =
           dumpLedgerState @era nes
       txFiles <- dumpTxOrBlock protocolVersion stateCountStr dir
       finalStateFile <-
-        case res of
-          Left serializeFailures -> do
-            let failuresFile = "failures-" <> stateCountStr <> ".cbor"
-            BSL.writeFile (dir </> failuresFile) $ serializeFailures protocolVersion
-            pure $ Failures failuresFile
-          Right st -> do
-            let finalStateFile = "final-" <> stateCountStr <> ".scls"
-            Right () <-
-              dump (dir </> finalStateFile) slotNo $
-                dumpLedgerState @era st
-            pure $ FinalState finalStateFile
+        bimapM
+          ( \serializeFailures -> do
+              let failuresFile = "failures-" <> stateCountStr <> ".cbor"
+              BSL.writeFile (dir </> failuresFile) $ serializeFailures protocolVersion
+              pure failuresFile
+          )
+          ( \st -> do
+              let finalStateFile = "final-" <> stateCountStr <> ".scls"
+              Right () <-
+                dump (dir </> finalStateFile) slotNo $
+                  dumpLedgerState @era st
+              pure finalStateFile
+          )
+          res
       let epochNo = getEpochNo @era nes
       encodeFile tmpMetadataFile $
         metadata
@@ -487,6 +528,7 @@ isSameScenario m1 m2 =
   era m1 == era m2
     && eraImp m1 == eraImp m2
     && protocolVersion m1 == protocolVersion m2
+    && path m1 == path m2
     && description m1 == description m2
 
 dumpTx ::
