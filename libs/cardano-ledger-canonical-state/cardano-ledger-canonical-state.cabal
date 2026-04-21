@@ -116,5 +116,3 @@ library export
     scls-format,
     small-steps,
     streaming,
-    text,
-    transformers,

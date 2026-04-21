@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedLists #-}
@@ -12,26 +13,41 @@
 module Main where
 
 import Cardano.Ledger.BaseTypes (
+  EpochNo,
   Globals,
   ProtVer (ProtVer),
   SlotNo,
   TxIx (TxIx),
+  Version,
  )
-import Cardano.Ledger.Binary (decodeFull, serialize)
+import Cardano.Ledger.Binary (
+  Annotator,
+  DecCBOR (decCBOR),
+  DecoderError,
+  decodeFull,
+  decodeFullAnnotator,
+  decodeFullDecoder,
+  serialize,
+ )
 import Cardano.Ledger.Block (Block (..))
 import Cardano.Ledger.CanonicalState.Conway.Export ()
 import Cardano.Ledger.CanonicalState.Conway.Import ()
 import Cardano.Ledger.CanonicalState.Export (
-  ExportState (dumpLedgerState),
+  BlockFailures,
+  ExportCanonicalState (dumpLedgerState),
+  ExportLedgerState,
   Metadata (..),
-  TestFixture (..),
+  StateTransition (..),
+  TxFailures,
   TxOrBlock (..),
   dump,
+  getTestDirFromMetadata,
+  mapTxOrBlockM,
   toGlobals,
  )
 import Cardano.Ledger.CanonicalState.Import (
-  InMemoryTestFixture (InMemoryTestFixture, imtfFinalState, imtfInitialState, imtfTransactions),
-  loadInMemoryTestFixture,
+  ImportCanonicalState (importCanonicalState),
+  ImportFailures (decodeBlockFailures, decodeTxFailures),
  )
 import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.State (CanSetChainAccountState (chainAccountStateL))
@@ -57,7 +73,9 @@ import Cardano.Ledger.Shelley.Rules (
  )
 import Cardano.SCLS.Internal.Reader (withLatestManifestFrame)
 import Cardano.SCLS.Internal.Record.Manifest (Manifest (nsInfo, rootHash))
-import Control.Monad.Trans.Except (runExceptT)
+import Control.Monad (forM)
+import Control.Monad.IO.Class (MonadIO (liftIO))
+import Control.Monad.Trans.Except (ExceptT (..), except, runExceptT)
 import Control.Monad.Trans.Reader (runReader)
 import Control.State.Transition (
   ApplySTSOpts (..),
@@ -70,16 +88,16 @@ import Control.State.Transition (
  )
 import Data.Aeson (decodeFileStrict)
 import Data.Bifunctor (Bifunctor (bimap))
+import Data.Bitraversable (bimapM)
+import qualified Data.ByteString.Lazy as BSL
+import Data.Data (Typeable)
 import Data.Function ((&))
 import Data.Sequence.Strict (StrictSeq)
+import qualified Data.Sequence.Strict as SSeq
+import qualified Data.Text as T
 import GHC.Base (NonEmpty, when)
 import GHC.IsList (IsList (toList))
 import Lens.Micro ((.~), (^.))
-import System.Directory (
-  doesDirectoryExist,
-  doesFileExist,
-  listDirectory,
- )
 import System.Environment (lookupEnv)
 import System.FilePath ((</>))
 import System.IO.Temp (withSystemTempDirectory)
@@ -111,99 +129,74 @@ main = do
             pendingWith (dumpsPathVarName ++ " not set")
     Just dumpsPath -> do
       testCases <- discoverTestCases dumpsPath
-      hspec $ parallel $ buildSpec testCases
+      hspec $ parallel $ buildSpec dumpsPath testCases
 
-data SclsTestCase = SclsTestCase
-  { stcMetadata :: Metadata
-  , stcDir :: FilePath
-  }
-
-discoverTestCases :: FilePath -> IO [SclsTestCase]
-discoverTestCases dumpsDir = findMetadataFiles dumpsDir []
+discoverTestCases :: FilePath -> IO [Metadata]
+discoverTestCases dumpsDir =
+  decodeFileStrict metadataFile >>= \case
+    Nothing -> do
+      putStrLn $ "Warning: could not parse " ++ metadataFile
+      pure []
+    Just metadata ->
+      pure metadata
   where
-    findMetadataFiles :: FilePath -> [String] -> IO [SclsTestCase]
-    findMetadataFiles dir pathSegments = do
-      entries <- listDirectory dir
-      let metadataFile = dir </> "metadata.json"
-      casesHere <-
-        doesFileExist metadataFile >>= \case
-          True -> parseMetadataFile metadataFile dir
-          False -> pure []
-      casesBelow <-
-        concat
-          <$> mapM
-            ( \entry -> do
-                let fullPath = dir </> entry
-                isDir <- doesDirectoryExist fullPath
-                if isDir
-                  then findMetadataFiles fullPath (pathSegments ++ [entry])
-                  else pure []
-            )
-            entries
-      pure (casesHere ++ casesBelow)
+    metadataFile = dumpsDir </> "metadata.json"
 
-    parseMetadataFile ::
-      FilePath -> FilePath -> IO [SclsTestCase]
-    parseMetadataFile metadataFile dir =
-      decodeFileStrict metadataFile >>= \case
-        Nothing -> do
-          putStrLn $ "Warning: could not parse " ++ metadataFile
-          pure []
-        Just metadata ->
-          pure [SclsTestCase {stcMetadata = metadata, stcDir = dir}]
-
-buildSpec :: [SclsTestCase] -> Spec
-buildSpec testCases =
+buildSpec :: FilePath -> [Metadata] -> Spec
+buildSpec dumpsDir testCases =
   describe "Black-box test runner" $
-    forM_ testCases $ \tc@SclsTestCase {stcMetadata = Metadata {..}} ->
+    forM_ testCases $ \m@Metadata {..} ->
       describe ("Era: " <> era <> ", Imp: " <> eraImp <> ", Protocol version: " <> show protocolVersion) $
         foldr
           describe
-          (describe description $ runTest tc)
+          (describe description $ runTest m)
           path
-
-runTest :: SclsTestCase -> Spec
-runTest SclsTestCase {stcMetadata, stcDir} =
-  forM_ (states stcMetadata) $ \t@TestFixture {..} ->
-    it ("apply txn/block to " ++ initialState) $
-      withSystemTempDirectory "blackbox-test-runner" $ \tmpDir -> do
-        runExceptT (loadInMemoryTestFixture @ConwayEra stcDir (protocolVersion stcMetadata) t) >>= \case
-          Left err ->
-            expectationFailure $ "Failed to deserialise transactions: " ++ show err
-          Right inMemoryTestFixture ->
-            applyTestFixture stcMetadata inMemoryTestFixture >>= \computedRes ->
-              case (imtfFinalState inMemoryTestFixture, computedRes) of
-                (Left (OrBlock expectedFailures), Left (OrBlock computedFailures)) ->
-                  decodeFull (protocolVersion stcMetadata) (serialize (protocolVersion stcMetadata) computedFailures)
-                    `shouldBe` Right expectedFailures
-                (Left (OrBlock _), Left (OrTx _)) ->
-                  expectationFailure "Expected block failures, but got an unexpected tx failure"
-                (Left (OrTx expectedFailures), Left (OrTx computedFailures)) ->
-                  decodeFull (protocolVersion stcMetadata) (serialize (protocolVersion stcMetadata) computedFailures)
-                    `shouldBe` Right expectedFailures
-                (Left (OrTx _), Left (OrBlock _)) ->
-                  expectationFailure "Expected tx failures, but got an unexpected block failure"
-                (Right expectedSclsFilePath, Right (computedNes, computedSlotNo)) -> do
-                  let exportedFile = tmpDir </> ("computed-" <> expectedSclsFilePath)
-                  Right () <- dump exportedFile computedSlotNo (dumpLedgerState @ConwayEra computedNes)
-                  flip withLatestManifestFrame (stcDir </> expectedSclsFilePath) $ \originalManifest ->
-                    flip withLatestManifestFrame exportedFile $ \exportedManifest -> do
-                      when (rootHash exportedManifest /= rootHash originalManifest) $ do
-                        forM_ (zip (toList $ nsInfo exportedManifest) (toList $ nsInfo originalManifest)) $
-                          \(exportedNsInfo, originalNsInfo) -> do
-                            exportedNsInfo `shouldBe` originalNsInfo
-                      rootHash exportedManifest `shouldBe` rootHash originalManifest
-                (Right _, Left failures) ->
-                  expectationFailure $
-                    "Expected success, but got the following failures: "
-                      ++ show failures
-                      ++ "\nBlock applied:\n"
-                      ++ show (imtfTransactions inMemoryTestFixture)
-                _ -> undefined
+  where
+    runTest :: Metadata -> Spec
+    runTest m@Metadata {..} = do
+      let dir = dumpsDir </> getTestDirFromMetadata m
+      forM_ stateTransitions $ \t@StateTransition {..} ->
+        it ("apply txn/block to " ++ initialState) $
+          withSystemTempDirectory "blackbox-test-runner" $ \tmpDir -> do
+            runExceptT
+              (loadTestFixture @ConwayEra dir protocolVersion t)
+              >>= \case
+                Left err ->
+                  expectationFailure $ "Failed to deserialise transactions: " ++ show err
+                Right testFixture ->
+                  applyTestFixture m testFixture >>= \computedRes ->
+                    case (tfFinalState testFixture, computedRes) of
+                      (Left (OrBlock expectedFailures), Left (OrBlock computedFailures)) ->
+                        decodeFull protocolVersion (serialize protocolVersion computedFailures)
+                          `shouldBe` Right expectedFailures
+                      (Left (OrBlock _), Left (OrTx _)) ->
+                        expectationFailure "Expected block failures, but got an unexpected tx failure"
+                      (Left (OrTx expectedFailures), Left (OrTx computedFailures)) ->
+                        decodeFull protocolVersion (serialize protocolVersion computedFailures)
+                          `shouldBe` Right expectedFailures
+                      (Left (OrTx _), Left (OrBlock _)) ->
+                        expectationFailure "Expected tx failures, but got an unexpected block failure"
+                      (Right expectedSclsFilePath, Right (computedNes, computedSlotNo)) -> do
+                        let exportedFile = tmpDir </> ("computed-" <> expectedSclsFilePath)
+                        Right () <- dump exportedFile computedSlotNo (dumpLedgerState @ConwayEra computedNes)
+                        flip withLatestManifestFrame (dir </> expectedSclsFilePath) $ \originalManifest ->
+                          flip withLatestManifestFrame exportedFile $ \exportedManifest -> do
+                            when (rootHash exportedManifest /= rootHash originalManifest) $ do
+                              forM_ (zip (toList $ nsInfo exportedManifest) (toList $ nsInfo originalManifest)) $
+                                \(exportedNsInfo, originalNsInfo) -> do
+                                  exportedNsInfo `shouldBe` originalNsInfo
+                            rootHash exportedManifest `shouldBe` rootHash originalManifest
+                      (Right _, Left failures) ->
+                        expectationFailure $
+                          "Expected success, but got the following failures: "
+                            ++ show failures
+                            ++ "\nBlock applied:\n"
+                            ++ show (tfTransactions testFixture)
+                      _ -> undefined
 
 applyTestFixture ::
   Metadata ->
-  InMemoryTestFixture ConwayEra ->
+  TestFixture ConwayEra ->
   IO
     ( Either
         ( TxOrBlock
@@ -214,11 +207,11 @@ applyTestFixture ::
     )
 applyTestFixture
   Metadata {..}
-  InMemoryTestFixture
-    { imtfInitialState = (slotNo, initialNes)
-    , imtfTransactions
+  TestFixture
+    { tfInitialState = (slotNo, initialNes)
+    , tfTransactions
     } =
-    pure $ case imtfTransactions of
+    pure $ case tfTransactions of
       OrBlock (blockIssuer, txs) ->
         bimap OrBlock (,slotNo) $ applyBlock slotNo (toGlobals globals) initialNes blockIssuer txs
       OrTx tx -> bimap OrTx (,slotNo) $ applyTx slotNo (toGlobals globals) initialNes tx
@@ -278,3 +271,64 @@ applyBlock slotNo globals nes blockIssuer txs = do
   case applyBlockEither EPReturn ValidateAll globals nes block of
     Left (BlockTransitionError failures) -> Left failures
     Right (newNes, _) -> Right newNes
+
+data TestFixture era = TestFixture
+  { tfEpochNo :: EpochNo
+  , tfInitialState :: (SlotNo, ExportLedgerState era)
+  , tfTransactions ::
+      TxOrBlock (Tx TopTx era) (KeyHash BlockIssuer, SSeq.StrictSeq (Tx TopTx era))
+  , tfFinalState ::
+      Either (TxOrBlock (TxFailures era) (BlockFailures era)) FilePath
+  }
+
+loadTestFixture ::
+  forall era.
+  ( Typeable era
+  , ImportCanonicalState era
+  , DecCBOR (Annotator (Tx TopTx era))
+  , ImportFailures era
+  ) =>
+  FilePath ->
+  Version ->
+  StateTransition ->
+  ExceptT DecoderError IO (TestFixture era)
+loadTestFixture dir protocolVersion StateTransition {..} = do
+  tfInitialState <- liftIO $ importCanonicalState @era (dir </> initialState) epochNo
+  tfTransactions <-
+    mapTxOrBlockM
+      ( \txFile ->
+          decodeTx (dir </> txFile)
+      )
+      ( \(blockIssuerFile, txFiles) -> do
+          blockIssuerBytes <- liftIO $ BSL.readFile (dir </> blockIssuerFile)
+          blockIssuer <- except $ decodeFull protocolVersion blockIssuerBytes
+          t <- forM txFiles (decodeTx . (dir </>))
+          pure (blockIssuer, SSeq.fromList t)
+      )
+      transactions
+  tfFinalState <- loadStateOrFailures
+  pure $
+    TestFixture
+      { tfEpochNo = epochNo
+      , tfInitialState
+      , tfTransactions
+      , tfFinalState
+      }
+  where
+    decodeTx filepath =
+      except . decodeFullAnnotator protocolVersion (T.pack "Tx") decCBOR
+        =<< liftIO (BSL.readFile filepath)
+
+    loadStateOrFailures ::
+      ExceptT DecoderError IO (Either (TxOrBlock (TxFailures era) (BlockFailures era)) FilePath)
+    loadStateOrFailures =
+      bimapM
+        ( \failuresFile -> ExceptT $ do
+            bs <- BSL.readFile (dir </> failuresFile)
+            pure $
+              case decodeFullDecoder protocolVersion "TxFailures" (decodeTxFailures @era) bs of
+                Left _ -> OrBlock <$> decodeFullDecoder protocolVersion "BlockFailures" (decodeBlockFailures @era) bs
+                Right txFailures -> Right (OrTx txFailures)
+        )
+        pure
+        finalState
