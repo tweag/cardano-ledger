@@ -28,6 +28,7 @@ module Cardano.Ledger.Babbage (
   bfProtocolVersionL,
 ) where
 
+import Cardano.Ledger.Alonzo (mkAlonzoStAnnTx)
 import Cardano.Ledger.Alonzo.Scripts (AlonzoScript (..))
 import Cardano.Ledger.Alonzo.TxAuxData (AlonzoTxAuxData (..))
 import Cardano.Ledger.Babbage.BlockBody ()
@@ -60,9 +61,12 @@ instance ApplyTx BabbageEra where
   newtype ApplyTxError BabbageEra = BabbageApplyTxError (NonEmpty (ShelleyLedgerPredFailure BabbageEra))
     deriving (Eq, Show)
     deriving newtype (EncCBOR, DecCBOR, Semigroup, Generic)
-  applyTxValidation validationPolicy globals env state tx =
+
+  mkStAnnTx = mkAlonzoStAnnTx
+
+  applyTxValidation validationPolicy globals env state stAnnTx =
     first BabbageApplyTxError $
-      ruleApplyTxValidation @"LEDGER" validationPolicy globals env state tx
+      ruleApplyTxValidation @"LEDGER" validationPolicy globals env state stAnnTx
 
 instance ApplyTick BabbageEra
 

@@ -87,7 +87,7 @@ library
     cardano-data >=1.2,
     cardano-ledger-binary:{cardano-ledger-binary, testlib} >=1.7,
     cardano-ledger-byron,
-    cardano-ledger-core:{cardano-ledger-core, tasty-compat, testlib} >=1.20,
+    cardano-ledger-core:{cardano-ledger-core, tasty-compat, testlib} >=1.21,
     cardano-ledger-shelley:{cardano-ledger-shelley, testlib} >=1.19,
     cardano-protocol-tpraos:{cardano-protocol-tpraos, testlib} >=1.4,
     cardano-slotting:{cardano-slotting, testlib},
@@ -96,6 +96,8 @@ library
     containers,
     data-default,
     deepseq,
+    fs-api,
+    io-classes,
     mempack,
     microlens,
     mtl,
@@ -118,14 +120,11 @@ test-suite cardano-ledger-shelley-test
     Paths_cardano_ledger_shelley_test
     Test.Cardano.Ledger.Shelley.Examples.Chain
     Test.Cardano.Ledger.Shelley.Examples.Combinators
-    Test.Cardano.Ledger.Shelley.Examples.EmptyBlock
     Test.Cardano.Ledger.Shelley.Examples.GenesisDelegation
     Test.Cardano.Ledger.Shelley.Examples.Init
     Test.Cardano.Ledger.Shelley.Examples.Mir
     Test.Cardano.Ledger.Shelley.Examples.MirTransfer
-    Test.Cardano.Ledger.Shelley.Examples.NetworkID
     Test.Cardano.Ledger.Shelley.Examples.PoolLifetime
-    Test.Cardano.Ledger.Shelley.Examples.PoolReReg
     Test.Cardano.Ledger.Shelley.Examples.Updates
     Test.Cardano.Ledger.Shelley.MultiSigExamples
     Test.Cardano.Ledger.Shelley.RulesTests
@@ -220,5 +219,6 @@ benchmark mainbench
     containers,
     criterion,
     deepseq,
+    fs-api,
     mtl,
     small-steps:{small-steps, testlib} >=1.1,

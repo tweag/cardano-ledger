@@ -274,6 +274,16 @@ deriving via
     (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v EpochInterval
 
 deriving via
+  LedgerCBOR v (NonZero a)
+  instance
+    (Era era, NamespaceEra v ~ era, EncCBOR a) => ToCanonicalCBOR v (NonZero a)
+
+deriving via
+  LedgerCBOR v (NonZero a)
+  instance
+    (Era era, NamespaceEra v ~ era, DecCBOR a, HasZero a) => FromCanonicalCBOR v (NonZero a)
+
+deriving via
   LedgerCBOR v (VRFVerKeyHash StakePoolVRF)
   instance
     (Era era, NamespaceEra v ~ era) => ToCanonicalCBOR v (VRFVerKeyHash StakePoolVRF)
@@ -322,16 +332,6 @@ deriving via
   LedgerCBOR v AccountAddress
   instance
     (Era era, NamespaceEra v ~ era) => FromCanonicalCBOR v AccountAddress
-
-deriving via
-  LedgerCBOR v (NonZero a)
-  instance
-    (Era era, NamespaceEra v ~ era, EncCBOR a) => ToCanonicalCBOR v (NonZero a)
-
-deriving via
-  LedgerCBOR v (NonZero a)
-  instance
-    (Era era, NamespaceEra v ~ era, DecCBOR a, HasZero a) => FromCanonicalCBOR v (NonZero a)
 
 data CanonicalExUnits = CanonicalExUnits
   { exUnitsMem :: !Natural

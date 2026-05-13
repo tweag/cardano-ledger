@@ -2,6 +2,17 @@
 
 ## 1.16.0.0
 
+* Add `AlonzoEraTxAuxData` as a superclass to `AlonzoEraTx`
+* Add `NFData` instance for `AlonzoScriptsNeeded`
+* Change `Signal` to `StAnnTx TopTx era` for: `AlonzoLEDGER`, `AlonzoUTXOW`, `AlonzoUTXO`, `AlonzoUTXOS`
+* Add `FromJSON` instance for `IsValid`
+* Add `ltiMemoizedSubTransactions` to `LedgerTxInfo`
+* Add `resolveNeededPlutusScriptsWithPurpose`
+* Add `scriptsWithContextFromLedgerTxInfo` and `scriptsWithContextFromLedgerTxInfoWithResult`
+* Add `AlonzoStAnnTx`
+* Move `toPlutusWithContext` from `Cardano.Ledger.Alonzo.Plutus.Context` to `Cardano.Ledger.Alonzo.Plutus.TxInfo`
+* Add `scriptsProvidedStAnnTx` to `AlonzoEraUTxO` and a helper to implement it `scriptsProvidedAlonzoStAnnTx`
+* Remove `ToCBOR` and `FromCBOR` instances for `AlonzoExtraConfig` and `AlonzoTxOut`
 * Add `ApplyTick` instance for `AlonzoEra`
 * Add `mkPlutusTxInfoFromResult` and `toPlutusTxInfoForPurpose` helpers
 * Make `PlutusPurpose` injective in the selector type.
@@ -25,10 +36,22 @@
 * Remove `NoThunks` deriving instance for `CollectError`
 * Make `AlonzoContextError` constructors lazy
 
+### `cddl`
+
+* Change `ipv4` and `ipv6` to use exact byte sizes (4 and 16 respectively), no longer allowing leftover bytes
+* Fix `ex_unit_prices` CDDL to use `nonnegative_interval` instead of `positive_interval`
+* Extend `constr` CDDL rule to include tags 1280–1400 for Plutus `Data` constructor indexes
+
 ### `testlib`
 
+* Add `proxy era` argument to `alonzoEraSpecificSpec`
+* Make `Test.Cardano.Ledger.Alonzo.Imp.spec` accept `Proxy era`
+* Add `genDatumPresent`
 * Added `Proxy era` argument to `exUnitsRule`
 * `TranslationInstance` has a new field `tiPlutusPurpose`
+* In `Test.Cardano.Ledger.Alonzo.Examples`:
+  - Remove `mkAlonzoBasedExampleTx`, `exampleAlonzoBasedShelleyTxBody`, `exampleAlonzoBasedTxBody`, `exampleRedeemer`
+  - Add `exampleAlonzoBasedTopTx`, `exampleAlonzoBasedTopTx`, `addAlonzoToConwayExampleReqSigners`
 
 ## 1.15.0.0
 

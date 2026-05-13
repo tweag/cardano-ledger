@@ -2,6 +2,19 @@
 
 ## 1.19.0.0
 
+* Change `NoThunks` instance for `BlockTransitionError` to not check for thunks in its contents
+* Add `NFData` constraint to `BlockTransitionError` constructor.
+* Add `injectStakeCredentials`, `injectStakePools`, `resolveInjectionSource`, `injectInitialFundsAndStaking` to `Cardano.Ledger.Shelley.Transition`
+  - `injectStakeCredentials` and `injectStakePools` take a leading `Network` argument and throw `InjectionNotAllowedOnMainnet` when called with `Mainnet`
+* Deprecate `registerInitialStakePools`, `shelleyRegisterInitialAccounts`
+* Change `applyTxValidation` and `ruleApplyTxValidation` to take `StAnnTx TopTx era` instead of `Tx TopTx era`
+* Change `Signal` to `StAnnTx TopTx era` for: `ShelleyLEDGER`, `ShelleyUTXOW`, `ShelleyUTXO`
+* Add `mkStAnnTx` to `ApplyTx`
+* Add `InjectionData`, `foldInjectionData`, `InjectionError` to `Cardano.Ledger.Shelley.Genesis`
+* Add `ShelleyExtraConfig` type to `Cardano.Ledger.Shelley.Genesis`
+* Add `sgExtraConfig` field to `ShelleyGenesis`
+* Change `registerInitialFunds`, `shelleyRegisterInitialFundsThenStaking`, and `injectIntoTestState` to require `MonadIO` and `MonadThrow`, and accept a `HasFS m h` parameter for streaming initial funds from external files
+* Remove `ToCBOR` and `FromCBOR` instances for `UTxOState`, `LedgerState`, `ShelleyTxOut`
 * Add `ApplyTick` typeclass with `applyTick` method, extracted from `ApplyBlock`.
 * Remove `validMetadata` from `SoftForks`
 * Add `updateUTxOStateNoFees`
@@ -36,15 +49,28 @@
   - `ShelleyLedgersPredFailure`
   - `ShelleyPoolPredFailure`
   - `ShelleyPpupPredFailure`
-  - `ChainPredicateFailure`
 * Add protocol version validation to `createInitialState`:
   - Validate that current protocol version is within the era's bounds
 
+### `cddl`
+
+* Remove `withAntiGen` re-export, since it's deprecated
+* Change `ipv4` and `ipv6` to use exact byte sizes (4 and 16 respectively), no longer allowing leftover bytes
+
 ### `testlib`
 
+* Add `proxy era` argument to `shelleyEraSpecificSpec`
+* Remove `EraSpecificSpec`
+* Make `Test.Cardano.Ledger.Shelley.Imp.spec` accept `Proxy era`
+* Add `withImpInitEachEraVersion` and deprecate `withEachEraVersion` in its favor
+* Export `exampleVrfVerKeyHash` from `Test.Cardano.Ledger.Shelley.Examples`
 * Add `HuddleRule "int32" ShelleyEra` instance
 * Add `withIssuerAndTxsInBlock_` and `withIssuerAndTxsInBlock`
 * Add a `Maybe (KeyHash BlockIssuer)` parameter to `withTxsInBlockEither`
+* Export `exampleShelleyScript` and `exampleBootstrapWitness` from `Test.Cardano.Ledger.Shelley.Examples`
+* In `Test.Cardano.Ledger.Shelley.Examples`:
+  - Remove `mkShelleyBasedExampleTx`, `exampleShelleyBasedShelleyTxBody`, `exampleShelleyBasedTxBody`, `exampleCerts`
+  - Add `exampleShelleyBasedTx`, `addShelleyBasedTopTxExampleFee`, `addShelleyToBabbageExampleProposedPUpdates`, `addShelleyToBabbageTxCerts`, `addShelleyToConwayTxCerts`
 
 ## 1.18.0.0
 

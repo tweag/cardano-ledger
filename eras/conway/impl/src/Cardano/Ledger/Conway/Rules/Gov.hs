@@ -51,8 +51,6 @@ import Cardano.Ledger.BaseTypes (
 import Cardano.Ledger.Binary (
   DecCBOR (..),
   EncCBOR (..),
-  FromCBOR (..),
-  ToCBOR (..),
   internMap,
   internSet,
  )
@@ -299,12 +297,6 @@ instance EraPParams era => EncCBOR (ConwayGovPredFailure era) where
       UnelectedCommitteeVoters committee ->
         Sum UnelectedCommitteeVoters 18 !> To committee
 
-instance EraPParams era => ToCBOR (ConwayGovPredFailure era) where
-  toCBOR = toEraCBOR @era
-
-instance EraPParams era => FromCBOR (ConwayGovPredFailure era) where
-  fromCBOR = fromEraCBOR @era
-
 data ConwayGovEvent era
   = GovNewProposals !TxId !(Proposals era)
   | GovRemovedVotes
@@ -496,7 +488,7 @@ conwayGovTransition = do
         -- In a HardFork, check that the ProtVer can follow
         let badHardFork = do
               (prevGaid, newProtVer, prevProtVer) <-
-                preceedingHardFork @era pp prevGovActionIds st pProcGovAction
+                preceedingHardFork @era pp prevGovActionIds proposals pProcGovAction
               guard (not (pvCanFollow prevProtVer newProtVer))
               Just $
                 ProposalCantFollow @era prevGaid $
@@ -554,9 +546,8 @@ conwayGovTransition = do
             -- Guardrails script hash check
             runTest $ checkGuardrailsScriptHash @era constitutionPolicy proposalPolicy
 
-            unless (hardforkConwayBootstrapPhase $ pp ^. ppProtocolVersionL) $
-              -- The sum of all withdrawals must be positive
-              F.fold wdrls /= mempty ?! (injectFailure . ZeroTreasuryWithdrawals) pProcGovAction
+            -- The sum of all withdrawals must be positive
+            F.fold wdrls /= mempty ?! (injectFailure . ZeroTreasuryWithdrawals) pProcGovAction
           UpdateCommittee _mPrevGovActionId membersToRemove membersToAdd _qrm -> do
             let conflicting = Set.intersection (Map.keysSet membersToAdd) membersToRemove
              in failOnNonEmptySet conflicting (injectFailure . ConflictingCommitteeUpdate)

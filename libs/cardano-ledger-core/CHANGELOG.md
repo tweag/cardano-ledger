@@ -1,11 +1,20 @@
 # Version history for `cardano-ledger-core`
 
-## 1.20.0.1
+## 1.21.0.0
 
-*
-
-## 1.20.0.0
-
+* Change `ChainCode` type to use `ByteArray` instead of `ByteString`
+* Change `bwAttributes` field to use `ByteArray` instead of `ByteString`
+* Add `StAnnTx` type family and `txStAnnTxG` to `Tx` type class
+* Add `decodeProtVer` to `Cardano.Ledger.BaseTypes`
+* Add `EraDecoder` type and `ppEraDecoder` field to `PParam`
+* Fix `DecCBOR` instance for `PParamsUpdate` to reject `ProtVer` values exceeding the era maximum
+* Remove `ToCBOR` and `FromCBOR` instances for `TxIx`, `CertIx`, `SlotNo32`, `Ptr`, `VRFVerKeyHash`, `SafeHash`, `VoidEraRule`, `Language`, `SLanguage`
+* Remove `FromCBOR` instances for `ScriptHash`, `ChainCode`, `PlutusBinary`, `BootstrapWitness`, `WitVKey`
+* Remove `ToCBOR` and `FromCBOR` instances for `PlutusWithContext`
+  - Add `EncCBOR` and `DecCBOR` instances as replacement
+* Remove `ToCBOR (TxOut era)` superclass constraint from `EraTxOut`
+* Remove `EncCBORGroup (BlockBody era)` superclass constraint from `EraBlockBody`
+* Remove `bBodySize` in favour of the new `blockBodySize` method on `EraBlockBody`
 * Remove `validMetadatum`
 * Deprecate `BHeaderView` in favour `*EraBlockHeader` typeclasses.
   - Move `isOverlaySlot` to `Cardano.Ledger.Slot`.
@@ -18,11 +27,28 @@
   - Moved to `cardano-base:Cardano.Base.IP`
 * Remove `ToCBOR` and `FromCBOR` instances for `Nonce`
 * Remove default implementation of `fromPlutusData` in `ToPlutusData` typeclass.
+* Add `modifyTxAuxData` in `Cardano.Ledger.Core`.
+
+### `cddl`
+
+* Remove `pickOne`
+* Add `genMapTerm`
+* Modify `genBytesTerm`, `genArrayTerm` and `genStringTerm` so it works with `MonadGen` instead of `StatefulGen`
 
 ### `testlib`
 
+* Add `EraSpec` and `ledgerEraTestMain`
+* Add `toPackageGolden` and `itGolden`
+* Add `goldenForToJSON`, `itGoldenToJSON`, `aesonGoldenSpec` and `roundTripAesonProperty`
+* Add `fullAnnCddlSpec`, `fullAnnGenCddlSpec`, `fullCddlSpec` and `fullGenCddlSpec`
+* Generalize the type of `genArrayTerm`
 * Add `TestBlockHeader` and `mkTestBlockHeaderNoNonce` as a replacement to deprecated `BHeaderView` and `makeHeaderView`.
 * Modify `ToExpr` instance for `Mismatch` to display type-level `r` parameter using `Typeable`
+
+## 1.20.0.0
+
+* Add `Storable` instance for `NonZero`, `CompactForm Coin`, `KeyHash`, `ScriptHash`, `Credential` and `StakeWithDelegation`
+* Switch `ActiveStake` to use `VS` for the value in the `VMap`
 
 ## 1.19.0.0
 
