@@ -1,8 +1,14 @@
 # Version history for `cardano-ledger-api`
 
-## 1.13.0.1
+## 1.13.1.0
 
-*
+* Add `ToJSON` instances for `StakeSnapshot` and `StakeSnapshots`.
+* Add `ToJSON` instance for `QueryPoolStateResult`.
+* Add `querySetSnapshotStakePoolDistr` (`GetPoolDistr2`).
+* Add `queryDRepDelegatees` (`GetFilteredVoteDelegatees`).
+* Add `queryStakePoolRelays` (`GetLedgerPeerSnapshot`).
+* Add `queryAccountsDeposits` (`GetStakeDelegDeposits`).
+* Add `queryCurrentEpochNo` (`GetEpochNo`).
 
 ## 1.13.0.0
 

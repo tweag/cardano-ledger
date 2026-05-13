@@ -2,15 +2,12 @@
 
 ## 1.6.0.0
 
+* Remove `FromCBOR` instances for `KESPeriod`, `PrtclState`, `TicknState`
 * Deprecate `GetLedgerView` and related `LedgerView` in favour of `*EraForecast` typeclasses from Shelley and Babbage eras.
   - Add `forecastToTPraosLedgerView` for backwards compatibility.
   - Update `tickChainDepState`, `updateChainDepState`, and `reupdateChainDepState` to use the new `TPraosLedgerView`.
   - Deprecate `mkInitialShelleyLedgerView`.
 * Remove `TicknPredicateFailure` and make `PredicateFailure TICKN` be `Void`.
-* Remove `NoThunks` instance for
-  - `UpdnPredicateFailure`
-  - `OverlayPredicateFailure`
-  - `ChainTransitionError`
 
 ### `testlib`
 

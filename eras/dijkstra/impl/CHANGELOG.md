@@ -2,12 +2,36 @@
 
 ## 0.3.0.0
 
+* Add `TranslateEra` instance for `DijkstraEra VState`
+* Fix `TranslateEra` instance for `DijkstraEra CertState`
+* Add `GuardScriptHashesNotSupported` constructor to `DijkstraContextError`
+* Add `SubTxsAreNotSupported` constructor to `DijkstraContextError`
+* Add `decodeDijkstraTopTx`
+* Change `Signal` to `StAnnTx TopTx era` for: `DijkstraLEDGER`, `DijkstraMEMPOOL`, `DijkstraUTXOW`, `DijkstraUTXO`
+* Change `Signal` to `StAnnTx SubTx era` for: `DijkstraSUBLEDGER`, `DijkstraSUBUTXOW`, `DijkstraSUBUTXO`
+* Change `DijkstraSUBLEDGERS` `Signal` to `[StAnnTx SubTx era]`
+* Add `WithdrawalsExceedAccountBalance` to `DijkstraLedgerPredFailure`
+* Removed `DijkstraSpendingOutputFromSameTx` from `DijkstraLedgerPredFailure`
+* Added `batchNonDistinctRefScriptsSize`
+* Add `guardDijkstraFeaturesForPlutusV1toV3`
+* Add `DirectDepositsNotSupported` and `AccountBalanceIntervalsNotSupported` constructors to `DijkstraContextError`
+* Add `SubTxContextError`
+* Add `DijkstraStAnnTx`
+* Add `scriptsProvidedDijkstraStAnnTx`
+* Add `mkDijkstraStAnnTopTx`
+* Remove `ToCBOR` and `FromCBOR` instances for `DijkstraGovPredFailure`
+* Add `getDijkstraScriptsProvided`
+* Add `MissingRequiredGuards` constructor to `DijkstraUtxowPredFailure`
+* Add `DijkstraUtxoEnv` and use it as `Environemnt` in `STS` instance of `UTXOW`
+* Refactor `DijkstraBlockBody` to use `MemoBytes` for memoized serialization
+* Add `blockBodySize` implementation for `DijkstraEra`
+* Add `DijkstraBlockBodyRaw`, `MkDijkstraBlockBody`
 * Add `ApplyTick` instance for `DijkstraEra`
 * Add `WrongNetworkInDirectDeposit` constructor to `DijkstraUtxoPredFailure`
 * Add `SubWrongNetworkInDirectDeposit` constructor to `DijkstraSubUtxoPredFailure`
 * Add `validateWrongNetworkInDirectDeposit`
 * Add `checkPointerPresentInOutput`
-* Add `SubTxIsNotSupported` and `transFailSubTxIsNotSupported`
+* Add `UnsupportedScriptInSubTx` and `transFailUnsupportedScriptInSubTx`
 * Remove `transPlutusPurposeV3` and `transPlutusPurposeV1V2`.
 * `DijkstraTxInfoResult` changed its content type to `PlutusTxInfoResult`
 * Add `EraForecast` instance for `DijkstraEra`.
@@ -37,6 +61,21 @@
   - `DijkstraUtxowPredFailure`
 * Remove `NoThunks` instance for `DijkstraContextError`
 * Make `DijkstraContextError` constructors lazy
+
+### cddl
+
+* Add `peras_certificate`, `block_body`
+* Extend `constr` CDDL rule to include tags 1280–1400 for Plutus `Data` constructor indexes
+
+### testlib
+
+* Make `Test.Cardano.Ledger.Dijkstra.Imp.spec` accept `Proxy era`
+* Add `ToExpr` instance for `DijkstraBlockBody`
+* Add `DecCBOR` instance for `DijkstraBlockBodyRaw`
+* Add `genNonEmptyAccountBalanceIntervals`
+* In `Test.Cardano.Ledger.Dijkstra.Examples`:
+  - Remove `mkDijkstraBasedExampleTx`, `mkDijkstraBasedExampleTxBody`
+  - Add `exampleDijkstraBasedTopTx`, `exampleDijkstraBasedSubTx`
 
 ## 0.2.0.0
 
@@ -163,7 +202,7 @@
 * Move `cddl-files` to `cddl/data`.
 * Add full `HuddleSpec`.
 
-### `testlib`
+### testlib
 
 * Add `Test.Cardano.Ledger.Dijkstra.Imp.LedgerSpec`
 * Add `Test.Cardano.Ledger.Dijkstra.Imp.UtxoSpec`

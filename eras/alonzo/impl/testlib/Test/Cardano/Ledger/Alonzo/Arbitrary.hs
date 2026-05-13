@@ -30,6 +30,7 @@ module Test.Cardano.Ledger.Alonzo.Arbitrary (
   genValidCostModel,
   genValidAndUnknownCostModels,
   genAlonzoPlutusPurposePointer,
+  genDatumPresent,
 ) where
 
 import Cardano.Ledger.Alonzo (AlonzoEra, ApplyTxError (..), Tx (..))
@@ -78,7 +79,7 @@ import Cardano.Ledger.Alonzo.TxWits (
   TxDats (TxDats),
  )
 import Cardano.Ledger.BaseTypes (StrictMaybe (..))
-import Cardano.Ledger.Plutus.Data (hashData)
+import Cardano.Ledger.Plutus.Data (Datum (..), hashData)
 import Cardano.Ledger.Plutus.ExUnits (ExUnits (..))
 import Cardano.Ledger.Plutus.Language (
   Language (..),
@@ -98,6 +99,7 @@ import Numeric.Natural (Natural)
 import Test.Cardano.Data (genNonEmptyMap)
 import Test.Cardano.Ledger.Common
 import Test.Cardano.Ledger.Core.Arbitrary (
+  genEraProtVer,
   genValidAndUnknownCostModels,
   genValidCostModel,
   genValidCostModels,
@@ -247,7 +249,7 @@ genPlutusScript lang =
     , (5, alwaysFailsLang lang <$> elements [1, 2, 3])
     ]
 
-instance Arbitrary (AlonzoPParams Identity era) where
+instance Era era => Arbitrary (AlonzoPParams Identity era) where
   arbitrary =
     AlonzoPParams
       <$> arbitrary
@@ -264,7 +266,7 @@ instance Arbitrary (AlonzoPParams Identity era) where
       <*> arbitrary
       <*> arbitrary
       <*> arbitrary
-      <*> arbitrary
+      <*> genEraProtVer @era
       <*> arbitrary
       <*> arbitrary
       <*> genValidCostModels [PlutusV1, PlutusV2]
@@ -277,7 +279,7 @@ instance Arbitrary (AlonzoPParams Identity era) where
 
 deriving instance Arbitrary OrdExUnits
 
-instance Arbitrary (AlonzoPParams StrictMaybe era) where
+instance Era era => Arbitrary (AlonzoPParams StrictMaybe era) where
   arbitrary =
     AlonzoPParams
       <$> arbitrary
@@ -294,7 +296,7 @@ instance Arbitrary (AlonzoPParams StrictMaybe era) where
       <*> arbitrary
       <*> arbitrary
       <*> arbitrary
-      <*> arbitrary
+      <*> oneof [pure SNothing, SJust <$> genEraProtVer @era]
       <*> arbitrary
       <*> arbitrary
       <*> oneof [pure SNothing, SJust <$> genValidCostModels [PlutusV1, PlutusV2]]
@@ -484,3 +486,6 @@ instance Arbitrary LangDepView where
   arbitrary = LangDepView <$> arbitrary <*> arbitrary
 
 deriving instance Arbitrary AlonzoExtraConfig
+
+genDatumPresent :: Era era => Gen (Datum era)
+genDatumPresent = oneof [DatumHash <$> arbitrary, Datum <$> arbitrary]

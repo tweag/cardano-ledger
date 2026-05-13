@@ -3,11 +3,11 @@
     "CHaP": {
       "flake": false,
       "locked": {
-        "lastModified": 1775601933,
-        "narHash": "sha256-3tFtV8WCWYhw4i8wI1t9YkzD0dbeT0obp63wmylW3oE=",
+        "lastModified": 1775892872,
+        "narHash": "sha256-8qwpclExAZYF5e35xqt9yQYcal3FJLirKNIMiomAIvs=",
         "owner": "intersectmbo",
         "repo": "cardano-haskell-packages",
-        "rev": "299495a93f6fcc9e2dc7ce882135b9e153be9bea",
+        "rev": "86660ad10909f521a9c42cb01e9626aefd3903cf",
         "type": "github"
       },
       "original": {
@@ -105,16 +105,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1775087180,
-        "narHash": "sha256-eAwb3ZXkcRO83gP9/fiiWxC05eAhSZ4ntkLVxpv7qEY=",
+        "lastModified": 1777421013,
+        "narHash": "sha256-8Zm2a0D3A/CiGLgxVTjPKpqLLcb4spzObsyE59/XYlc=",
         "owner": "input-output-hk",
         "repo": "cardano-ledger-release-tool",
-        "rev": "e8011391f49e927f1b69878b75b69cc656e6b9cb",
+        "rev": "0734e1072f37d1b91c8018e4c8b4fe35a90f4ac3",
         "type": "github"
       },
       "original": {
         "owner": "input-output-hk",
-        "ref": "0.3.0.0",
+        "ref": "0.4.0.1",
         "repo": "cardano-ledger-release-tool",
         "type": "github"
       }
@@ -292,11 +292,11 @@
     "hackageNix": {
       "flake": false,
       "locked": {
-        "lastModified": 1776117354,
-        "narHash": "sha256-IqLFLbZl5HyRSIF71RErW1S3PNJ8RS42Mqz/85n9/CI=",
+        "lastModified": 1778128665,
+        "narHash": "sha256-A8X56xHMs9hWFr8tG91n4WhjCn/1BiD9oGd7otQgk1E=",
         "owner": "input-output-hk",
         "repo": "hackage.nix",
-        "rev": "e46b3c3ef240fb509e8905cb22287fd5233a7427",
+        "rev": "692da95600702017553fb12d4594303e16937a31",
         "type": "github"
       },
       "original": {

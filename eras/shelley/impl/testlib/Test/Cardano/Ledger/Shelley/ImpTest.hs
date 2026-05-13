@@ -25,7 +25,6 @@
 module Test.Cardano.Ledger.Shelley.ImpTest (
   ImpTestM,
   LedgerSpec,
-  EraSpecificSpec (..),
   SomeSTSEvent (..),
   ImpTestState,
   ImpTestEnv (..),
@@ -146,6 +145,7 @@ module Test.Cardano.Ledger.Shelley.ImpTest (
   whenMajorVersionAtMost,
   unlessMajorVersion,
   getsPParams,
+  withImpInitEachEraVersion,
   withEachEraVersion,
   impSatisfyMNativeScripts,
   impSatisfySignature,
@@ -204,6 +204,7 @@ import Cardano.Ledger.Keys (
  )
 import Cardano.Ledger.Shelley (ShelleyEra)
 import Cardano.Ledger.Shelley.API.ByronTranslation (translateToShelleyLedgerStateFromUtxo)
+import Cardano.Ledger.Shelley.API.Mempool (ApplyTx (..))
 import Cardano.Ledger.Shelley.API.Validation (
   ApplyBlock,
   BlockTransitionError (..),
@@ -224,12 +225,14 @@ import Cardano.Ledger.Shelley.LedgerState (
   curPParamsEpochStateL,
   esLStateL,
   lsCertStateL,
+  lsUTxOState,
   lsUTxOStateL,
   nesELL,
   nesEsL,
   prevPParamsEpochStateL,
   produced,
   utxosDonationL,
+  utxosUtxo,
  )
 import Cardano.Ledger.Shelley.Rules (
   BbodyEnv (..),
@@ -240,6 +243,7 @@ import Cardano.Ledger.Shelley.Rules (
   ShelleyUtxoPredFailure,
   ShelleyUtxowPredFailure,
   epochFromSlot,
+  ledgerPpL,
  )
 import Cardano.Ledger.Shelley.Scripts (
   ShelleyEraScript,
@@ -347,10 +351,6 @@ instance ShelleyEraImp era => ImpSpec (LedgerSpec era) where
   -- number of the current era
   impPrepAction = passTick
 
-class EraTest era => EraSpecificSpec era where
-  eraSpecificSpec :: SpecWith (ImpInit (LedgerSpec era))
-  eraSpecificSpec = pure ()
-
 data SomeSTSEvent era
   = forall (rule :: Symbol).
     ( Typeable (Event (EraRule rule era))
@@ -449,6 +449,7 @@ impRecordedTxsL = lens impRecordedTxs (\x y -> x {impRecordedTxs = y})
 
 class
   ( ShelleyEraTest era
+  , ApplyTx era
   , -- For the BBODY rule
     STS (EraRule "BBODY" era)
   , BaseM (EraRule "BBODY" era) ~ ShelleyBase
@@ -471,7 +472,7 @@ class
   , -- For the LEDGER rule
     STS (EraRule "LEDGER" era)
   , BaseM (EraRule "LEDGER" era) ~ ShelleyBase
-  , Signal (EraRule "LEDGER" era) ~ Tx TopTx era
+  , Signal (EraRule "LEDGER" era) ~ StAnnTx TopTx era
   , State (EraRule "LEDGER" era) ~ LedgerState era
   , Environment (EraRule "LEDGER" era) ~ LedgerEnv era
   , Eq (PredicateFailure (EraRule "LEDGER" era))
@@ -704,10 +705,19 @@ withEachEraVersion ::
   ShelleyEraImp era =>
   SpecWith (ImpInit (LedgerSpec era)) ->
   Spec
-withEachEraVersion specWith =
+withEachEraVersion = withImpInitEachEraVersion (Proxy @era)
+{-# DEPRECATED withEachEraVersion "In favor of `withImpInitEachEraVersion`" #-}
+
+withImpInitEachEraVersion ::
+  forall proxy era.
+  ShelleyEraImp era =>
+  proxy era ->
+  SpecWith (ImpInit (LedgerSpec era)) ->
+  Spec
+withImpInitEachEraVersion _proxy specWith =
   withImpInit @(LedgerSpec era) $ do
     forM_ (eraProtVersions @era) $ \protVer ->
-      describe ("Protocol " <> show protVer) $
+      describe ("Version " <> show protVer) $
         modifyImpInitProtVer protVer specWith
 
 shelleyModifyImpInitProtVer ::
@@ -931,6 +941,7 @@ instance
             sgGenDelegs = mempty
           , sgInitialFunds = mempty
           , sgStaking = mempty
+          , sgExtraConfig = SNothing
           }
     case validateGenesis gen of
       Right () -> pure gen
@@ -1412,11 +1423,19 @@ trySubmitTx tx = do
 
   st <- gets impNES
   lEnv <- impLedgerEnv st
-  res <- tryRunImpRule @"LEDGER" lEnv (st ^. nesEsL . esLStateL) txFixed
+  globals <- use impGlobalsL
+  let lState = st ^. nesEsL . esLStateL
+      stAnnTx =
+        mkStAnnTx
+          (epochInfo globals)
+          (systemStart globals)
+          (lEnv ^. ledgerPpL)
+          (utxosUtxo (lsUTxOState lState))
+          txFixed
+  res <- tryRunImpRule @"LEDGER" lEnv lState stAnnTx
 
   -- Check for conformance
-  globals <- use impGlobalsL
-  let trc = TRC (lEnv, st ^. nesEsL . esLStateL, txFixed)
+  let trc = TRC (lEnv, lState, stAnnTx)
   asks itePostSubmitTxHook >>= (\f -> f globals trc res)
 
   gets impRecordedTxs >>= \recordedTxs ->
@@ -1660,7 +1679,7 @@ tryTxsInBlock' txs finalState blockIssuer = do
     blockHeader =
       TestBlockHeader
         { tbhIssuer = blockIssuer
-        , tbhBSize = fromIntegral $ bBodySize (ProtVer (eraProtVerLow @era) 0) blockBody
+        , tbhBSize = fromIntegral $ blockBodySize (ProtVer (eraProtVerLow @era) 0) blockBody
         , tbhHSize = 0
         , tbhBHash = hashBlockBody blockBody
         , tbhSlot = slotNo

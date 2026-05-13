@@ -40,19 +40,11 @@ import Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0 (
   EntitiesDRepsOut (EntitiesDRepsOut),
   mkCanonicalDRepState,
  )
-import Cardano.Ledger.CanonicalState.Namespace.EntitiesDormantEpochs.V0 (
-  EntitiesDormantEpochsIn (EntitiesDormantEpochsIn),
-  EntitiesDormantEpochsOut (EntitiesDormantEpochsOut),
- )
-import Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.FutureParams.V0 (
-  EntitiesStakePoolsFutureParamsIn (EntitiesStakePoolsFutureParamsIn),
-  EntitiesStakePoolsFutureParamsOut (EntitiesStakePoolsFutureParamsOut),
-  mkCanonicalStakePoolParams,
- )
 import Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.V0 (
   CanonicalStakePool (..),
   EntitiesStakePoolsIn (..),
   EntitiesStakePoolsOut (..),
+  mkCanonicalStakePoolParams,
   mkCanonicalStakePoolState,
  )
 import Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.VRFKeyHashes.V0 (
@@ -107,7 +99,6 @@ import Cardano.Ledger.Conway.State (
   psVRFKeyHashesL,
   vsCommitteeStateL,
   vsDRepsL,
-  vsNumDormantEpochsL,
  )
 import Cardano.Ledger.Core (EraPParams (ppProtocolVersionL))
 import Cardano.Ledger.Shelley.LedgerState (
@@ -156,11 +147,11 @@ instance ExportCanonicalNamespace ConwayEra "entities/committee/v0" where
           Map.map mkCanonicalCommitteeAuthorization $
             nes
               ^. nesEpochStateL
-                . esLStateL
-                . lsCertStateL
-                . certVStateL
-                . vsCommitteeStateL
-                . csCommitteeCredsL
+              . esLStateL
+              . lsCertStateL
+              . certVStateL
+              . vsCommitteeStateL
+              . csCommitteeCredsL
 
 instance ExportCanonicalNamespace ConwayEra "gov/committee/v0" where
   exportNamespace nes =
@@ -171,7 +162,7 @@ instance ExportCanonicalNamespace ConwayEra "gov/committee/v0" where
           (\Committee {..} -> CanonicalCommittee {committeeMembers, committeeThreshold})
           $ nes
             ^. newEpochStateGovStateL
-              . cgsCommitteeL
+            . cgsCommitteeL
 
 instance ExportCanonicalNamespace ConwayEra "gov/constitution/v0" where
   exportNamespace nes =
@@ -253,11 +244,11 @@ instance ExportCanonicalNamespace ConwayEra "entities/accounts/v0" where
       $ Map.toList
       $ nes
         ^. nesEsL
-          . esLStateL
-          . lsCertStateL
-          . certDStateL
-          . accountsL
-          . accountsMapL
+        . esLStateL
+        . lsCertStateL
+        . certDStateL
+        . accountsL
+        . accountsMapL
 
 instance ExportCanonicalNamespace ConwayEra "entities/dreps/v0" where
   exportNamespace nes =
@@ -265,10 +256,10 @@ instance ExportCanonicalNamespace ConwayEra "entities/dreps/v0" where
       ( Map.toList
           ( nes
               ^. nesEsL
-                . esLStateL
-                . lsCertStateL
-                . certVStateL
-                . vsDRepsL
+              . esLStateL
+              . lsCertStateL
+              . certVStateL
+              . vsDRepsL
           )
       )
       & S.map
@@ -280,64 +271,56 @@ instance ExportCanonicalNamespace ConwayEra "entities/stake_pools/v0" where
     stakePoolsEntries
     where
       stakePools =
-        S.each $
-          Map.toList $
-            Map.merge
-              (Map.mapMissing (\_ v -> (SJust v, SNothing)))
-              (Map.mapMissing (\_ v -> (SNothing, SJust v)))
-              ( Map.zipWithMatched
-                  (\_ stakePoolState retiringEpochNo -> (SJust stakePoolState, SJust retiringEpochNo))
-              )
-              ( nes
-                  ^. nesEsL
-                    . esLStateL
-                    . lsCertStateL
-                    . certPStateL
-                    . psStakePoolsL
-              )
-              ( nes
-                  ^. nesEsL
-                    . esLStateL
-                    . lsCertStateL
-                    . certPStateL
-                    . psRetiringL
-              )
+        S.each
+          $ Map.toList
+          $ Map.merge
+            (Map.mapMissing (\_ v -> (SNothing, SNothing, SJust v)))
+            (Map.mapMissing (\_ (x, y) -> (x, y, SNothing)))
+            ( Map.zipWithMatched
+                ( \_ futureStakePoolParams (stakePoolState, retiringEpochNo) -> (stakePoolState, retiringEpochNo, SJust futureStakePoolParams)
+                )
+            )
+            ( nes
+                ^. nesEsL
+                . esLStateL
+                . lsCertStateL
+                . certPStateL
+                . psFutureStakePoolParamsL
+            )
+          $ Map.merge
+            (Map.mapMissing (\_ v -> (SJust v, SNothing)))
+            (Map.mapMissing (\_ v -> (SNothing, SJust v)))
+            ( Map.zipWithMatched
+                (\_ stakePoolState retiringEpochNo -> (SJust stakePoolState, SJust retiringEpochNo))
+            )
+            ( nes
+                ^. nesEsL
+                . esLStateL
+                . lsCertStateL
+                . certPStateL
+                . psStakePoolsL
+            )
+            ( nes
+                ^. nesEsL
+                . esLStateL
+                . lsCertStateL
+                . certPStateL
+                . psRetiringL
+            )
       stakePoolsEntries =
         S.map
-          ( \(k, (stakePoolState, retiringEpochNo)) ->
+          ( \(k, (stakePoolState, retiringEpochNo, futureStakePoolParams)) ->
               ChunkEntry
                 (EntitiesStakePoolsIn k)
                 ( EntitiesStakePoolsOut $
                     CanonicalStakePool
                       { cspStakePoolState = fmap mkCanonicalStakePoolState stakePoolState
                       , cspRetiringEpochNo = retiringEpochNo
+                      , cspFutureStakePoolParams = fmap mkCanonicalStakePoolParams futureStakePoolParams
                       }
                 )
           )
           stakePools
-
-instance ExportCanonicalNamespace ConwayEra "entities/stake_pools/future_params/v0" where
-  exportNamespace nes =
-    stakePoolsFutureParamsEntries
-    where
-      stakePoolsFutureParams =
-        S.each $
-          Map.toList
-            ( nes
-                ^. nesEsL
-                  . esLStateL
-                  . lsCertStateL
-                  . certPStateL
-                  . psFutureStakePoolParamsL
-            )
-      stakePoolsFutureParamsEntries =
-        S.map
-          ( \(k, stakePoolParams) ->
-              ChunkEntry
-                (EntitiesStakePoolsFutureParamsIn k)
-                (EntitiesStakePoolsFutureParamsOut $ mkCanonicalStakePoolParams stakePoolParams)
-          )
-          stakePoolsFutureParams
 
 instance ExportCanonicalNamespace ConwayEra "entities/stake_pools/vrf_key_hashes/v0" where
   exportNamespace nes =
@@ -348,10 +331,10 @@ instance ExportCanonicalNamespace ConwayEra "entities/stake_pools/vrf_key_hashes
           Map.toList
             ( nes
                 ^. nesEsL
-                  . esLStateL
-                  . lsCertStateL
-                  . certPStateL
-                  . psVRFKeyHashesL
+                . esLStateL
+                . lsCertStateL
+                . certPStateL
+                . psVRFKeyHashesL
             )
       stakePoolsVRFKeyHashesEntries =
         S.map
@@ -361,22 +344,6 @@ instance ExportCanonicalNamespace ConwayEra "entities/stake_pools/vrf_key_hashes
                 (EntitiesStakePoolsVRFKeyHashesOut n)
           )
           stakePoolsVRFKeyHashes
-
-instance ExportCanonicalNamespace ConwayEra "entities/dormant_epochs/v0" where
-  exportNamespace nes =
-    S.yield
-      ( ChunkEntry
-          EntitiesDormantEpochsIn
-          ( EntitiesDormantEpochsOut
-              ( nes
-                  ^. nesEsL
-                    . esLStateL
-                    . lsCertStateL
-                    . certVStateL
-                    . vsNumDormantEpochsL
-              )
-          )
-      )
 
 instance ExportCanonicalState ConwayEra where
   type ExportLedgerState ConwayEra = NewEpochState ConwayEra
@@ -393,9 +360,7 @@ instance ExportCanonicalState ConwayEra where
       & addNamespaceToPlan @ConwayEra @"entities/dreps/v0" nes
       & addNamespaceToPlan @ConwayEra @"entities/committee/v0" nes
       & addNamespaceToPlan @ConwayEra @"entities/stake_pools/v0" nes
-      & addNamespaceToPlan @ConwayEra @"entities/stake_pools/future_params/v0" nes
       & addNamespaceToPlan @ConwayEra @"entities/stake_pools/vrf_key_hashes/v0" nes
-      & addNamespaceToPlan @ConwayEra @"entities/dormant_epochs/v0" nes
   getProtocolVersion nes =
     pvMajor $ nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
   getEpochNo nes = nes ^. nesELL

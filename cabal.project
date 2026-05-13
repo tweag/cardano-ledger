@@ -27,8 +27,8 @@ source-repository-package
 -- NOTE: If you would like to update the above,
 -- see CONTRIBUTING.md#to-update-the-referenced-agda-ledger-spec
 index-state:
-  , hackage.haskell.org 2026-04-10T10:16:43Z
-  , cardano-haskell-packages 2026-04-06T22:05:45Z
+  , hackage.haskell.org 2026-05-06T14:09:41Z
+  , cardano-haskell-packages 2026-04-11T06:29:42Z
 
 packages:
   -- == Byron era ==
@@ -70,7 +70,7 @@ program-options
   ghc-options: -Werror
 
 package plutus-preprocessor
-  haddock-options: "--optghc=-fplugin-opt PlutusTx.Plugin:defer-errors"
+  haddock-options: "--optghc=-fplugin-opt=PlutusTx.Plugin:defer-errors"
 
 package cardano-ledger-core
   flags: +asserts
@@ -104,8 +104,8 @@ source-repository-package
   type: git
   location: https://github.com/tweag/cardano-cls.git
   subdir: merkle-tree-incremental mempack-scls scls-cbor scls-cardano scls-format scls-core
-  --sha256: sha256-0H21r+Gv6gUp0J5QsprkqW+cN310o1kca/GsRgc+Xz8=
-  tag: 9de5a09edc19cea991232f841975bcd62a1c1b51
+  --sha256: sha256-BfFcSZ1Qt7ixawjPtAhTunVI+43m7Qxg2AdTD4VBp0g=
+  tag: 420e9445f381c0ef902baefcf5a7fc1e6ccb16fd
 
 constraints:
   -- Happy version 2.2.1 fails to compile haskell-src-exts
@@ -169,6 +169,7 @@ if impl(ghc >=9.14)
     , quickcheck-instances:containers
     , quickcheck-instances:these
     , quickcheck-instances:uuid-types
+    , safe-wild-cards:template-haskell
     , semialign:base
     , semialign:containers
     , semialign:indexed-traversable

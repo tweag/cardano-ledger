@@ -2,6 +2,8 @@
 
 ## 1.14.0.0
 
+* Change `Signal` to `StAnnTx TopTx era` for: `BabbageLEDGER`, `BabbageUTXOW`, `BabbageUTXO`, `BabbageUTXOS`
+* Remove `ToCBOR` and `FromCBOR` instances for `BabbageTxOut`
 * Add `ApplyTick` instance for `BabbageEra`
 * `BabbageTxInfoResult` changed its content type to `PlutusTxInfoResult`
 * Deprecate the use of `GetLedgerView`:
@@ -19,9 +21,20 @@
 * Remove `NoThunks` instance for `BabbageContextError`
 * Make `BabbageContextError` constructors lazy
 
+### `cddl`
+
+* Change `ipv4` and `ipv6` to use exact byte sizes (4 and 16 respectively), no longer allowing leftover bytes
+* Fix `ex_unit_prices` CDDL to use `nonnegative_interval` instead of `positive_interval`
+* Extend `constr` CDDL rule to include tags 1280–1400 for Plutus `Data` constructor indexes
+
 ### `testlib`
 
+* Add `proxy era` argument to `babbageEraSpecificSpec`
+* Make `Test.Cardano.Ledger.Babbage.Imp.spec` accept `Proxy era`
 * Add `Test.Cardano.Ledger.Babbage.Imp.PoolSpec` module with `babbageEraSpecificSpec`
+* In `Test.Cardano.Ledger.Babbage.Examples`:
+  - Remove `mkBabbageBasedExampleTx`, `exampleBabbageBasedTxBody`
+  - Add `exampleBabbageBasedTx`, `exampleBabbageBasedTopTx`
 
 ## 1.13.0.0
 

@@ -2,6 +2,7 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MonoLocalBinds #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedLists #-}
@@ -92,27 +93,27 @@ scriptDataHashRule pname p = pname =.= huddleRule @"hash32" p
 boundedBytesRule :: Proxy "bounded_bytes" -> Rule
 boundedBytesRule pname =
   comment
-    [str|The real bounded_bytes does not have this limit. it instead has
-        |a different limit which cannot be expressed in CDDL.
+    [str| The real bounded_bytes does not have this limit. it instead has
+        | a different limit which cannot be expressed in CDDL.
         |
-        |The limit is as follows:
-        | - bytes with a definite-length encoding are limited to size 0..64
-        | - for bytes with an indefinite-length CBOR encoding, each chunk is
-        |   limited to size 0..64
-        | ( reminder: in CBOR, the indefinite-length encoding of
-        | bytestrings consists of a token #2.31 followed by a sequence
-        | of definite-length encoded bytestrings and a stop code )
+        | The limit is as follows:
+        |  - bytes with a definite-length encoding are limited to size 0..64
+        |  - for bytes with an indefinite-length CBOR encoding, each chunk is
+        |    limited to size 0..64
+        |  ( reminder: in CBOR, the indefinite-length encoding of
+        |  bytestrings consists of a token #2.31 followed by a sequence
+        |  of definite-length encoded bytestrings and a stop code )
         |]
     $ pname =.= VBytes `sized` (0 :: Word64, 64 :: Word64)
 
 exUnitPricesRule ::
   forall era.
-  HuddleRule "positive_interval" era => Proxy "ex_unit_prices" -> Proxy era -> Rule
+  HuddleRule "nonnegative_interval" era => Proxy "ex_unit_prices" -> Proxy era -> Rule
 exUnitPricesRule pname p =
   pname
     =.= arr
-      [ "mem_price" ==> huddleRule @"positive_interval" p
-      , "step_price" ==> huddleRule @"positive_interval" p
+      [ "mem_price" ==> huddleRule @"nonnegative_interval" p
+      , "step_price" ==> huddleRule @"nonnegative_interval" p
       ]
 
 requiredSignersRule ::
@@ -121,18 +122,26 @@ requiredSignersRule ::
   Proxy "required_signers" -> Proxy era -> Rule
 requiredSignersRule pname p = pname =.= huddleRule1 @"set" p (huddleRule @"addr_keyhash" p)
 
+-- | See module @PlutusCore.Data@ on the tags that are allowed for the `Constr` index.
+--
+-- Also see CBOR standard that specifies the CBOR tags and their semantics:
+-- https://www.iana.org/assignments/cbor-tags/cbor-tags.xhtml
 constr :: IsType0 a => Proxy "constr" -> a -> GRuleCall
 constr pname =
   binding $ \x ->
     pname
-      =.= tag 121 (arr [0 <+ a x])
-      / tag 122 (arr [0 <+ a x])
-      / tag 123 (arr [0 <+ a x])
-      / tag 124 (arr [0 <+ a x])
-      / tag 125 (arr [0 <+ a x])
-      / tag 126 (arr [0 <+ a x])
-      / tag 127 (arr [0 <+ a x])
-      / tag 102 (arr [a VUInt, a $ arr [0 <+ a x]])
+      =.=
+      -- We use 'unType0 . toType0' to convert each 'Tagged ArrayChoice' to 'Choice Type2',
+      -- making the list homogeneous so that 'foldl1 (/)' can be used.
+      -- Ideally, we should have used `toChoice`, but it's not exported by `cuddle`.
+      foldl1
+        (/)
+        ( fmap
+            (unType0 . toType0)
+            ( tag 102 (arr [a VUInt, a $ arr [0 <+ a x]])
+                : [tag t (arr [0 <+ a x]) | t <- [121 .. 127] ++ [1280 .. 1400]]
+            )
+        )
 
 instance HuddleGroup "operational_cert" AlonzoEra where
   huddleGroupNamed = shelleyOperationalCertGroup
@@ -254,11 +263,11 @@ instance HuddleRule "mint" AlonzoEra where
 instance HuddleRule "block" AlonzoEra where
   huddleRuleNamed pname p =
     comment
-      [str|Valid blocks must also satisfy the following two constraints:
-          |  1) the length of transaction_bodies and transaction_witness_sets must be
-          |     the same
-          |  2) every transaction_index must be strictly smaller than the length of
-          |     transaction_bodies
+      [str| Valid blocks must also satisfy the following two constraints:
+          |   1) the length of transaction_bodies and transaction_witness_sets must be
+          |      the same
+          |   2) every transaction_index must be strictly smaller than the length of
+          |      transaction_bodies
           |]
       $ pname
         =.= arr
@@ -392,10 +401,10 @@ instance HuddleRule "transaction_witness_set" AlonzoEra where
 instance HuddleRule "auxiliary_data" AlonzoEra where
   huddleRuleNamed pname p =
     comment
-      [str|auxiliary_data supports three serialization formats:
-          |  1. metadata (raw) - Supported since Shelley
-          |  2. auxiliary_data_array - Array format, introduced in Allegra
-          |  3. auxiliary_data_map - Tagged map format, introduced in Alonzo
+      [str| auxiliary_data supports three serialization formats:
+          |   1. metadata (raw) - Supported since Shelley
+          |   2. auxiliary_data_array - Array format, introduced in Allegra
+          |   3. auxiliary_data_map - Tagged map format, introduced in Alonzo
           |]
       $ pname
         =.= huddleRule @"metadata" p
@@ -417,60 +426,60 @@ instance HuddleRule "auxiliary_data_map" AlonzoEra where
 instance HuddleRule "script_data_hash" AlonzoEra where
   huddleRuleNamed pname p =
     comment
-      [str|This is a hash of data which may affect evaluation of a script.
+      [str| This is a hash of data which may affect evaluation of a script.
           |
-          |This data consists of:
-          |  - The redeemers from the transaction_witness_set (the value of field 5).
-          |  - The datums from the transaction_witness_set (the value of field 4).
-          |  - The value in the cost_models map corresponding to the script's language
-          |    (in field 18 of protocol_param_update.)
-          |(In the future it may contain additional protocol parameters.)
+          | This data consists of:
+          |   - The redeemers from the transaction_witness_set (the value of field 5).
+          |   - The datums from the transaction_witness_set (the value of field 4).
+          |   - The value in the cost_models map corresponding to the script's language
+          |     (in field 18 of protocol_param_update.)
+          | (In the future it may contain additional protocol parameters.)
           |
-          |Since this data does not exist in contiguous form inside a
-          |transaction, it needs to be independently constructed by each
-          |recipient.
+          | Since this data does not exist in contiguous form inside a
+          | transaction, it needs to be independently constructed by each
+          | recipient.
           |
-          |The bytestring which is hashed is the concatenation of three things:
-          |  redeemers || datums || language views
+          | The bytestring which is hashed is the concatenation of three things:
+          |   redeemers || datums || language views
           |
-          |The redeemers are exactly the data present in the transaction
-          |witness set. Similarly for the datums, if present. If no datums
-          |are provided, the middle field is omitted (i.e. it is the
-          |empty/null bytestring).
+          | The redeemers are exactly the data present in the transaction
+          | witness set. Similarly for the datums, if present. If no datums
+          | are provided, the middle field is omitted (i.e. it is the
+          | empty/null bytestring).
           |
-          |language views CDDL:
-          |{ * language => script_integrity_data }
+          | language views CDDL:
+          | { * language => script_integrity_data }
           |
-          |This must be encoded canonically, using the same scheme as in
-          |RFC7049 section 3.9:
-          | - Maps, strings, and bytestrings must use a definite-length encoding
-          | - Integers must be as small as possible.
-          | - The expressions for map length, string length, and bytestring length
-          |   must be as short as possible.
-          | - The keys in the map must be sorted as follows:
-          |    -  If two keys have different lengths, the shorter one sorts earlier.
-          |    -  If two keys have the same length, the one with the lower value
-          |       in (byte-wise) lexical order sorts earlier.
+          | This must be encoded canonically, using the same scheme as in
+          | RFC7049 section 3.9:
+          |  - Maps, strings, and bytestrings must use a definite-length encoding
+          |  - Integers must be as small as possible.
+          |  - The expressions for map length, string length, and bytestring length
+          |    must be as short as possible.
+          |  - The keys in the map must be sorted as follows:
+          |     -  If two keys have different lengths, the shorter one sorts earlier.
+          |     -  If two keys have the same length, the one with the lower value
+          |        in (byte-wise) lexical order sorts earlier.
           |
-          |For PlutusV1 (language id 0), the language view is the following:
-          |  - the value of cost_models map at key 0 is encoded as an indefinite length
-          |    list and the result is encoded as a bytestring. (our apologies)
-          |  - the language ID tag is also encoded twice. first as a uint then as
-          |    a bytestring. (our apologies)
+          | For PlutusV1 (language id 0), the language view is the following:
+          |   - the value of cost_models map at key 0 is encoded as an indefinite length
+          |     list and the result is encoded as a bytestring. (our apologies)
+          |   - the language ID tag is also encoded twice. first as a uint then as
+          |     a bytestring. (our apologies)
           |
-          |Note that each Plutus language represented inside a transaction
-          |must have a cost model in the cost_models protocol parameter in
-          |order to execute, regardless of what the script integrity data
-          |is. In the Alonzo era, this means cost_models must have a key 0
-          |for Plutus V1.
+          | Note that each Plutus language represented inside a transaction
+          | must have a cost model in the cost_models protocol parameter in
+          | order to execute, regardless of what the script integrity data
+          | is. In the Alonzo era, this means cost_models must have a key 0
+          | for Plutus V1.
           |
-          |Finally, note that in the case that a transaction includes
-          |datums but does not include any redeemers, the script data
-          |format becomes (in hex):
-          |  [ 80 | datums | A0 ]
+          | Finally, note that in the case that a transaction includes
+          | datums but does not include any redeemers, the script data
+          | format becomes (in hex):
+          |   [ 80 | datums | A0 ]
           |
-          |corresponding to a CBOR empty list and an empty map (our
-          |apologies).
+          | corresponding to a CBOR empty list and an empty map (our
+          | apologies).
           |]
       $ scriptDataHashRule pname p
 
@@ -483,8 +492,8 @@ instance HuddleRule "network_id" AlonzoEra where
 instance Era era => HuddleRule "plutus_v1_script" era where
   huddleRuleNamed pname _ =
     comment
-      [str|Alonzo introduces Plutus smart contracts.
-          |Plutus V1 scripts are opaque bytestrings.
+      [str| Alonzo introduces Plutus smart contracts.
+          | Plutus V1 scripts are opaque bytestrings.
           |]
       . withCBORGen plutusScriptGen
       $ pname =.= VBytes
@@ -543,10 +552,10 @@ instance HuddleRule "redeemer" AlonzoEra where
 alonzoRedeemerTag :: Proxy "redeemer_tag" -> Rule
 alonzoRedeemerTag pname =
   comment
-    [str|0: spend
-        |1: mint
-        |2: cert
-        |3: reward
+    [str| 0: spend
+        | 1: mint
+        | 2: cert
+        | 3: reward
         |]
     $ pname =.= (0 :: Integer) ... (3 :: Integer)
 
@@ -565,8 +574,8 @@ instance HuddleRule "positive_interval" AlonzoEra where
 instance HuddleRule "language" AlonzoEra where
   huddleRuleNamed pname _ =
     comment
-      [str|NOTE: NEW
-          |  This is an enumeration. for now there's only one value. Plutus V1
+      [str| NOTE: NEW
+          |   This is an enumeration. for now there's only one value. Plutus V1
           |]
       $ pname =.= int 0
 
@@ -578,11 +587,11 @@ instance HuddleRule "cost_models" AlonzoEra where
 instance HuddleRule "cost_model" AlonzoEra where
   huddleRuleNamed pname p =
     comment
-      [str|NOTE: NEW
-          |  The keys to the cost model map are not present in the serialization.
-          |  The values in the serialization are assumed to be ordered
-          |  lexicographically by their correpsonding key value.
-          |  See Plutus' `ParamName` for parameter ordering
+      [str| NOTE: NEW
+          |   The keys to the cost model map are not present in the serialization.
+          |   The values in the serialization are assumed to be ordered
+          |   lexicographically by their correpsonding key value.
+          |   See Plutus' `ParamName` for parameter ordering
           |]
       $ pname =.= arr [166 <+ a (huddleRule @"int64" p) +> 166]
 

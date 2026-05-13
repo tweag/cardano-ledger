@@ -2,11 +2,18 @@
 
 ## 1.9.0.0
 
+* Add `decodeIntegralRational`
+* Add `decodeNonEmptySetLikeEnforceNoDuplicates`
 * Change `decodeIPv4`, `decodeIPv6`, `encodeIPv4`, `encodeIPv6`, `ipv4ToBytes`, `ipv6ToBytes` to work on `Cardano.Base.IP.IPv4/IPv6`
 * Remove default implementation for `DecCBOR` class
+* Remove `binaryGetDecoder` from exports
+* Change `decodeIPv4` and `decodeIPv6` to reject leftover bytes unconditionally, regardless of protocol version
 
 ### `testlib`
 
+* Add `goldenForEncCBOR` and `cborGoldenSpec`
+* Add `toPackageGolden`
+* Remove `roundTripFailureExpectation`, `roundTripCborExpectation`, and `cborTrip`
 * Add `noTwiddle`, `HuddleEnv`, `toGenEnv`
 * Replace `SpecWith (CTreeRoot MonoReferenced)` with `SpecWith HuddleEnv` in Huddle tests
 * Replace `CuddleData` with `CTreeRoot MonoReferenced`
@@ -14,6 +21,10 @@
 * Add `huddleAntiCborSpec`
 * Remove `Arbitrary` and `ToExpr` instances for `IPv4` and `IPv6` (now in `cardano-base:testlib`)
 * Remove `Arbitrary` and `ToExpr` instances for `IPv4` and `IPv6` (now in `cardano-base:testlib`)
+
+## 1.8.1.0
+
+* Add `DecShareCBOR` instance for `VMap VB VS`
 
 ## 1.8.0.0
 

@@ -11,15 +11,13 @@
 
 module Test.Cardano.Ledger.Conway.CanonicalState.Spec (spec) where
 
-import Cardano.Ledger.BaseTypes (EpochInterval, EpochNo, NonNegativeInterval, NonZero, UnitInterval)
+import Cardano.Ledger.BaseTypes (EpochInterval, NonNegativeInterval, NonZero, UnitInterval)
 import Cardano.Ledger.CanonicalState.BasicTypes (CanonicalExUnits (..))
 import Cardano.Ledger.CanonicalState.Conway (CanonicalGovActionState)
 import qualified Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 as Blocks.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesAccounts.V0 as EntitiesAccounts.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0 as Committee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0 as EntitiesDReps.V0
-import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesDormantEpochs.V0 as EntitiesDormantEpochs.V0
-import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.FutureParams.V0 as EntitiesStakePools.FutureParams.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.V0 as EntitiesStakePools.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.VRFKeyHashes.V0 as EntitiesStakePoolsVRFKeyHashes.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 as GovCommittee.V0
@@ -67,18 +65,6 @@ spec = do
       isCanonical @"entities/committee/v0" @Committee.V0.CanonicalCommitteeAuthorization
       validateType @"entities/committee/v0" @Committee.V0.CanonicalCommitteeAuthorization
         "committee_authorization"
-    describe "entities/accounts/v0" $ do
-      isCanonical @"entities/accounts/v0" @DRep
-      validateType @"entities/accounts/v0" @DRep "drep"
-      isCanonical @"entities/accounts/v0" @EntitiesAccounts.V0.CanonicalAccountState
-      validateType @"entities/accounts/v0" @EntitiesAccounts.V0.CanonicalAccountState
-        "account_state"
-      isCanonical @"entities/accounts/v0" @EntitiesAccounts.V0.EntitiesAccountsOut
-      validateType @"entities/accounts/v0" @EntitiesAccounts.V0.EntitiesAccountsOut
-        "record_entry"
-    describe "entities/dreps/v0" $ do
-      isCanonical @"entities/dreps/v0" @EntitiesDReps.V0.CanonicalDRepState
-      validateType @"entities/dreps/v0" @EntitiesDReps.V0.CanonicalDRepState "drep_state"
     describe "entities/stake_pools/v0" $ do
       isCanonical @"entities/stake_pools/v0" @(VRFVerKeyHash StakePoolVRF)
       validateType @"entities/stake_pools/v0" @(VRFVerKeyHash StakePoolVRF) "vrf_keyhash"
@@ -94,32 +80,34 @@ spec = do
       validateType @"entities/stake_pools/v0" @AccountId "account_id"
       isCanonical @"entities/stake_pools/v0" @(Credential Staking)
       validateType @"entities/stake_pools/v0" @(Credential Staking) "credential"
+      isCanonical @"entities/stake_pools/v0" @(KeyHash StakePool)
+      validateType @"entities/stake_pools/v0" @(KeyHash StakePool) "pool_keyhash"
+      isCanonical @"entities/stake_pools/v0" @(VRFVerKeyHash StakePoolVRF)
+      validateType @"entities/stake_pools/v0" @(VRFVerKeyHash StakePoolVRF) "vrf_keyhash"
+      isCanonical @"entities/stake_pools/v0" @UnitInterval
+      validateType @"entities/stake_pools/v0" @UnitInterval "unit_interval"
+      isCanonical @"entities/stake_pools/v0" @(KeyHash Staking)
+      validateType @"entities/stake_pools/v0" @(KeyHash Staking) "staking_keyhash"
+      isCanonical @"entities/stake_pools/v0" @StakePoolRelay
+      validateType @"entities/stake_pools/v0" @StakePoolRelay "relay"
+      isCanonical @"entities/stake_pools/v0" @PoolMetadata
+      validateType @"entities/stake_pools/v0" @PoolMetadata "pool_metadata"
+      isCanonical @"entities/stake_pools/v0" @AccountAddress
+      validateType @"entities/stake_pools/v0" @AccountAddress "address"
+      isCanonical @"entities/stake_pools/v0"
+        @EntitiesStakePools.V0.CanonicalStakePoolParams
+      validateType @"entities/stake_pools/v0"
+        @EntitiesStakePools.V0.CanonicalStakePoolParams
+        "stake_pool_params"
       isCanonical @"entities/stake_pools/v0" @EntitiesStakePools.V0.CanonicalStakePoolState
       validateType @"entities/stake_pools/v0" @EntitiesStakePools.V0.CanonicalStakePoolState
         "stake_pool_state"
       isCanonical @"entities/stake_pools/v0" @EntitiesStakePools.V0.CanonicalStakePool
       validateType @"entities/stake_pools/v0" @EntitiesStakePools.V0.CanonicalStakePool
         "stake_pool"
-    describe "entities/stake_pools/future_params/v0" $ do
-      isCanonical @"entities/stake_pools/future_params/v0" @(KeyHash StakePool)
-      validateType @"entities/stake_pools/future_params/v0" @(KeyHash StakePool) "pool_keyhash"
-      isCanonical @"entities/stake_pools/future_params/v0" @(VRFVerKeyHash StakePoolVRF)
-      validateType @"entities/stake_pools/future_params/v0" @(VRFVerKeyHash StakePoolVRF) "vrf_keyhash"
-      isCanonical @"entities/stake_pools/future_params/v0" @UnitInterval
-      validateType @"entities/stake_pools/future_params/v0" @UnitInterval "unit_interval"
-      isCanonical @"entities/stake_pools/future_params/v0" @(KeyHash Staking)
-      validateType @"entities/stake_pools/future_params/v0" @(KeyHash Staking) "staking_keyhash"
-      isCanonical @"entities/stake_pools/future_params/v0" @StakePoolRelay
-      validateType @"entities/stake_pools/future_params/v0" @StakePoolRelay "relay"
-      isCanonical @"entities/stake_pools/future_params/v0" @PoolMetadata
-      validateType @"entities/stake_pools/future_params/v0" @PoolMetadata "pool_metadata"
-      isCanonical @"entities/stake_pools/future_params/v0" @AccountAddress
-      validateType @"entities/stake_pools/future_params/v0" @AccountAddress "address"
-      isCanonical @"entities/stake_pools/future_params/v0"
-        @EntitiesStakePools.FutureParams.V0.CanonicalStakePoolParams
-      validateType @"entities/stake_pools/future_params/v0"
-        @EntitiesStakePools.FutureParams.V0.CanonicalStakePoolParams
-        "stake_pool_params"
+    describe "entities/dreps/v0" $ do
+      isCanonical @"entities/dreps/v0" @EntitiesDReps.V0.CanonicalDRepState
+      validateType @"entities/dreps/v0" @EntitiesDReps.V0.CanonicalDRepState "drep_state"
     describe "entities/stake_pools/vrf_key_hashes/v0" $ do
       isCanonical @"entities/stake_pools/vrf_key_hashes/v0" @(NonZero Word64)
       validateType @"entities/stake_pools/vrf_key_hashes/v0" @(NonZero Word64) "positive_int"
@@ -128,11 +116,14 @@ spec = do
       validateType @"entities/stake_pools/vrf_key_hashes/v0"
         @EntitiesStakePoolsVRFKeyHashes.V0.EntitiesStakePoolsVRFKeyHashesOut
         "record_entry"
-    describe "entities/dormant_epochs/v0" $ do
-      isCanonical @"entities/dormant_epochs/v0" @EpochNo
-      validateType @"entities/dormant_epochs/v0" @EpochNo "epoch_no"
-      isCanonical @"entities/dormant_epochs/v0" @EntitiesDormantEpochs.V0.EntitiesDormantEpochsOut
-      validateType @"entities/dormant_epochs/v0" @EntitiesDormantEpochs.V0.EntitiesDormantEpochsOut
+    describe "entities/accounts/v0" $ do
+      isCanonical @"entities/accounts/v0" @DRep
+      validateType @"entities/accounts/v0" @DRep "drep"
+      isCanonical @"entities/accounts/v0" @EntitiesAccounts.V0.CanonicalAccountState
+      validateType @"entities/accounts/v0" @EntitiesAccounts.V0.CanonicalAccountState
+        "account_state"
+      isCanonical @"entities/accounts/v0" @EntitiesAccounts.V0.EntitiesAccountsOut
+      validateType @"entities/accounts/v0" @EntitiesAccounts.V0.EntitiesAccountsOut
         "record_entry"
     describe "gov/committee/v0" $ do
       isCanonical @"gov/committee/v0" @GovCommittee.V0.CanonicalCommittee
@@ -169,7 +160,6 @@ spec = do
     testNS @"utxo/v0"
     testNS @"entities/committee/v0"
     testNS @"entities/stake_pools/v0"
-    testNS @"entities/stake_pools/future_params/v0"
     testNS @"entities/stake_pools/vrf_key_hashes/v0"
     testNS @"gov/constitution/v0"
     testNS @"gov/committee/v0"

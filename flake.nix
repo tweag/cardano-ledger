@@ -37,7 +37,7 @@
 
     cardano-ledger-release-tool = {
       # Tag should match the ones used in .github/workflows/*.yml
-      url = "github:input-output-hk/cardano-ledger-release-tool?ref=0.3.0.0";
+      url = "github:input-output-hk/cardano-ledger-release-tool?ref=0.4.0.1";
       inputs.haskell-nix.follows = "haskellNix";
       inputs.hackage.follows = "hackageNix";
       inputs.pre-commit-hooks.follows = "pre-commit-hooks";
@@ -51,13 +51,7 @@
   };
 
   outputs = inputs:
-    let
-      supportedSystems = [
-        "x86_64-linux"
-        "x86_64-darwin"
-        # "aarch64-linux" - disable these temporarily because the build is broken
-        "aarch64-darwin"
-      ];
+    let supportedSystems = [ "x86_64-linux" "aarch64-darwin" ];
     in inputs.flake-utils.lib.eachSystem supportedSystems (system:
       let
         # setup our nixpkgs with the haskell.nix overlays, and the iohk-nix

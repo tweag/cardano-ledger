@@ -32,6 +32,9 @@ module Test.Cardano.Ledger.Core.Arbitrary (
   uniformSubSet,
   uniformSubMap,
   uniformSubMapElems,
+
+  -- * Era-aware generators
+  genEraProtVer,
 ) where
 
 import qualified Cardano.Chain.Common as Byron
@@ -110,7 +113,7 @@ import Generic.Random (genericArbitraryU)
 import Numeric.Natural (Natural)
 import qualified PlutusLedgerApi.V1 as PV1
 import System.Random.Stateful (StatefulGen, uniformRM)
-import Test.Cardano.Base.Bytes (genByteString, genShortByteString)
+import Test.Cardano.Base.Bytes (genByteArray, genShortByteString)
 import qualified Test.Cardano.Chain.Common.Gen as Byron
 import Test.Cardano.Ledger.Binary.Arbitrary
 import Test.Cardano.Ledger.Core.Utils (unsafeBoundRational)
@@ -262,6 +265,13 @@ instance Arbitrary CertIx where
 instance Arbitrary ProtVer where
   arbitrary = ProtVer <$> arbitrary <*> arbitrary
 
+-- | Generate a 'ProtVer' whose major version falls within the era's accepted range.
+genEraProtVer :: forall era. Era era => Gen ProtVer
+genEraProtVer =
+  ProtVer
+    <$> elements [eraProtVerLow @era .. succ (eraProtVerHigh @era)]
+    <*> arbitrary
+
 instance Arbitrary Nonce where
   arbitrary =
     oneof
@@ -332,7 +342,7 @@ instance Typeable kr => Arbitrary (WitVKey kr) where
   arbitrary = WitVKey <$> arbitrary <*> arbitrary
 
 instance Arbitrary ChainCode where
-  arbitrary = ChainCode <$> genByteString 32
+  arbitrary = ChainCode <$> genByteArray 32
 
 instance Arbitrary BootstrapWitness where
   arbitrary = do

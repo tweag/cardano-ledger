@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name: cardano-ledger-core
-version: 1.20.0.0
+version: 1.21.0.0
 license: Apache-2.0
 maintainer: operations@iohk.io
 author: IOHK
@@ -119,7 +119,7 @@ library
     bytestring >=0.10 && <0.11.3 || >=0.11.4,
     cardano-base >=0.1.2,
     cardano-crypto,
-    cardano-crypto-class ^>=2.3,
+    cardano-crypto-class ^>=2.4,
     cardano-crypto-wrapper,
     cardano-data >=1.3,
     cardano-ledger-binary ^>=1.9,
@@ -130,6 +130,7 @@ library
     containers,
     data-default >=0.8,
     deepseq,
+    fs-api,
     groups,
     measures,
     mempack >=0.2,
@@ -178,6 +179,7 @@ library cddl
   exposed-modules:
     Cardano.Ledger.Core.HuddleSpec
     Cardano.Ledger.Huddle
+    Cardano.Ledger.Huddle.Gen
 
   visibility: public
   hs-source-dirs: cddl
@@ -199,11 +201,10 @@ library cddl
     cardano-ledger-binary,
     cardano-ledger-core,
     cborg,
-    cuddle >=1.5,
+    cuddle >=1.7,
     heredoc,
     mempack,
     quickcheck-transformer,
-    random,
     text >=2.0,
 
 library testlib
@@ -258,6 +259,7 @@ library testlib
     genvalidity,
     hedgehog-quickcheck,
     hspec,
+    hspec-golden,
     microlens,
     mtl,
     nothunks <0.3.2,
@@ -315,6 +317,7 @@ test-suite tests
     Test.Cardano.Ledger.JsonSpec
     Test.Cardano.Ledger.PlutusSpec
     Test.Cardano.Ledger.State.StakePoolSpec
+    Test.Cardano.Ledger.StorableSpec
     Test.Cardano.Ledger.ToolsSpec
 
   default-language: Haskell2010
@@ -325,6 +328,7 @@ test-suite tests
     base16-bytestring,
     binary,
     bytestring,
+    cardano-base:{cardano-base, testlib} >=0.1.3,
     cardano-crypto-class,
     cardano-ledger-binary:{cardano-ledger-binary, testlib},
     cardano-ledger-byron,
