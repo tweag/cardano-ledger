@@ -32,13 +32,23 @@ import Cardano.Ledger.Alonzo.Rules (
   AlonzoUtxosPredFailure,
   AlonzoUtxowEvent (WrappedShelleyEraEvent),
   AlonzoUtxowPredFailure,
+  checkScriptIntegrityHash,
+  hasExactSetOfRedeemers,
+  missingRequiredDatums,
  )
-import Cardano.Ledger.Alonzo.UTxO (AlonzoEraUTxO, AlonzoScriptsNeeded)
+import Cardano.Ledger.Alonzo.UTxO (
+  AlonzoEraUTxO (..),
+  AlonzoScriptsNeeded (..),
+ )
 import Cardano.Ledger.Babbage.Rules (
   BabbageUtxoPredFailure,
   BabbageUtxowPredFailure,
-  babbageUtxowTransition,
+  babbageMissingScripts,
+  validateFailedBabbageScripts,
+  validateScriptsWellFormed,
  )
+import Cardano.Ledger.Babbage.Tx (mkScriptIntegrity)
+import Cardano.Ledger.Babbage.UTxO (getReferenceScripts)
 import Cardano.Ledger.BaseTypes (
   Mismatch (..),
   Relation (..),
@@ -64,17 +74,22 @@ import Cardano.Ledger.Conway.Rules (
   shelleyToConwayUtxowPredFailure,
  )
 import qualified Cardano.Ledger.Conway.Rules as Conway
+import Cardano.Ledger.Credential (Credential)
 import Cardano.Ledger.Dijkstra.Era (DijkstraEra, DijkstraUTXO, DijkstraUTXOW)
-import Cardano.Ledger.Dijkstra.Rules.Utxo (DijkstraUtxoPredFailure)
+import Cardano.Ledger.Dijkstra.Rules.Utxo (DijkstraUtxoEnv (..), DijkstraUtxoPredFailure)
+import Cardano.Ledger.Dijkstra.TxBody (DijkstraEraTxBody (..))
 import Cardano.Ledger.Keys (VKey)
-import qualified Cardano.Ledger.Shelley.LedgerState as Shelley (UTxOState)
+import Cardano.Ledger.Rules.ValidationMode (runTest, runTestOnSignal)
+import Cardano.Ledger.Shelley.LedgerState (UTxOState)
 import Cardano.Ledger.Shelley.Rules (
   ShelleyUtxoPredFailure,
   ShelleyUtxowEvent (UtxoEvent),
   ShelleyUtxowPredFailure,
+  validateNeededWitnesses,
  )
 import qualified Cardano.Ledger.Shelley.Rules as Shelley (
-  UtxoEnv,
+  validateMetadata,
+  validateVerifiedWits,
  )
 import Cardano.Ledger.State (EraUTxO (..))
 import Cardano.Ledger.TxIn (TxIn)
@@ -82,11 +97,21 @@ import Control.DeepSeq (NFData)
 import Control.State.Transition.Extended (
   Embed (..),
   STS (..),
+  TRC (..),
+  TransitionRule,
+  failureOnNonEmptySet,
+  judgmentContext,
+  trans,
  )
 import Data.List.NonEmpty (NonEmpty)
+import qualified Data.Map.Strict as Map
+import qualified Data.OMap.Strict as OMap
+import qualified Data.OSet.Strict as OSet
 import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Set.NonEmpty (NonEmptySet)
 import GHC.Generics (Generic)
+import Lens.Micro ((^.))
 
 -- ================================
 
@@ -137,6 +162,8 @@ data DijkstraUtxowPredFailure era
     ScriptIntegrityHashMismatch
       (Mismatch RelEQ (StrictMaybe ScriptIntegrityHash))
       (StrictMaybe ByteString)
+  | -- | Guards required by subtransactions but missing from top-level guards
+    MissingRequiredGuards (NonEmptySet (Credential Guard))
   deriving (Generic)
 
 type instance EraRuleFailure "UTXOW" DijkstraEra = DijkstraUtxowPredFailure DijkstraEra
@@ -204,12 +231,115 @@ instance
 -- DijkstraUTXOW STS
 --------------------------------------------------------------------------------
 
+dijkstraUtxowTransition ::
+  forall era.
+  ( AlonzoEraTx era
+  , AlonzoEraUTxO era
+  , ScriptsNeeded era ~ AlonzoScriptsNeeded era
+  , DijkstraEraTxBody era
+  , EraRule "UTXOW" era ~ DijkstraUTXOW era
+  , InjectRuleFailure "UTXOW" ShelleyUtxowPredFailure era
+  , InjectRuleFailure "UTXOW" AlonzoUtxowPredFailure era
+  , InjectRuleFailure "UTXOW" BabbageUtxowPredFailure era
+  , InjectRuleFailure "UTXOW" DijkstraUtxowPredFailure era
+  , -- Allow UTXOW to call UTXO
+    Embed (EraRule "UTXO" era) (DijkstraUTXOW era)
+  , Environment (EraRule "UTXO" era) ~ DijkstraUtxoEnv era
+  , State (EraRule "UTXO" era) ~ UTxOState era
+  , Signal (EraRule "UTXO" era) ~ StAnnTx TopTx era
+  ) =>
+  TransitionRule (EraRule "UTXOW" era)
+dijkstraUtxowTransition = do
+  TRC (DijkstraUtxoEnv slot pp certState originalUtxo scriptsProvided, u, stAnnTx) <- judgmentContext
+  let tx = stAnnTx ^. txStAnnTxG
+
+  let txBody = tx ^. bodyTxL
+      subTxs = OMap.elems $ txBody ^. subTransactionsTxBodyL
+      witsKeyHashes = keyHashWitnessesTxWits (tx ^. witsTxL)
+
+  -- All lookups use originalUtxo.
+  -- A subtx may consume a txout that the top-level tx references, so the UTXO threaded in the state may not contain it.
+
+  -- scriptsNeeded for the top-level tx
+  let topScriptsNeeded = getScriptsNeeded originalUtxo txBody
+      topScriptHashesNeeded = getScriptsHashesNeeded topScriptsNeeded
+
+  -- scriptsNeeded aggregated across all levels
+  let allScriptHashesNeeded =
+        Set.unions $
+          topScriptHashesNeeded
+            : [ getScriptsHashesNeeded
+                  (getScriptsNeeded originalUtxo (subTx ^. bodyTxL))
+              | subTx <- subTxs
+              ]
+
+  {- ∀s ∈ (txscripts txw utxo neededHashes ) ∩ Scriptph1 , validateScript s tx -}
+  -- Per-level: phase-1 script validation is per-tx (script execution)
+  runTest $ validateFailedBabbageScripts tx scriptsProvided topScriptHashesNeeded
+
+  {- neededHashes − dom(refScripts tx utxo) = dom(txwitscripts txw) -}
+  -- Aggregated: missing/extraneous scripts across all levels.
+  let witnessScripts =
+        Map.keysSet (tx ^. witsTxL . scriptTxWitsL)
+          <> foldMap (Map.keysSet . (^. witsTxL . scriptTxWitsL)) subTxs
+      allRefScriptInputs =
+        txBody ^. referenceInputsTxBodyL
+          <> txBody ^. inputsTxBodyL
+          <> foldMap
+            ( \subTx ->
+                subTx ^. bodyTxL . referenceInputsTxBodyL
+                  <> subTx ^. bodyTxL . inputsTxBodyL
+            )
+            subTxs
+      refScripts = Map.keysSet $ getReferenceScripts originalUtxo allRefScriptInputs
+  runTest $ babbageMissingScripts pp allScriptHashesNeeded refScripts witnessScripts
+
+  {-  inputHashes ⊆  dom(txdats txw) ⊆  allowed -}
+  -- Per-level: datum check for top-level tx's own spend inputs
+  runTest $ missingRequiredDatums originalUtxo tx
+
+  {- dom (txrdmrs tx) = { rdptr txb sp | (sp, h) ∈ scriptsNeeded utxo tx,
+                          h ↦ s ∈ txscripts txw, s ∈ Scriptph2} -}
+  -- Per-level: redeemer indexing is per-tx
+  runTest $ hasExactSetOfRedeemers tx scriptsProvided topScriptsNeeded
+
+  -- check VKey witnesses
+  {- ∀ (vk ↦ σ) ∈ (txwitsVKey txw), V_vk⟦ txbodyHash ⟧_σ -}
+  runTestOnSignal $ Shelley.validateVerifiedWits tx
+
+  {- witsVKeyNeeded utxo tx genDelegs ⊆ witsKeyHashes -}
+  runTest $ validateNeededWitnesses witsKeyHashes certState originalUtxo txBody
+
+  -- check metadata hash
+  {- ((adh = ◇) ∧ (ad= ◇)) ∨ (adh = hashAD ad) -}
+  runTestOnSignal $ Shelley.validateMetadata pp tx
+
+  {- ∀x ∈ range(txdats txw) ∪ range(txwitscripts txw) ∪ (⋃ ( , ,d,s) ∈ txouts tx {s, d}),
+                       x ∈ Script ∪ Datum ⇒ isWellFormed x -}
+  runTest $ validateScriptsWellFormed pp tx
+
+  {- scriptIntegrityHash txb = hashScriptIntegrity pp (languages txw) (txrdmrs txw) -}
+  -- Per-level: script integrity is per-tx (depends on that tx's redeemers and language views)
+  let scriptIntegrity = mkScriptIntegrity pp tx scriptsProvided topScriptHashesNeeded
+  runTest $ checkScriptIntegrityHash tx pp scriptIntegrity
+
+  {- concatMapˡ (λ txSub → mapˢ proj₁ (TopLevelGuardsOf txSub)) (SubTransactionsOf txTop) ⊆ GuardsOf txTop -}
+  let requiredGuardsBySubTxs =
+        foldMap (Map.keysSet . (^. bodyTxL . requiredTopLevelGuardsL)) subTxs
+      topLevelGuards = OSet.toSet (txBody ^. guardsTxBodyL)
+      missingGuards = requiredGuardsBySubTxs `Set.difference` topLevelGuards
+  runTestOnSignal $ failureOnNonEmptySet missingGuards MissingRequiredGuards
+
+  -- Pass through to UTXO sub-rule, carrying the original UTxO and scriptsProvided
+  trans @(EraRule "UTXO" era) $
+    TRC (DijkstraUtxoEnv slot pp certState originalUtxo scriptsProvided, u, stAnnTx)
+
 instance
   forall era.
   ( AlonzoEraTx era
   , AlonzoEraUTxO era
   , ScriptsNeeded era ~ AlonzoScriptsNeeded era
-  , ConwayEraTxBody era
+  , DijkstraEraTxBody era
   , EraRule "UTXOW" era ~ DijkstraUTXOW era
   , InjectRuleFailure "UTXOW" ShelleyUtxowPredFailure era
   , InjectRuleFailure "UTXOW" AlonzoUtxowPredFailure era
@@ -218,31 +348,27 @@ instance
   , InjectRuleFailure "UTXOW" DijkstraUtxowPredFailure era
   , -- Allow UTXOW to call UTXO
     Embed (EraRule "UTXO" era) (DijkstraUTXOW era)
-  , Environment (EraRule "UTXO" era) ~ Shelley.UtxoEnv era
-  , State (EraRule "UTXO" era) ~ Shelley.UTxOState era
-  , Signal (EraRule "UTXO" era) ~ Tx TopTx era
+  , Environment (EraRule "UTXO" era) ~ DijkstraUtxoEnv era
+  , State (EraRule "UTXO" era) ~ UTxOState era
+  , Signal (EraRule "UTXO" era) ~ StAnnTx TopTx era
   , Eq (PredicateFailure (EraRule "UTXOS" era))
   , Show (PredicateFailure (EraRule "UTXOS" era))
   ) =>
   STS (DijkstraUTXOW era)
   where
-  type State (DijkstraUTXOW era) = Shelley.UTxOState era
-  type Signal (DijkstraUTXOW era) = Tx TopTx era
-  type Environment (DijkstraUTXOW era) = Shelley.UtxoEnv era
+  type State (DijkstraUTXOW era) = UTxOState era
+  type Signal (DijkstraUTXOW era) = StAnnTx TopTx era
+  type Environment (DijkstraUTXOW era) = DijkstraUtxoEnv era
   type BaseM (DijkstraUTXOW era) = ShelleyBase
   type PredicateFailure (DijkstraUTXOW era) = DijkstraUtxowPredFailure era
   type Event (DijkstraUTXOW era) = AlonzoUtxowEvent era
-  transitionRules = [babbageUtxowTransition @era]
+  transitionRules = [dijkstraUtxowTransition @era]
   initialRules = []
 
 instance
-  ( Era era
-  , STS (DijkstraUTXO era)
+  ( STS (DijkstraUTXO era)
   , PredicateFailure (EraRule "UTXO" era) ~ DijkstraUtxoPredFailure era
   , Event (EraRule "UTXO" era) ~ AlonzoUtxoEvent era
-  , BaseM (DijkstraUTXOW era) ~ ShelleyBase
-  , PredicateFailure (DijkstraUTXOW era) ~ DijkstraUtxowPredFailure era
-  , Event (DijkstraUTXOW era) ~ AlonzoUtxowEvent era
   ) =>
   Embed (DijkstraUTXO era) (DijkstraUTXOW era)
   where
@@ -280,6 +406,7 @@ instance
       MalformedScriptWitnesses x -> Sum MalformedScriptWitnesses 16 !> To x
       MalformedReferenceScripts x -> Sum MalformedReferenceScripts 17 !> To x
       ScriptIntegrityHashMismatch x y -> Sum ScriptIntegrityHashMismatch 18 !> To x !> To y
+      MissingRequiredGuards x -> Sum MissingRequiredGuards 19 !> To x
 
 instance
   ( ConwayEraScript era
@@ -307,6 +434,7 @@ instance
     16 -> SumD MalformedScriptWitnesses <! From
     17 -> SumD MalformedReferenceScripts <! From
     18 -> SumD ScriptIntegrityHashMismatch <! From <! From
+    19 -> SumD MissingRequiredGuards <! From
     n -> Invalid n
 
 -- =====================================================

@@ -8,7 +8,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
 
 module Cardano.Ledger.Binary.Decoding.Decoder (
   -- * Decoders
@@ -41,7 +40,6 @@ module Cardano.Ledger.Binary.Decoding.Decoder (
   matchSize,
 
   -- ** Compatibility tools
-  binaryGetDecoder,
   allowTag,
 
   -- ** Custom decoders
@@ -78,6 +76,7 @@ module Cardano.Ledger.Binary.Decoding.Decoder (
   decodeListLikeWithCount,
   decodeListLikeWithCountT,
   decodeSetLikeEnforceNoDuplicates,
+  decodeNonEmptySetLikeEnforceNoDuplicates,
   decodeListLikeEnforceNoDuplicates,
   decodeMapContents,
 
@@ -1049,6 +1048,27 @@ decodeSetLikeEnforceNoDuplicates insert getFinalWithLen decodeElement = do
   decodeListLikeEnforceNoDuplicates decodeListLenOrIndef insert getFinalWithLen decodeElement
 {-# INLINE decodeSetLikeEnforceNoDuplicates #-}
 
+-- | Same as `decodeSetLikeEnforceNoDuplicates`, but also enforces that the set is non-empty.
+decodeNonEmptySetLikeEnforceNoDuplicates ::
+  forall s a b c.
+  Monoid b =>
+  -- | Add an element into the decoded Set like data structure
+  (a -> b -> b) ->
+  -- | Get the final data structure and the number of elements it has.
+  (b -> (Int, c)) ->
+  Decoder s a ->
+  Decoder s c
+decodeNonEmptySetLikeEnforceNoDuplicates insert getFinalWithLen decodeElement = do
+  (len, result) <-
+    decodeSetLikeEnforceNoDuplicates
+      insert
+      (\b -> let (n, c) = getFinalWithLen b in (n, (n, c)))
+      decodeElement
+  when (len == 0) $
+    fail "Expected a non-empty set, but got an empty set"
+  pure result
+{-# INLINE decodeNonEmptySetLikeEnforceNoDuplicates #-}
+
 decodeContainerSkelWithReplicate ::
   -- | How to get the size of the container
   Decoder s Int ->
@@ -1159,30 +1179,24 @@ decodeUTCTime =
 
 -- | Convert a `Get` monad from @binary@ package into a `Decoder`
 binaryGetDecoder ::
-  -- | Flag to allow left over at the end or not
-  Bool ->
   -- | Name of the function or type for error reporting
   Text.Text ->
   -- | Deserializer for the @binary@ package
   Get a ->
   Decoder s a
-binaryGetDecoder allowLeftOver name getter = do
+binaryGetDecoder name getter = do
   bs <- decodeBytes
   case runGetOrFail getter (BSL.fromStrict bs) of
     Left (_, _, err) -> cborError $ DecoderErrorCustom name (Text.pack err)
     Right (leftOver, _, ha)
-      | allowLeftOver || BSL.null leftOver -> pure ha
+      | BSL.null leftOver -> pure ha
       | otherwise ->
           cborError $ DecoderErrorLeftover name (BSL.toStrict leftOver)
 {-# INLINE binaryGetDecoder #-}
 
 decodeIPv4 :: Decoder s IPv4
 decodeIPv4 =
-  toIPv4w
-    <$> ifDecoderVersionAtLeast
-      (natVersion @9)
-      (binaryGetDecoder False "decodeIPv4" getWord32le)
-      (binaryGetDecoder True "decodeIPv4" getWord32le)
+  toIPv4w <$> binaryGetDecoder "decodeIPv4" getWord32le
 {-# INLINE decodeIPv4 #-}
 
 getHostAddress6 :: Get (Word32, Word32, Word32, Word32)
@@ -1196,11 +1210,7 @@ getHostAddress6 = do
 
 decodeIPv6 :: Decoder s IPv6
 decodeIPv6 =
-  toIPv6w
-    <$> ifDecoderVersionAtLeast
-      (natVersion @9)
-      (binaryGetDecoder False "decodeIPv6" getHostAddress6)
-      (binaryGetDecoder True "decodeIPv6" getHostAddress6)
+  toIPv6w <$> binaryGetDecoder "decodeIPv6" getHostAddress6
 {-# INLINE decodeIPv6 #-}
 
 --------------------------------------------------------------------------------
@@ -1527,3 +1537,4 @@ peekTokenType = fromPlainDecoder C.peekTokenType
 
 liftST :: ST s a -> Decoder s a
 liftST st = Decoder $ \_ _ -> C.liftST st
+{-# INLINE liftST #-}

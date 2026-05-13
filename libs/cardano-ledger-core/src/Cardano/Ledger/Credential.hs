@@ -8,6 +8,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Cardano.Ledger.Credential (
   Credential (KeyHashObj, ScriptHashObj),
@@ -44,14 +45,15 @@ import Cardano.Ledger.Binary (
   EncCBORGroup (..),
   FromCBOR (..),
   ToCBOR (..),
+  encodeListLen,
   ifDecoderVersionAtLeast,
   natVersion,
   shelleyProtVer,
   toPlainDecoder,
+  toPlainEncoding,
  )
 import Cardano.Ledger.Binary.Coders (Decode (..), decode, (<!))
-import qualified Cardano.Ledger.Binary.Plain as Plain
-import Cardano.Ledger.Hashes (ScriptHash (..))
+import Cardano.Ledger.Hashes (ADDRHASH, Hash, ScriptHash (..))
 import Cardano.Ledger.Keys (
   HasKeyRole (..),
   KeyHash (..),
@@ -79,6 +81,8 @@ import Data.MemPack
 import qualified Data.Text as T
 import Data.Typeable (Typeable)
 import Data.Word
+import Foreign.Ptr (castPtr)
+import Foreign.Storable (Storable (..))
 import GHC.Generics (Generic)
 import NoThunks.Class (NoThunks (..))
 import System.Random.Stateful (Random, Uniform (..), UniformRange (..))
@@ -110,6 +114,29 @@ instance Typeable kr => MemPack (Credential kr) where
       1 -> KeyHashObj <$> unpackM
       n -> unknownTagM @(Credential kr) n
   {-# INLINE unpackM #-}
+
+-- Format: [8:8:8:4 - Hash, 1: tag (0/1)]
+--
+-- Tag goes after the hash, because that will work better for alignment of reading first 8 byte
+-- chunks
+instance Storable (Credential r) where
+  sizeOf _ = sizeOf (undefined :: Hash ADDRHASH ()) + 1
+  alignment _ = 32 -- ADDRHASH is 28 bytes + 1 byte for the Tag. Next power of 2 is 32
+  poke ptr = \case
+    ScriptHashObj hash -> do
+      poke (castPtr ptr) hash
+      pokeByteOff (castPtr ptr) (sizeOf hash) (0 :: Word8)
+    KeyHashObj hash -> do
+      poke (castPtr ptr) hash
+      pokeByteOff (castPtr ptr) (sizeOf hash) (1 :: Word8)
+  {-# INLINE poke #-}
+  peek ptr = do
+    hash :: Hash ADDRHASH () <- peek (castPtr ptr)
+    t :: Word8 <- peekByteOff (castPtr ptr) (sizeOf hash)
+    pure $! case t of
+      0 -> ScriptHashObj $ ScriptHash $ coerce hash
+      _ -> KeyHashObj $ KeyHash $ coerce hash
+  {-# INLINE peek #-}
 
 instance Default (Credential r) where
   def = KeyHashObj def
@@ -204,7 +231,17 @@ instance NoThunks StakeReference
 newtype SlotNo32 = SlotNo32 Word32
   deriving stock (Show, Generic)
   deriving newtype
-    (Eq, Ord, Num, Bounded, NFData, NoThunks, EncCBOR, DecCBOR, FromCBOR, ToCBOR, FromJSON, ToJSON)
+    ( Eq
+    , Ord
+    , Num
+    , Bounded
+    , NFData
+    , NoThunks
+    , EncCBOR
+    , DecCBOR
+    , FromJSON
+    , ToJSON
+    )
 
 instance Random SlotNo32
 
@@ -245,14 +282,6 @@ mkPtrNormalized slotNo txIx certIx =
     certIx16 <- integralToBounded certIx
     pure $ Ptr (SlotNo32 slotNo32) (TxIx txIx16) (CertIx certIx16)
 
-instance ToCBOR Ptr where
-  toCBOR (Ptr slotNo txIx certIx) = toCBOR (slotNo, txIx, certIx)
-
-instance FromCBOR Ptr where
-  fromCBOR = do
-    (slotNo, txIx, certIx) <- fromCBOR
-    pure $ Ptr slotNo txIx certIx
-
 instance ToJSONKey Ptr
 
 instance ToKeyValuePairs Ptr where
@@ -288,7 +317,10 @@ ptrCertIx (Ptr _ _ cIx) = cIx
 -- NOTE: Credential serialization is unversioned, because it is needed for node-to-client
 -- communication. It would be ok to change it in the future, but that will require change
 -- in consensus
-instance Typeable kr => EncCBOR (Credential kr)
+instance EncCBOR (Credential kr) where
+  encCBOR = \case
+    KeyHashObj kh -> encodeListLen 2 <> encCBOR (0 :: Word8) <> encCBOR kh
+    ScriptHashObj hs -> encodeListLen 2 <> encCBOR (1 :: Word8) <> encCBOR hs
 
 instance Typeable kr => DecCBOR (Credential kr) where
   decCBOR =
@@ -300,9 +332,7 @@ instance Typeable kr => DecCBOR (Credential kr) where
   {-# INLINE decCBOR #-}
 
 instance Typeable kr => ToCBOR (Credential kr) where
-  toCBOR = \case
-    KeyHashObj kh -> Plain.encodeListLen 2 <> toCBOR (0 :: Word8) <> toCBOR kh
-    ScriptHashObj hs -> Plain.encodeListLen 2 <> toCBOR (1 :: Word8) <> toCBOR hs
+  toCBOR = toPlainEncoding shelleyProtVer . encCBOR
 
 instance Typeable kr => FromCBOR (Credential kr) where
   fromCBOR = toPlainDecoder Nothing shelleyProtVer decCBOR

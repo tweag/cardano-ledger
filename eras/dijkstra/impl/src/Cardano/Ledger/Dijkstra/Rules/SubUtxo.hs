@@ -66,7 +66,7 @@ import Cardano.Ledger.Dijkstra.Rules.Utxo (
  )
 import Cardano.Ledger.Dijkstra.TxBody (DijkstraEraTxBody)
 import Cardano.Ledger.Rules.ValidationMode
-import Cardano.Ledger.Shelley.LedgerState (UTxOState, utxosGovState, utxosUtxo)
+import Cardano.Ledger.Shelley.LedgerState (UTxOState, utxosDonationL, utxosGovState, utxosUtxo)
 import Cardano.Ledger.Shelley.Rules (ShelleyUtxoPredFailure, updateUTxOStateNoFees)
 import qualified Cardano.Ledger.Shelley.Rules as Shelley (
   validateBadInputsUTxO,
@@ -231,7 +231,7 @@ instance
   STS (DijkstraSUBUTXO era)
   where
   type State (DijkstraSUBUTXO era) = UTxOState era
-  type Signal (DijkstraSUBUTXO era) = Tx SubTx era
+  type Signal (DijkstraSUBUTXO era) = StAnnTx SubTx era
   type Environment (DijkstraSUBUTXO era) = SubUtxoEnv era
   type BaseM (DijkstraSUBUTXO era) = ShelleyBase
   type PredicateFailure (DijkstraSUBUTXO era) = DijkstraSubUtxoPredFailure era
@@ -256,8 +256,9 @@ dijkstraSubUtxoTransition ::
   ) =>
   TransitionRule (EraRule "SUBUTXO" era)
 dijkstraSubUtxoTransition = do
-  TRC (SubUtxoEnv slot pp certState _ originalUtxo (IsValid isValid), utxoState, tx) <-
+  TRC (SubUtxoEnv slot pp certState _ originalUtxo (IsValid isValid), utxoState, stAnnTx) <-
     judgmentContext
+  let tx = stAnnTx ^. txStAnnTxG
 
   let txBody = tx ^. bodyTxL
 
@@ -289,15 +290,17 @@ dijkstraSubUtxoTransition = do
   runTestOnSignal $ Alonzo.validateWrongNetworkInTxBody netId txBody
 
   if isValid
-    then
-      updateUTxOStateNoFees
-        pp
-        utxoState
-        txBody
-        certState
-        (utxosGovState utxoState)
-        (tellEvent . TotalDeposits (hashAnnotated txBody))
-        (\a b -> tellEvent $ TxUTxODiff a b)
+    then do
+      newState <-
+        updateUTxOStateNoFees
+          pp
+          utxoState
+          txBody
+          certState
+          (utxosGovState utxoState)
+          (tellEvent . TotalDeposits (hashAnnotated txBody))
+          (\a b -> tellEvent $ TxUTxODiff a b)
+      pure $ newState & utxosDonationL <>~ txBody ^. treasuryDonationTxBodyL
     else
       pure utxoState
 
@@ -372,3 +375,4 @@ dijkstraUtxoToDijkstraSubUtxoPredFailure = \case
   BabbageNonDisjointRefInputs _ -> error "Impossible: `BabbageNonDisjointRefInputs` for SUBUTXO"
   PtrPresentInCollateralReturn _ -> error "Impossible: `PtrPresentInCollateralReturn` for SUBUTXO"
   WrongNetworkInDirectDeposit x y -> SubWrongNetworkInDirectDeposit x y
+  WithdrawalsExceedAccountBalance _ -> error "Impossible: `WithdrawalsExceedAccountBalance` for SUBUTXO"

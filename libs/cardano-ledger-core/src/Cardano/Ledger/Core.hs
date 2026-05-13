@@ -40,6 +40,7 @@ module Cardano.Ledger.Core (
   EraTxBody (..),
   txIdTxBody,
   EraTxAuxData (..),
+  modifyTxAuxData,
   hashTxAuxData,
   EraTxWits (..),
   EraScript (..),
@@ -62,7 +63,6 @@ module Cardano.Ledger.Core (
   module Cardano.Ledger.Core.Era,
   -- $erablockbody
   EraBlockBody (..),
-  bBodySize,
 
   -- * Re-exports
   Addr (..),
@@ -94,14 +94,11 @@ import Cardano.Ledger.Binary (
   DecShareCBOR (Share),
   DecoderError,
   EncCBOR (..),
-  EncCBORGroup,
   Interns,
   Sized (sizedValue),
   ToCBOR,
-  encCBORGroup,
   mkSized,
   serialize,
-  serialize',
   translateViaCBORAnnotator,
  )
 import Cardano.Ledger.Coin (Coin)
@@ -129,7 +126,13 @@ import Data.Kind (Type)
 import Data.Map (Map)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, isJust)
-import Data.Maybe.Strict (StrictMaybe, maybeToStrictMaybe, strictMaybe, strictMaybeToMaybe)
+import Data.Maybe.Strict (
+  StrictMaybe (SJust),
+  fromSMaybe,
+  maybeToStrictMaybe,
+  strictMaybe,
+  strictMaybeToMaybe,
+ )
 import Data.MemPack
 import Data.OMap.Strict (HasOKey (..))
 import Data.Sequence.Strict (StrictSeq)
@@ -161,6 +164,21 @@ class
   EraTx era
   where
   data Tx (l :: TxLevel) era
+
+  -- | This is a `Tx` that is annotated with some pre-computed data derived from the ledger state,
+  -- which can be used to avoid redundant computation when a transaction is validated multiple
+  -- times.
+  --
+  -- It is critical to only store here information that satisfies the following property: if the
+  -- ledger state changes in a way that makes the annotated value stale, then some other predicate
+  -- check in the STS rules must independently cause the transaction to be rejected.  Stale
+  -- annotations must never lead to a transaction being silently accepted.
+  --
+  -- For example, if a reference input gets spent, then there must a predicate check that fails on
+  -- missing output, regardless if data from reference inputs is still present in the `StAnnTx`
+  type StAnnTx (l :: TxLevel) era = (r :: Type) | r -> l era
+
+  txStAnnTxG :: SimpleGetter (StAnnTx l era) (Tx l era)
 
   mkBasicTx :: TxBody l era -> Tx l era
 
@@ -278,7 +296,6 @@ class
   , DecCBOR (CompactForm (Value era))
   , MemPack (CompactForm (Value era))
   , EncCBOR (Value era)
-  , ToCBOR (TxOut era)
   , EncCBOR (TxOut era)
   , DecCBOR (TxOut era)
   , DecShareCBOR (TxOut era)
@@ -463,6 +480,13 @@ class
 
   validateTxAuxData :: ProtVer -> TxAuxData era -> Bool
 
+modifyTxAuxData ::
+  EraTx era =>
+  (TxAuxData era -> TxAuxData era) ->
+  Tx l era ->
+  Tx l era
+modifyTxAuxData f = auxDataTxL %~ (SJust . f . fromSMaybe mkBasicTxAuxData)
+
 -- | Compute a hash of `TxAuxData`
 hashTxAuxData :: EraTxAuxData era => TxAuxData era -> TxAuxDataHash
 hashTxAuxData = TxAuxDataHash . hashAnnotated
@@ -598,7 +622,6 @@ class
   , Eq (BlockBody era)
   , Show (BlockBody era)
   , Typeable (BlockBody era)
-  , EncCBORGroup (BlockBody era)
   , DecCBOR (Annotator (BlockBody era))
   ) =>
   EraBlockBody era
@@ -617,8 +640,9 @@ class
   -- | The number of segregated components
   numSegComponents :: Word64
 
-bBodySize :: forall era. EraBlockBody era => ProtVer -> BlockBody era -> Int
-bBodySize (ProtVer v _) = BS.length . serialize' v . encCBORGroup
+  blockBodySize :: ProtVer -> BlockBody era -> Int
+  default blockBodySize :: SafeToHash (BlockBody era) => ProtVer -> BlockBody era -> Int
+  blockBodySize _ = originalBytesSize
 
 txIdTx :: EraTx era => Tx l era -> TxId
 txIdTx tx = txIdTxBody (tx ^. bodyTxL)

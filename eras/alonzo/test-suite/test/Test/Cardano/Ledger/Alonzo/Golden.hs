@@ -19,7 +19,6 @@ import Cardano.Ledger.Alonzo.Tx (alonzoMinFeeTx)
 import Cardano.Ledger.Alonzo.TxBody (utxoEntrySize)
 import Cardano.Ledger.BaseTypes (SlotNo (..), StrictMaybe (..), boundRational)
 import Cardano.Ledger.Binary (decCBOR, decodeFullAnnotator)
-import Cardano.Ledger.Binary.Plain as Plain (serialize)
 import Cardano.Ledger.Block (Block (Block))
 import Cardano.Ledger.Coin (Coin (..), CompactForm (CompactCoin))
 import Cardano.Ledger.Mary.Value (valueFromList)
@@ -36,7 +35,6 @@ import Cardano.Ledger.Plutus.Language (Language (..))
 import Cardano.Protocol.Crypto (StandardCrypto)
 import Cardano.Protocol.TPraos.BHeader (BHeader)
 import Data.Aeson (eitherDecodeFileStrict)
-import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Base16 as B16
 import qualified Data.ByteString.Base16.Lazy as B16L
 import qualified Data.ByteString.Lazy as BSL
@@ -45,10 +43,12 @@ import Data.Int
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe (fromJust)
 import Data.Sequence.Strict
-import GHC.Stack (HasCallStack)
 import Lens.Micro
 import Paths_cardano_ledger_alonzo_test
 import qualified PlutusLedgerApi.V1 as PV1 (Data (..))
+import Test.Cardano.Ledger.Alonzo.TreeDiff ()
+import Test.Cardano.Ledger.Binary.Golden (cborAnnGoldenSpec)
+import Test.Cardano.Ledger.Common hiding (output)
 import Test.Cardano.Ledger.Mary.Golden (
   largestName,
   minUTxO,
@@ -65,7 +65,6 @@ import Test.Cardano.Protocol.TPraos.Examples (
   ProtocolLedgerExamples (..),
   ledgerExamplesAlonzo,
  )
-import Test.Hspec (Expectation, Spec, describe, it, shouldBe)
 
 readDataFile :: FilePath -> IO BSL.ByteString
 readDataFile name = getDataFileName name >>= BSL.readFile
@@ -182,64 +181,55 @@ goldenUTxOEntryMinAda =
 
 goldenCborSerialization :: Spec
 goldenCborSerialization =
-  describe "golden tests - CBOR serialization" $ do
-    it "Alonzo Block" $ do
-      expected <- readDataFile "golden/block.cbor"
-      Plain.serialize (pleBlock ledgerExamplesAlonzo) `shouldBe` expected
-    it "Alonzo Tx" $ do
-      expected <- readDataFile "golden/tx.cbor"
-      Plain.serialize (leTx $ pleLedgerExamples ledgerExamplesAlonzo) `shouldBe` expected
+  describe "Golden tests - CBOR serialization" $ do
+    cborAnnGoldenSpec
+      getDataFileName
+      "golden/block.cbor"
+      (eraProtVerLow @AlonzoEra)
+      (pleBlock ledgerExamplesAlonzo)
+    cborAnnGoldenSpec
+      getDataFileName
+      "golden/tx.cbor"
+      (eraProtVerLow @AlonzoEra)
+      (leTx $ pleLedgerExamples ledgerExamplesAlonzo)
 
 goldenJsonSerialization :: Spec
 goldenJsonSerialization =
-  describe "golden tests - JSON serialization" $ do
-    it "ValidityInterval" $ do
-      let value =
-            [ ValidityInterval
-                { invalidBefore = SNothing
-                , invalidHereafter = SNothing
-                }
-            , ValidityInterval
-                { invalidBefore = SJust (SlotNo 12345)
-                , invalidHereafter = SNothing
-                }
-            , ValidityInterval
-                { invalidBefore = SNothing
-                , invalidHereafter = SJust (SlotNo 12354)
-                }
-            , ValidityInterval
-                { invalidBefore = SJust (SlotNo 12345)
-                , invalidHereafter = SJust (SlotNo 12354)
-                }
-            ]
-      expected <- Aeson.throwDecode =<< readDataFile "golden/ValidityInterval.json"
-      Aeson.toJSON value `shouldBe` expected
-    it "IsValid" $ do
-      let value =
-            [ IsValid True
-            , IsValid False
-            ]
-      expected <- Aeson.throwDecode =<< readDataFile "golden/IsValid.json"
-      Aeson.toJSON value `shouldBe` expected
-    it "FailureDescription" $ do
-      let value =
-            [ PlutusFailure "A description" "A reconstruction"
-            ]
-      expected <- Aeson.throwDecode =<< readDataFile "golden/FailureDescription.json"
-      Aeson.toJSON value `shouldBe` expected
-    it "TagMismatchDescription" $ do
-      let value =
-            [ PassedUnexpectedly
-            , FailedUnexpectedly (NE.fromList [PlutusFailure "A description" "A reconstruction"])
-            ]
-      expected <- Aeson.throwDecode =<< readDataFile "golden/TagMismatchDescription.json"
-      Aeson.toJSON value `shouldBe` expected
+  describe "Golden tests - JSON serialization" $ do
+    aesonGoldenSpec getDataFileName "golden/ValidityInterval.json" $
+      [ ValidityInterval
+          { invalidBefore = SNothing
+          , invalidHereafter = SNothing
+          }
+      , ValidityInterval
+          { invalidBefore = SJust (SlotNo 12345)
+          , invalidHereafter = SNothing
+          }
+      , ValidityInterval
+          { invalidBefore = SNothing
+          , invalidHereafter = SJust (SlotNo 12354)
+          }
+      , ValidityInterval
+          { invalidBefore = SJust (SlotNo 12345)
+          , invalidHereafter = SJust (SlotNo 12354)
+          }
+      ]
+    aesonGoldenSpec getDataFileName "golden/IsValid.json" $
+      [ IsValid True
+      , IsValid False
+      ]
+    itGoldenToJSON getDataFileName "golden/FailureDescription.json" $
+      PlutusFailure "A description" "A reconstruction"
+    itGoldenToJSON getDataFileName "golden/TagMismatchDescription.json" $
+      [ PassedUnexpectedly
+      , FailedUnexpectedly (NE.fromList [PlutusFailure "A description" "A reconstruction"])
+      ]
 
 goldenGenesisSerialization :: Spec
 goldenGenesisSerialization =
   describe "golden tests - Alonzo Genesis serialization" $ do
     it "JSON deserialization" $ do
-      let file = "golden/mainnet-alonzo-genesis.json"
+      file <- getDataFileName "golden/mainnet-alonzo-genesis.json"
       deserialized <- (eitherDecodeFileStrict file :: IO (Either String AlonzoGenesis))
       deserialized `shouldBe` Right expectedGenesis
 

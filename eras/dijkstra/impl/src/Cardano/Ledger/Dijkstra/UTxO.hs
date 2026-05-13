@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -8,6 +9,9 @@
 
 module Cardano.Ledger.Dijkstra.UTxO (
   getDijkstraScriptsNeeded,
+  getDijkstraScriptsProvided,
+  scriptsProvidedDijkstraStAnnTx,
+  batchNonDistinctRefScriptsSize,
 ) where
 
 import Cardano.Ledger.Alonzo.UTxO (
@@ -29,18 +33,21 @@ import Cardano.Ledger.Conway.UTxO (
   getConwayMinFeeTxUtxo,
   getConwayScriptsNeeded,
   getConwayWitsVKeyNeeded,
+  txNonDistinctRefScriptsSize,
  )
 import Cardano.Ledger.Credential (Credential, credScriptHash)
 import Cardano.Ledger.Dijkstra.Core
 import Cardano.Ledger.Dijkstra.Era (DijkstraEra)
 import Cardano.Ledger.Dijkstra.Scripts (DijkstraEraScript (..), pattern GuardingPurpose)
 import Cardano.Ledger.Dijkstra.State
-import Cardano.Ledger.Dijkstra.Tx ()
-import Cardano.Ledger.Dijkstra.TxBody (DijkstraEraTxBody (..))
+import Cardano.Ledger.Dijkstra.Tx (DijkstraStAnnTx (..))
 import Cardano.Ledger.Mary.UTxO (burnedMultiAssets, getConsumedMaryValue)
 import Cardano.Ledger.Mary.Value (MaryValue (..))
 import Data.Foldable (Foldable (..))
+import qualified Data.Map.Strict as Map
 import Data.Maybe (catMaybes)
+import Data.Monoid (Sum (..))
+import qualified Data.OMap.Strict as OMap
 import Lens.Micro ((^.))
 import Lens.Micro.Extras (view)
 
@@ -112,7 +119,7 @@ instance EraUTxO DijkstraEra where
 
   getProducedValue = getProducedDijkstraValue
 
-  getScriptsProvided = getBabbageScriptsProvided
+  getScriptsProvided = getDijkstraScriptsProvided
 
   getScriptsNeeded = getDijkstraScriptsNeeded
 
@@ -121,6 +128,29 @@ instance EraUTxO DijkstraEra where
   getWitsVKeyNeeded _ = getConwayWitsVKeyNeeded
 
   getMinFeeTxUtxo = getConwayMinFeeTxUtxo
+
+-- | Like 'getBabbageScriptsProvided', but for 'TopTx' also aggregates
+-- scripts from all subtransactions.
+getDijkstraScriptsProvided ::
+  ( EraTx era
+  , DijkstraEraTxBody era
+  , STxLevel l era ~ STxBothLevels l era
+  ) =>
+  UTxO era ->
+  Tx l era ->
+  ScriptsProvided era
+getDijkstraScriptsProvided utxo tx =
+  withBothTxLevels
+    tx
+    ( \topTx ->
+        ScriptsProvided $
+          Map.unions $
+            unScriptsProvided (getBabbageScriptsProvided utxo topTx)
+              : [ unScriptsProvided (getBabbageScriptsProvided utxo subTx)
+                | subTx <- OMap.elems (topTx ^. bodyTxL . subTransactionsTxBodyL)
+                ]
+    )
+    (getBabbageScriptsProvided utxo)
 
 getDijkstraScriptsNeeded ::
   (DijkstraEraTxBody era, DijkstraEraScript era) =>
@@ -139,6 +169,21 @@ instance AlonzoEraUTxO DijkstraEra where
 
   getSpendingDatum = getBabbageSpendingDatum
 
+  scriptsProvidedStAnnTx = scriptsProvidedDijkstraStAnnTx
+
+scriptsProvidedDijkstraStAnnTx ::
+  ( EraTxLevel era
+  , STxLevel l era ~ STxBothLevels l era
+  , STxLevel SubTx era ~ STxBothLevels SubTx era
+  , STxLevel TopTx era ~ STxBothLevels TopTx era
+  ) =>
+  DijkstraStAnnTx l era -> ScriptsProvided era
+scriptsProvidedDijkstraStAnnTx stAnnTx =
+  withBothTxLevels
+    stAnnTx
+    (\DijkstraStAnnTopTx {dsattScriptsProvided} -> dsattScriptsProvided)
+    (\DijkstraStAnnSubTx {dsastScriptsProvided} -> dsastScriptsProvided)
+
 dijkstraSubTxProducedValue ::
   (ConwayEraTxBody era, Value era ~ MaryValue) =>
   PParams era ->
@@ -149,3 +194,19 @@ dijkstraSubTxProducedValue pp isRegPoolId txBody =
   sumAllValue (txBody ^. outputsTxBodyL)
     <> inject (getTotalDepositsTxBody pp isRegPoolId txBody <> txBody ^. treasuryDonationTxBodyL)
     <> burnedMultiAssets txBody
+
+-- | Total size of reference scripts across a top-level transaction and all its subtransactions.
+batchNonDistinctRefScriptsSize ::
+  ( EraTx era
+  , DijkstraEraTxBody era
+  ) =>
+  UTxO era ->
+  Tx TopTx era ->
+  Int
+batchNonDistinctRefScriptsSize utxo tx =
+  txNonDistinctRefScriptsSize utxo tx
+    + getSum
+      ( foldMap'
+          (Sum . txNonDistinctRefScriptsSize utxo)
+          (tx ^. bodyTxL . subTransactionsTxBodyL)
+      )

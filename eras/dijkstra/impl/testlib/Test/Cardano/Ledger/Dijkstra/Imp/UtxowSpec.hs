@@ -14,7 +14,6 @@ import Cardano.Ledger.Core
 import Cardano.Ledger.Credential
 import Cardano.Ledger.Dijkstra.Core
 import Cardano.Ledger.Dijkstra.Scripts
-import Cardano.Ledger.Dijkstra.TxBody (DijkstraEraTxBody (..))
 import Cardano.Ledger.Shelley.LedgerState
 import Cardano.Ledger.Shelley.Scripts
 import qualified Data.Set.NonEmpty as NES
@@ -26,7 +25,7 @@ spec ::
   forall era.
   DijkstraEraImp era =>
   SpecWith (ImpInit (LedgerSpec era))
-spec =
+spec = describe "UTXOW" $ do
   describe "RequireGuard native scripts" $ do
     it "Spending inputs locked by script requiring a keyhash guard" $ do
       guardKeyHash <- KeyHashObj <$> freshKeyHash

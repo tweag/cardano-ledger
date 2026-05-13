@@ -19,8 +19,6 @@ import Cardano.Ledger.CanonicalState.Conway (
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesAccounts.V0 as EntitiesAccounts.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesCommittee.V0 as EntitiesCommittee.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0 as EntitiesDReps.V0
-import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesDormantEpochs.V0 as EntitiesDormantEpochs.V0
-import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.FutureParams.V0 as EntitiesStakePools.FutureParams.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.V0 as EntitiesStakePools.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.VRFKeyHashes.V0 as EntitiesStakePoolsVRFKeyHashes.V0
 import qualified Cardano.Ledger.CanonicalState.Namespace.GovCommittee.V0 as GovCommittee.V0
@@ -84,20 +82,14 @@ instance Arbitrary EntitiesDReps.V0.CanonicalDRepState where
 instance Arbitrary EntitiesStakePools.V0.CanonicalStakePoolState where
   arbitrary = genericArbitraryU
 
+instance Arbitrary EntitiesStakePools.V0.CanonicalStakePoolParams where
+  arbitrary = genericArbitraryU
+
 instance Arbitrary EntitiesStakePools.V0.CanonicalStakePool where
   arbitrary = genericArbitraryU
 
 instance Arbitrary EntitiesStakePools.V0.EntitiesStakePoolsOut where
   arbitrary = genericArbitraryU
 
-instance Arbitrary EntitiesStakePools.FutureParams.V0.CanonicalStakePoolParams where
-  arbitrary = genericArbitraryU
-
-instance Arbitrary EntitiesStakePools.FutureParams.V0.EntitiesStakePoolsFutureParamsOut where
-  arbitrary = genericArbitraryU
-
 instance Arbitrary EntitiesStakePoolsVRFKeyHashes.V0.EntitiesStakePoolsVRFKeyHashesOut where
-  arbitrary = genericArbitraryU
-
-instance Arbitrary EntitiesDormantEpochs.V0.EntitiesDormantEpochsOut where
   arbitrary = genericArbitraryU

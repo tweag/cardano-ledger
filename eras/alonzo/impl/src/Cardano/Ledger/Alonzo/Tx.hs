@@ -27,6 +27,8 @@
 --       https://github.com/intersectmbo/cardano-ledger/releases/latest/download/alonzo-ledger.pdf
 --     The functions can be found in Figures in that document, and sections of this code refer to those figures.
 module Cardano.Ledger.Alonzo.Tx (
+  -- ** State Annotated
+  AlonzoStAnnTx (..),
   -- Figure 1
   CostModel,
   getLanguageView,
@@ -73,6 +75,7 @@ import Cardano.Ledger.Alonzo.PParams (
   getLanguageView,
   ppPricesL,
  )
+import Cardano.Ledger.Alonzo.Plutus.Context (CollectError, ContextError)
 import Cardano.Ledger.Alonzo.Scripts (
   AlonzoEraScript (..),
   CostModel,
@@ -80,6 +83,7 @@ import Cardano.Ledger.Alonzo.Scripts (
   plutusScriptLanguage,
   txscriptfee,
  )
+import Cardano.Ledger.Alonzo.TxAuxData (AlonzoEraTxAuxData)
 import Cardano.Ledger.Alonzo.TxBody (
   AlonzoEraTxBody (..),
   ScriptIntegrityHash,
@@ -94,7 +98,7 @@ import Cardano.Ledger.Alonzo.TxWits (
   unRedeemersL,
   unTxDatsL,
  )
-import Cardano.Ledger.BaseTypes (integralToBounded)
+import Cardano.Ledger.BaseTypes (ProtVer, integralToBounded)
 import Cardano.Ledger.Binary (
   Annotator,
   DecCBOR (..),
@@ -113,17 +117,17 @@ import Cardano.Ledger.Compactible (Compactible (fromCompact))
 import Cardano.Ledger.Core
 import Cardano.Ledger.Mary (Tx (..))
 import Cardano.Ledger.MemoBytes (EqRaw (..))
-import Cardano.Ledger.Plutus.Data (Data, hashData)
-import Cardano.Ledger.Plutus.Language (nonNativeLanguages)
+import Cardano.Ledger.Plutus (Data, Language, PlutusWithContext, hashData, nonNativeLanguages)
 import Cardano.Ledger.Shelley.Tx (shelleyTxEqRaw)
-import Cardano.Ledger.State (EraUTxO, ScriptsProvided (..))
+import Cardano.Ledger.State (EraUTxO (..), ScriptsProvided (..))
 import qualified Cardano.Ledger.State as Shelley
 import Cardano.Ledger.Val (Val ((<+>), (<×>)))
 import Control.DeepSeq (NFData (..), deepseq)
 import Control.Monad.Trans.Fail.String (errorFail)
-import Data.Aeson (ToJSON (..))
+import Data.Aeson (FromJSON, ToJSON)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Int (Int64)
+import Data.List.NonEmpty (NonEmpty)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (mapMaybe)
 import Data.Maybe.Strict (StrictMaybe (..))
@@ -142,7 +146,7 @@ import NoThunks.Class (InspectHeap (..), NoThunks)
 -- to validate. This is added by the block creator when constructing the block.
 newtype IsValid = IsValid Bool
   deriving (Eq, Show, Generic)
-  deriving newtype (NoThunks, NFData, ToCBOR, EncCBOR, DecCBOR, ToJSON)
+  deriving newtype (NoThunks, NFData, ToCBOR, EncCBOR, DecCBOR, ToJSON, FromJSON)
 
 data AlonzoTx l era where
   AlonzoTx ::
@@ -160,6 +164,10 @@ instance EraTx AlonzoEra where
   newtype Tx l AlonzoEra = MkAlonzoTx {unAlonzoTx :: AlonzoTx l AlonzoEra}
     deriving newtype (Eq, NFData, EncCBOR, ToCBOR, NoThunks, Show)
     deriving (Generic)
+
+  type StAnnTx l AlonzoEra = AlonzoStAnnTx l AlonzoEra
+
+  txStAnnTxG = to $ \AlonzoStAnnTx {asatTx} -> asatTx
 
   mkBasicTx = MkAlonzoTx . mkBasicAlonzoTx
 
@@ -198,7 +206,12 @@ alonzoTxL :: Lens' (Tx l AlonzoEra) (AlonzoTx l AlonzoEra)
 alonzoTxL = lens unAlonzoTx $ const MkAlonzoTx
 
 class
-  (EraTx era, AlonzoEraTxBody era, AlonzoEraTxWits era, AlonzoEraScript era) =>
+  ( EraTx era
+  , AlonzoEraTxBody era
+  , AlonzoEraTxWits era
+  , AlonzoEraScript era
+  , AlonzoEraTxAuxData era
+  ) =>
   AlonzoEraTx era
   where
   isValidTxL :: Lens' (Tx TopTx era) IsValid
@@ -464,3 +477,59 @@ instance
             <*! Ann From
             <*! D (sequence <$> decodeNullStrictMaybe decCBOR)
   {-# INLINE decCBOR #-}
+
+data AlonzoStAnnTx l era where
+  AlonzoStAnnTx ::
+    { asatTx :: !(Tx TopTx era)
+    , asatProtocolVersion :: !ProtVer
+    , asatScriptsNeeded :: ScriptsNeeded era
+    , asatScriptsProvided :: ScriptsProvided era
+    , asatPlutusLanguagesUsed :: Set Language
+    , asatPlutusScriptsWithContext :: Either (NonEmpty (CollectError era)) [PlutusWithContext]
+    } ->
+    AlonzoStAnnTx TopTx era
+
+deriving instance
+  ( AlonzoEraScript era
+  , Eq (Tx l era)
+  , Eq (ScriptsNeeded era)
+  , Eq (ScriptsProvided era)
+  , Eq (ContextError era)
+  ) =>
+  Eq (AlonzoStAnnTx l era)
+
+deriving instance
+  ( AlonzoEraScript era
+  , Show (Tx l era)
+  , Show (ScriptsNeeded era)
+  , Show (ScriptsProvided era)
+  , Show (ContextError era)
+  ) =>
+  Show (AlonzoStAnnTx l era)
+
+instance
+  (EraTxLevel era, STxLevel TopTx era ~ STxTopLevel TopTx era) =>
+  HasEraTxLevel AlonzoStAnnTx era
+  where
+  toSTxLevel (AlonzoStAnnTx {}) = STopTxOnly @era
+
+instance
+  ( AlonzoEraScript era
+  , NFData (Tx l era)
+  , NFData (ScriptsNeeded era)
+  , NFData (ScriptsProvided era)
+  , NFData (ContextError era)
+  ) =>
+  NFData (AlonzoStAnnTx l era)
+  where
+  rnf stAnnTx@(AlonzoStAnnTx _ _ _ _ _ _) =
+    let AlonzoStAnnTx {..} = stAnnTx
+     in asatTx `deepseq`
+          asatProtocolVersion `deepseq`
+            asatScriptsNeeded `deepseq`
+              asatScriptsProvided `deepseq`
+                asatPlutusLanguagesUsed `deepseq`
+                  rnf asatPlutusScriptsWithContext
+
+instance EncCBOR (Tx l era) => EncCBOR (AlonzoStAnnTx l era) where
+  encCBOR AlonzoStAnnTx {asatTx} = encCBOR asatTx

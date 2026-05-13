@@ -40,10 +40,15 @@ module Cardano.Ledger.Shelley.Transition (
   mkShelleyTransitionConfig,
   createInitialState,
   shelleyRegisterInitialFundsThenStaking,
+  injectInitialFundsAndStaking,
   shelleyRegisterInitialAccounts,
+  injectStakePools,
+  injectStakeCredentials,
   registerInitialStakePools,
   registerInitialFunds,
+  resolveInjectionSource,
   resetStakeDistribution,
+  tcNetworkIDG,
   protectMainnet,
   protectMainnetLens,
 ) where
@@ -65,7 +70,9 @@ import Cardano.Ledger.Shelley.Translation (
   toFromByronTranslationContext,
  )
 import Cardano.Ledger.Val
-import Control.Monad (unless)
+import Control.Monad (unless, when)
+import Control.Monad.Class.MonadST (MonadST)
+import Control.Monad.Class.MonadThrow (MonadThrow (throwIO))
 import Data.Aeson (FromJSON (..), KeyValue (..), ToJSON (..), object, withObject, (.:))
 import qualified Data.Aeson as Aeson (Value (..))
 import Data.Aeson.Key (Key, fromString)
@@ -82,6 +89,7 @@ import GHC.Generics (Generic)
 import GHC.Stack
 import Lens.Micro
 import NoThunks.Class (NoThunks (..))
+import System.FS.API (HasFS)
 
 -- | Register the initial information in the 'NewEpochState'.
 --
@@ -117,14 +125,16 @@ class
     TransitionConfig (PreviousEra era) ->
     TransitionConfig era
 
+  -- | Extract data from the given transition configuration and store it in the given state.
+  --
+  -- /Warning/ - Should only be used in testing and benchmarking. Will result in an error
+  -- when 'NetworkId' is set to 'Mainnet'.
   injectIntoTestState ::
-    -- | Extract data from the given transition configuration and store it in the given state.
-    --
-    -- /Warning/ - Should only be used in testing and benchmarking. Will result in an error
-    -- when 'NetworkId' is set to 'Mainnet'.
+    (HasCallStack, MonadST m, MonadThrow m) =>
+    HasFS m h ->
     TransitionConfig era ->
     NewEpochState era ->
-    NewEpochState era
+    m (NewEpochState era)
 
   -- | In case when a previous era is available, we should always be able to access
   -- `TransitionConfig` for the previous era, from within the current era's
@@ -221,18 +231,87 @@ instance EraTransition era => FromJSON (TransitionConfig era) where
 tcNetworkIDG :: EraTransition era => SimpleGetter (TransitionConfig era) Network
 tcNetworkIDG = tcShelleyGenesisL . to sgNetworkId
 
-shelleyRegisterInitialFundsThenStaking ::
-  (EraTransition era, ShelleyEraAccounts era) =>
+-- | Register initial funds, stake pools, and stake credentials from the Shelley
+-- genesis configuration. Credentials injection is a parameter because Shelley
+-- and Conway have incompatible account representations ('ShelleyEraAccounts'
+-- vs 'ConwayEraAccounts').
+injectInitialFundsAndStaking ::
+  (EraTransition era, HasCallStack, MonadST m, MonadThrow m) =>
+  HasFS m h ->
+  ( Network ->
+    HasFS m h ->
+    InjectionData (KeyHash Staking) (KeyHash StakePool) ->
+    NewEpochState era ->
+    m (NewEpochState era)
+  ) ->
   TransitionConfig era ->
   NewEpochState era ->
-  NewEpochState era
-shelleyRegisterInitialFundsThenStaking cfg =
+  m (NewEpochState era)
+injectInitialFundsAndStaking hasFS injectCreds cfg nes = do
+  let network = cfg ^. tcNetworkIDG
+  when (network == Mainnet) $ throwIO InjectionNotAllowedOnMainnet
+
+  let sg = cfg ^. tcShelleyGenesisL
+      staking = sg ^. sgStakingL
+
+  poolsSource <-
+    resolveInjectionSource "stakePools" (sgExtraConfig sg) secStakePools (sgsPools staking)
+  credsSource <-
+    resolveInjectionSource "stakeCredentials" (sgExtraConfig sg) secStakeCredentials (sgsStake staking)
+
   -- We must first register the initial funds, because the stake
   -- information depends on it.
+  registerInitialFunds hasFS cfg nes
+    >>= injectStakePools network hasFS poolsSource
+    >>= injectCreds network hasFS credsSource
+
+-- | Folds over an 'InjectionData' source of stake credentials and registers them
+injectStakeCredentials ::
+  (ShelleyEraAccounts era, EraCertState era, EraGov era, MonadST m, MonadThrow m) =>
+  Network ->
+  HasFS m h ->
+  InjectionData (KeyHash Staking) (KeyHash StakePool) ->
+  NewEpochState era ->
+  m (NewEpochState era)
+injectStakeCredentials network fs source nes = do
+  when (network == Mainnet) $ throwIO InjectionNotAllowedOnMainnet
+  let stakePools = nes ^. nesEsL . esLStateL . lsCertStateL . certPStateL . psStakePoolsL
+      initialAccounts = nes ^. nesEsL . esLStateL . lsCertStateL . certDStateL . accountsL
+      deposit = nes ^. nesEsL . curPParamsEpochStateL . ppKeyDepositCompactL
+      certIxRange = fromIntegral (unCertIx maxBound) + 1 :: Int
+      indexToPtr i =
+        Ptr
+          minBound
+          (TxIx (fromIntegral (i `div` certIxRange)))
+          (CertIx (fromIntegral (i `mod` certIxRange)))
+      registerAndDelegate (!accounts, !stakePoolMap, !ptrIdx) (stakeKeyHash, stakePool)
+        | stakePool `Map.member` stakePools =
+            ( registerShelleyAccount
+                (KeyHashObj stakeKeyHash)
+                (indexToPtr ptrIdx)
+                deposit
+                (Just stakePool)
+                accounts
+            , Map.adjust (spsDelegatorsL %~ Set.insert (KeyHashObj stakeKeyHash)) stakePool stakePoolMap
+            , ptrIdx + 1
+            )
+        | otherwise = error $ delegationInvariantMsg stakeKeyHash stakePool
+  (!updatedAccounts, !updatedPools, _) <-
+    foldInjectionData fs source registerAndDelegate (initialAccounts, stakePools, 0 :: Int)
+  pure $
+    nes
+      & nesEsL . esLStateL . lsCertStateL . certDStateL . accountsL .~ updatedAccounts
+      & nesEsL . esLStateL . lsCertStateL . certPStateL . psStakePoolsL .~ updatedPools
+
+shelleyRegisterInitialFundsThenStaking ::
+  (EraTransition era, ShelleyEraAccounts era, HasCallStack, MonadST m, MonadThrow m) =>
+  HasFS m h ->
+  TransitionConfig era ->
+  NewEpochState era ->
+  m (NewEpochState era)
+shelleyRegisterInitialFundsThenStaking hasFS cfg newEpochState =
   resetStakeDistribution
-    . shelleyRegisterInitialAccounts (cfg ^. tcInitialStakingL)
-    . registerInitialStakePools (cfg ^. tcInitialStakingL)
-    . registerInitialFunds cfg
+    <$> injectInitialFundsAndStaking hasFS injectStakeCredentials cfg newEpochState
 
 instance EraTransition ShelleyEra where
   newtype TransitionConfig ShelleyEra = ShelleyTransitionConfig
@@ -411,7 +490,59 @@ validateProtVerBounds nes = do
         <> "]"
   pure nes
 
--- | Register initial stake pools from the `ShelleyGenesisStaking`
+-- TODO: remove this once we move over to the extraConfig fields exclusively
+
+-- | Resolve an injection data source from extraConfig vs legacy field, with conflict detection.
+resolveInjectionSource ::
+  MonadThrow m =>
+  String ->
+  StrictMaybe extraConfig ->
+  (extraConfig -> InjectionData k v) ->
+  ListMap.ListMap k v ->
+  m (InjectionData k v)
+resolveInjectionSource name mExtraConfig getExtra legacy =
+  case mExtraConfig of
+    SJust extraConfig
+      | NoInjection <- getExtra extraConfig ->
+          pure $ EmbeddedInjection legacy
+      | null legacy -> pure $ getExtra extraConfig
+      | otherwise ->
+          throwIO $
+            InjectionConflictingSources $
+              "Both legacy and 'extraConfig."
+                <> name
+                <> "' are specified. "
+                <> "Please use only one source."
+    SNothing -> pure $ EmbeddedInjection legacy
+
+delegationInvariantMsg :: (Show a, Show b) => a -> b -> String
+delegationInvariantMsg stakeKeyHash stakePool =
+  "Delegation of "
+    ++ show stakeKeyHash
+    ++ " to an unregistered stake pool "
+    ++ show stakePool
+
+-- | Folds over an 'InjectionData' source of stake pools and registers them.
+injectStakePools ::
+  (EraCertState era, EraGov era, MonadST m, MonadThrow m) =>
+  Network ->
+  HasFS m h ->
+  InjectionData (KeyHash StakePool) StakePoolParams ->
+  NewEpochState era ->
+  m (NewEpochState era)
+injectStakePools network fs source nes = do
+  when (network == Mainnet) $ throwIO InjectionNotAllowedOnMainnet
+  let deposit = nes ^. nesEsL . curPParamsEpochStateL . ppPoolDepositCompactL
+  poolsMap <-
+    foldInjectionData
+      fs
+      source
+      (\ !acc (poolId, poolParams) -> Map.insert poolId (mkStakePoolState deposit mempty poolParams) acc)
+      -- Note: we start from empty map so this drops any pre-existing pools in the state
+      Map.empty
+  pure $ nes & nesEsL . esLStateL . lsCertStateL . certPStateL . psStakePoolsL .~ poolsMap
+
+-- | Register initial stake pools from a 'ShelleyGenesisStaking'.
 registerInitialStakePools ::
   forall era.
   (EraCertState era, EraGov era) =>
@@ -424,6 +555,7 @@ registerInitialStakePools ShelleyGenesisStaking {sgsPools} nes =
       .~ ListMap.toMap (mkStakePoolState deposit mempty <$> sgsPools)
   where
     deposit = nes ^. nesEsL . curPParamsEpochStateL . ppPoolDepositCompactL
+{-# DEPRECATED registerInitialStakePools "Use `injectStakePools` instead" #-}
 
 -- | Register all staking credentials and apply delegations. Make sure StakePools that are being
 -- delegated to are already registered, which can be done with `registerInitialStakePools`.
@@ -449,16 +581,11 @@ shelleyRegisterInitialAccounts ShelleyGenesisStaking {sgsStake} nes =
           ( registerShelleyAccount (KeyHashObj stakeKeyHash) ptr deposit (Just stakePool) accounts
           , Map.adjust (spsDelegatorsL %~ Set.insert (KeyHashObj stakeKeyHash)) stakePool stakePoolMap
           )
-      | otherwise =
-          error $
-            "Invariant of a delegation of "
-              ++ show stakeKeyHash
-              ++ " to an unregistered stake pool "
-              ++ show stakePool
-              ++ " is being violated."
+      | otherwise = error $ delegationInvariantMsg stakeKeyHash stakePool
     ptrs =
       [ Ptr minBound txIx certIx | txIx <- [minBound .. maxBound], certIx <- [minBound .. maxBound]
       ]
+{-# DEPRECATED shelleyRegisterInitialAccounts "Use `injectStakeCredentials` instead" #-}
 
 -- NOTE: it seems like this is only used for testing, so hardcoding `Testnet` as a Network for now
 
@@ -505,57 +632,69 @@ resetStakeDistribution nes =
 -- /Warning/ - Should only be used in testing and benchmarking. Will result in an error
 -- when NetworkId is set to Mainnet
 registerInitialFunds ::
-  forall era.
+  forall era m h.
   ( EraTransition era
   , HasCallStack
+  , MonadST m
+  , MonadThrow m
   ) =>
+  HasFS m h ->
   TransitionConfig era ->
   NewEpochState era ->
-  NewEpochState era
-registerInitialFunds tc nes =
-  nes
-    { nesEs =
-        epochState
-          { esChainAccountState = accountState'
-          , esLState = ledgerState'
-          }
-    }
+  m (NewEpochState era)
+registerInitialFunds hasFS tc newEpochState = do
+  -- Guard against mainnet injection before processing
+  when (tc ^. tcNetworkIDG == Mainnet) $
+    throwIO InjectionNotAllowedOnMainnet
+  let sg = tc ^. tcShelleyGenesisL
+      addInitialFund (!acc, !coins) (addr, amount) =
+        let txIn = initialFundsPseudoTxIn addr
+            txOut = mkBasicTxOut addr (inject amount)
+         in (Map.insert txIn txOut acc, coins <> amount)
+  source <-
+    resolveInjectionSource "initialFunds" (sgExtraConfig sg) secInitialFunds (sgInitialFunds sg)
+
+  -- fold over the stream of initial funds, accumulating state changes
+  (newUtxoEntries, totalCoins) <-
+    foldInjectionData hasFS source addInitialFund (Map.empty, mempty)
+
+  pure $ applyFunds newUtxoEntries totalCoins
   where
-    epochState = nesEs nes
+    epochState = nesEs newEpochState
     accountState = esChainAccountState epochState
     ledgerState = esLState epochState
     utxoState = lsUTxOState ledgerState
     utxo = utxosUtxo utxoState
 
-    initialFundsUtxo :: UTxO era
-    initialFundsUtxo =
-      UTxO $
-        Map.fromList
-          [ (txIn, txOut)
-          | (addr, amount) <- ListMap.toList (tc ^. tcInitialFundsL)
-          , let txIn = initialFundsPseudoTxIn addr
-                txOut = mkBasicTxOut addr (inject amount)
-          ]
-
-    utxo' = mergeUtxoNoOverlap utxo initialFundsUtxo
-
-    -- Update the reserves
-    accountState' =
-      accountState
-        { casReserves = casReserves accountState <-> sumCoinUTxO initialFundsUtxo
-        }
-
-    ledgerState' =
-      ledgerState
-        { lsUTxOState =
-            utxoState
-              { utxosUtxo = utxo'
-              , -- Normally we would incrementally update here. But since we pass
-                -- the full UTxO as "toAdd" rather than a delta, we simply
-                -- reinitialise the full instant stake.
-                utxosInstantStake = addInstantStake utxo' mempty
+    applyFunds newUtxoEntries totalCoins =
+      newEpochState
+        { nesEs =
+            epochState
+              { esChainAccountState = accountState'
+              , esLState = ledgerState'
               }
         }
+      where
+        initialFundsUtxo = UTxO newUtxoEntries
+        utxo' = mergeUtxoNoOverlap utxo initialFundsUtxo
+
+        -- Update the reserves
+        accountState' =
+          accountState
+            { casReserves = casReserves accountState <-> totalCoins
+            }
+
+        ledgerState' =
+          ledgerState
+            { lsUTxOState =
+                utxoState
+                  { utxosUtxo = utxo'
+                  , -- Normally we would incrementally update here. But since we pass
+                    -- the full UTxO as "toAdd" rather than a delta, we simply
+                    -- reinitialise the full instant stake.
+                    utxosInstantStake = addInstantStake utxo' mempty
+                  }
+            }
 
     -- Merge two UTxOs, throw an 'error' in case of overlap
     mergeUtxoNoOverlap ::
