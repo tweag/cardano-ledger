@@ -14,10 +14,11 @@
 
 ### `testlib`
 
+* Export `shelleyToBabbageSpec`
 * Make `Test.Cardano.Ledger.Allegra.Imp.spec` accept `Proxy era`
 * In `Test.Cardano.Ledger.Allegra.Examples`:
   - Remove `mkAllegraBasedExampleTx`, `exampleAllegraBasedTxBody`, `exampleAllegraBasedShelleyTxBody`
-  - Add `exampleAllegraBasedTx`
+  - Add `exampleAllegraBasedTx`, `exampleAllegraTx`
 
 ## 1.9.0.0
 

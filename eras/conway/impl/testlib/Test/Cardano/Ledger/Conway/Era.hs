@@ -1,5 +1,8 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -20,9 +23,15 @@ import Cardano.Ledger.Conway.TxInfo (ConwayContextError)
 import Cardano.Ledger.Plutus (Language (..))
 import Data.Coerce
 import Lens.Micro
+import Paths_cardano_ledger_conway (getDataFileName)
 import Test.Cardano.Ledger.Babbage.Era
 import Test.Cardano.Ledger.Conway.Arbitrary ()
 import Test.Cardano.Ledger.Conway.Binary.Annotator ()
+import Test.Cardano.Ledger.Conway.Examples (
+  exampleConwayOnwardsEraPParams,
+  exampleConwayOnwardsEraPParamsUpdate,
+  exampleConwayTx,
+ )
 import Test.Cardano.Ledger.Conway.TreeDiff ()
 import Test.Cardano.Ledger.Plutus (zeroTestingCostModels)
 
@@ -38,11 +47,36 @@ class
   ConwayEraTest era
 
 instance EraTest ConwayEra where
+  type
+    EraRulesWithFailures ConwayEra =
+      '[ "BBODY"
+       , "CERT"
+       , "CERTS"
+       , "DELEG"
+       , "GOVCERT"
+       , "GOV"
+       , "LEDGER"
+       , "LEDGERS"
+       , -- , "MEMPOOL" -- TODO: Enable, once we are in Dijkstra era.
+         "POOL"
+       , "UTXO"
+       , "UTXOS"
+       , "UTXOW"
+       ]
+
   zeroCostModels = zeroTestingCostModels [PlutusV1 .. PlutusV3]
 
   mkTestAccountState _mPtr = mkConwayTestAccountState
 
   accountsFromAccountsMap = coerce
+
+  mkEraFullPath = getDataFileName
+
+  exampleTx = exampleConwayTx
+
+  examplePParams = exampleConwayOnwardsEraPParams
+
+  examplePParamsUpdate = exampleConwayOnwardsEraPParamsUpdate
 
 instance ShelleyEraTest ConwayEra
 

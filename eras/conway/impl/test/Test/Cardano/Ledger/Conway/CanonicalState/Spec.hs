@@ -155,12 +155,17 @@ spec = do
       validateType @"gov/proposals/roots/v0" @GovProposals.V0.CanonicalGovActionId "gov_action_id"
       isCanonical @"gov/proposals/roots/v0" @GovProposals.Roots.V0.GovProposalsRootsOut
       validateType @"gov/proposals/roots/v0" @GovProposals.Roots.V0.GovProposalsRootsOut "record_entry"
+    describe "gov/proposals/v0" $ do
+      isCanonical @"gov/proposals/v0" @(GovProposals.V0.GovProposalOut CanonicalGovActionState)
+      validateType @"gov/proposals/v0" @(GovProposals.V0.GovProposalOut CanonicalGovActionState)
+        "record_entry"
   describe "namespaces" $ do
     testNS @"blocks/v0"
     testNS @"utxo/v0"
     testNS @"entities/committee/v0"
     testNS @"entities/stake_pools/v0"
     testNS @"entities/stake_pools/vrf_key_hashes/v0"
+    testNS @"entities/accounts/v0"
     testNS @"gov/constitution/v0"
     testNS @"gov/committee/v0"
     testNS @"gov/pparams/v0"

@@ -10,6 +10,7 @@
 -- don't care, we are only interested in serialisation, not validation.
 module Test.Cardano.Ledger.Mary.Examples (
   ledgerExamples,
+  exampleMaryTx,
   exampleMaryBasedTx,
   exampleMultiAsset,
   exampleMultiAssetValue,
@@ -21,12 +22,7 @@ import Cardano.Ledger.Genesis (NoGenesis (..))
 import Cardano.Ledger.Mary (ApplyTxError (MaryApplyTxError), MaryEra)
 import Cardano.Ledger.Mary.Core
 import Cardano.Ledger.Mary.Value
-import Cardano.Ledger.Shelley.Rules (
-  ShelleyDelegPredFailure (DelegateeNotRegisteredDELEG),
-  ShelleyDelegsPredFailure (DelplFailure),
-  ShelleyDelplPredFailure (DelegFailure),
-  ShelleyLedgerPredFailure (DelegsFailure),
- )
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import qualified Data.Map.Strict as Map (singleton)
 import qualified Data.Sequence.Strict as StrictSeq
 import Data.Typeable (Typeable)
@@ -51,20 +47,20 @@ import Test.Cardano.Ledger.Shelley.Examples (
 ledgerExamples :: LedgerExamples MaryEra
 ledgerExamples =
   mkShelleyBasedLedgerExamples
-    ( MaryApplyTxError . pure . DelegsFailure . DelplFailure . DelegFailure $
-        DelegateeNotRegisteredDELEG @MaryEra (mkKeyHash 1)
+    ( MaryApplyTxError . pure . Shelley.DelegsFailure . Shelley.DelplFailure . Shelley.DelegFailure $
+        Shelley.DelegateeNotRegisteredDELEG @MaryEra (mkKeyHash 1)
     )
     (exampleMultiAssetValue 1)
     exampleMaryTx
     NoGenesis
-  where
-    exampleMaryTx :: Tx TopTx MaryEra
-    exampleMaryTx =
-      exampleMaryBasedTx
-        & addShelleyBasedTopTxExampleFee
-        & addShelleyToBabbageExampleProposedPUpdates
-        & addShelleyToBabbageTxCerts
-        & addShelleyToConwayTxCerts
+
+exampleMaryTx :: Tx TopTx MaryEra
+exampleMaryTx =
+  exampleMaryBasedTx
+    & addShelleyBasedTopTxExampleFee
+    & addShelleyToBabbageExampleProposedPUpdates
+    & addShelleyToBabbageTxCerts
+    & addShelleyToConwayTxCerts
 
 -- Complete transaction which is compatible with any era starting with Mary.
 -- This transaction forms the basis on which future era transactions will be

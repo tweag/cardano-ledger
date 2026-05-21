@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Test.Cardano.Ledger.Alonzo.Imp.UtxowSpec.Valid (spec, alonzoEraSpecificSpec) where
+module Test.Cardano.Ledger.Alonzo.Imp.UtxowSpec.Valid (spec, alonzoToConwaySpec) where
 
 import Cardano.Ledger.Address
 import Cardano.Ledger.Allegra.Scripts (
@@ -27,7 +27,7 @@ import Cardano.Ledger.Plutus (
   hashPlutusScript,
   withSLanguage,
  )
-import Cardano.Ledger.Shelley.Rules (ShelleyDelegPredFailure (..))
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Cardano.Ledger.Shelley.Scripts (
   pattern RequireAllOf,
   pattern RequireSignature,
@@ -124,11 +124,11 @@ spec = describe "Valid transactions" $ do
                 & witsTxL . datsTxWitsL . unTxDatsL %~ Map.insert datumHash datum
           submitTx_ tx
 
-alonzoEraSpecificSpec ::
+alonzoToConwaySpec ::
   forall era.
   (AlonzoEraImp era, ShelleyEraTxCert era) =>
   SpecWith (ImpInit (LedgerSpec era))
-alonzoEraSpecificSpec = do
+alonzoToConwaySpec = do
   forM_ (eraLanguages @era) $ \lang ->
     withSLanguage lang $ \slang ->
       describe (show lang) $ do
@@ -202,7 +202,7 @@ alonzoEraSpecificSpec = do
               -- This passes UTXOW rules but not DELEG rules; however, we care about only UTXOW rules here
               submitFailingTx
                 tx
-                [injectFailure $ StakeKeyNotRegisteredDELEG (ScriptHashObj scriptHash)]
+                [injectFailure $ Shelley.StakeKeyNotRegisteredDELEG (ScriptHashObj scriptHash)]
             else
               -- Conway fixed the bug that was causing DELEG to fail
               submitTx_ tx

@@ -7,7 +7,11 @@
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Test.Cardano.Ledger.Conway.Imp (spec, conwayEraSpecificSpec) where
+module Test.Cardano.Ledger.Conway.Imp (
+  spec,
+  Babbage.alonzoToConwaySpec,
+  conwayOnlySpec,
+) where
 
 import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.Core
@@ -16,7 +20,7 @@ import Cardano.Ledger.Conway.Rules (
   ConwayHardForkEvent,
   ConwayNewEpochEvent,
  )
-import Cardano.Ledger.Shelley.Rules (RupdEvent)
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Control.State.Transition.Extended
 import Data.Proxy
 import qualified Test.Cardano.Ledger.Babbage.Imp as Babbage
@@ -41,7 +45,7 @@ spec ::
   , Event (EraRule "HARDFORK" era) ~ ConwayHardForkEvent era
   , Event (EraRule "EPOCH" era) ~ ConwayEpochEvent era
   , Event (EraRule "NEWEPOCH" era) ~ ConwayNewEpochEvent era
-  , Event (EraRule "RUPD" era) ~ RupdEvent
+  , Event (EraRule "RUPD" era) ~ Shelley.RupdEvent
   ) =>
   proxy era ->
   Spec
@@ -61,9 +65,9 @@ spec era = do
     UTXOS.spec
     UTXOW.spec
 
-conwayEraSpecificSpec :: Spec
-conwayEraSpecificSpec = do
+conwayOnlySpec :: Spec
+conwayOnlySpec = do
   describe "ConwayEra Specific" $ withImpInitEachEraVersion (Proxy @ConwayEra) $ do
     -- TODO: move to `spec` when ready: https://github.com/IntersectMBO/cardano-ledger/issues/5805
     CERTS.spec
-    UTXO.conwayEraSpecificSpec
+    UTXO.conwayOnlySpec

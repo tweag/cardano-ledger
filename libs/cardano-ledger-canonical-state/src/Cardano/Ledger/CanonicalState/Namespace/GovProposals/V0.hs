@@ -76,18 +76,30 @@ instance IsKey GovProposalIn where
     gaidGovActionIx <- unpackM
     return $ GovProposalIn CanonicalGovActionId {..}
 
-newtype GovProposalOut v = GovProposalOut (Word64, v)
+-- | Canonical wrapper over proposal order and gov action state. Because this
+-- is on-chain data we create a wrapper for that.
+data GovProposalOut v = GovProposalOut
+  { gpoProposalOrder :: !Word64
+  , gpoProposal :: !v
+  }
   deriving (Eq, Show, Generic)
-  deriving newtype (ToCanonicalCBOR "gov/proposals/v0")
-  deriving newtype (FromCanonicalCBOR "gov/proposals/v0")
 
 type instance NamespaceKeySize "gov/proposals/v0" = 34
+
+instance ToCanonicalCBOR v p => ToCanonicalCBOR v (GovProposalOut p) where
+  toCanonicalCBOR v (GovProposalOut {..}) =
+    toCanonicalCBOR v (gpoProposalOrder, gpoProposal)
+
+instance FromCanonicalCBOR v p => FromCanonicalCBOR v (GovProposalOut p) where
+  fromCanonicalCBOR = do
+    Versioned (gpoProposalOrder, gpoProposal) <- fromCanonicalCBOR @v
+    return $ Versioned $ GovProposalOut {..}
 
 instance
   ToCanonicalCBOR "gov/proposals/v0" v =>
   CanonicalCBOREntryEncoder "gov/proposals/v0" (GovProposalOut v)
   where
-  encodeEntry (GovProposalOut n) = toCanonicalCBOR (Proxy @"gov/proposals/v0") n
+  encodeEntry = toCanonicalCBOR (Proxy @"gov/proposals/v0")
 
 instance
   FromCanonicalCBOR "gov/proposals/v0" v =>

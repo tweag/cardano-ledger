@@ -2,6 +2,7 @@
 
 ## 0.3.0.0
 
+* Add `DijkstraEraUTxO` type class with `subTransactionsStAnnTx` method
 * Add `TranslateEra` instance for `DijkstraEra VState`
 * Fix `TranslateEra` instance for `DijkstraEra CertState`
 * Add `GuardScriptHashesNotSupported` constructor to `DijkstraContextError`
@@ -64,18 +65,24 @@
 
 ### cddl
 
+* Add `transaction_mempool` rule
 * Add `peras_certificate`, `block_body`
 * Extend `constr` CDDL rule to include tags 1280–1400 for Plutus `Data` constructor indexes
 
 ### testlib
 
+* Add to `Test.Cardano.Ledger.Dijkstra.Examples`:
+  - `exampleDijkstraOnwardsEraPParams`
+  - `exampleDijkstraOnwardsEraPParamsUpdate`
+* Move `exampleDijkstraGenesis` from `Test.Cardano.Ledger.Dijkstra.ImpTest` to `Test.Cardano.Ledger.Dijkstra.Examples` (still re-exported from `ImpTest`).
 * Make `Test.Cardano.Ledger.Dijkstra.Imp.spec` accept `Proxy era`
 * Add `ToExpr` instance for `DijkstraBlockBody`
 * Add `DecCBOR` instance for `DijkstraBlockBodyRaw`
 * Add `genNonEmptyAccountBalanceIntervals`
 * In `Test.Cardano.Ledger.Dijkstra.Examples`:
   - Remove `mkDijkstraBasedExampleTx`, `mkDijkstraBasedExampleTxBody`
-  - Add `exampleDijkstraBasedTopTx`, `exampleDijkstraBasedSubTx`
+  - Add `exampleDijkstraBasedTopTx`, `exampleDijkstraBasedSubTx`, `exampleDijkstraTx`, `exampleDijkstraGenesis`
+* Move `exampleDijkstraGenesis` from `Test.Cardano.Ledger.Dijkstra.ImpTest` to `Test.Cardano.Ledger.Dijkstra.Examples`
 
 ## 0.2.0.0
 
