@@ -59,7 +59,13 @@
 
 ### `testlib`
 
-* Add `proxy era` argument to `shelleyEraSpecificSpec`
+* Add `Arbitrary` instance for `ShelleyBbodyPredFailure`
+* Add to `Test.Cardano.Ledger.Shelley.Examples`:
+  - `exampleShelleyPParams`
+  - `exampleShelleyPParamsUpdate`
+  - `exampleShelleyOnwardsEraPParams`
+  - `exampleShelleyOnwardsEraPParamsUpdate`
+* Add `proxy era` argument to `shelleyEraSpecificSpec` and rename it to `shelleyToBabbageSpec`
 * Remove `EraSpecificSpec`
 * Make `Test.Cardano.Ledger.Shelley.Imp.spec` accept `Proxy era`
 * Add `withImpInitEachEraVersion` and deprecate `withEachEraVersion` in its favor
@@ -70,7 +76,7 @@
 * Export `exampleShelleyScript` and `exampleBootstrapWitness` from `Test.Cardano.Ledger.Shelley.Examples`
 * In `Test.Cardano.Ledger.Shelley.Examples`:
   - Remove `mkShelleyBasedExampleTx`, `exampleShelleyBasedShelleyTxBody`, `exampleShelleyBasedTxBody`, `exampleCerts`
-  - Add `exampleShelleyBasedTx`, `addShelleyBasedTopTxExampleFee`, `addShelleyToBabbageExampleProposedPUpdates`, `addShelleyToBabbageTxCerts`, `addShelleyToConwayTxCerts`
+  - Add `exampleShelleyTx`, `exampleShelleyBasedTx`, `addShelleyBasedTopTxExampleFee`, `addShelleyToBabbageExampleProposedPUpdates`, `addShelleyToBabbageTxCerts`, `addShelleyToConwayTxCerts`
 
 ## 1.18.0.0
 

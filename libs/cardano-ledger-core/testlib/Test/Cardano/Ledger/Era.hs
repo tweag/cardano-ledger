@@ -4,6 +4,7 @@
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
 
 module Test.Cardano.Ledger.Era (
@@ -25,8 +26,12 @@ import Data.Aeson (FromJSON, ToJSON)
 import Data.Functor.Identity
 import qualified Data.Map.Strict as Map
 import Data.Typeable
+import GHC.TypeLits (Symbol, symbolVal)
+import Test.Cardano.Ledger.Binary.Golden (cborAnnGoldenSpec)
 import Test.Cardano.Ledger.Common
 import Test.Cardano.Ledger.Core.Arbitrary ()
+import Test.Cardano.Ledger.Core.Binary.RoundTrip (roundTripEraSpec)
+import Test.Cardano.Ledger.Era.Rules
 import Test.Cardano.Ledger.TreeDiff ()
 
 class
@@ -89,9 +94,13 @@ class
   , ToJSON (TranslationContext era)
   , FromJSON (TranslationContext era)
   , Arbitrary (TranslationContext era)
+  , UnliftRules era (EraRulesWithFailures era)
   ) =>
   EraTest era
   where
+  -- | All Ledger rules with predicate failures
+  type EraRulesWithFailures era :: [Symbol]
+
   zeroCostModels :: CostModels
 
   -- | This is a helper function that allows for creation of an `AccountState` in era agnostic
@@ -107,6 +116,21 @@ class
     AccountState era
 
   accountsFromAccountsMap :: Map.Map (Credential Staking) (AccountState era) -> Accounts era
+
+  -- | Get the full path for the era directory.
+  -- An use case for this is for saving golden files in a golden test directory
+  -- for each era.
+  mkEraFullPath :: FilePath -> IO FilePath
+
+  -- | Example transaction that needs to be provided for each era. Doesn't need
+  -- to be valid, but all possible fields must be set to some example value.
+  exampleTx :: Tx TopTx era
+
+  -- | Example PParams used for testing. All possible fields must be set.
+  examplePParams :: PParams era
+
+  -- | Example PParamsUpdate used for testing. All possible fields must be set.
+  examplePParamsUpdate :: PParamsUpdate era
 
 class EraTest era => EraSpec era where
   -- | All of Imp spec that is applicable to this era
@@ -124,7 +148,24 @@ ledgerEraTestMain extraEraSpec =
   ledgerTestMain $
     describe (eraName @era) $ do
       describe "Imp" $ eraImpSpec (Proxy @era)
-      extraEraSpec
+      describe "Binary" $ do
+        describe "RoundTrip" $ do
+          describe "Predicate Failures" $
+            let
+              go :: EraRuleProof era rs' -> Spec
+              go EraRuleProofEmpty = pure ()
+              go (EraRuleProofHead px@(Proxy :: Proxy r) nextRule) = do
+                describe (symbolVal px) $ roundTripEraSpec @era @(EraRuleFailure r era)
+                go nextRule
+             in
+              go $ unliftEraRuleProofs @era @(EraRulesWithFailures era)
+        describe "Golden" $
+          cborAnnGoldenSpec
+            (mkEraFullPath @era)
+            "golden/tx.cbor"
+            (eraProtVerLow @era)
+            (exampleTx @era)
+      describe "Era-specific spec" extraEraSpec
 
 -- | This is a helper function that uses `mkTestAccountState` to register an account.
 registerTestAccount ::

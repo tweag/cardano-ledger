@@ -39,24 +39,8 @@ instance Arbitrary GovConstitution.V0.CanonicalConstitution where
 instance Arbitrary GovConstitution.V0.GovConstitutionOut where
   arbitrary = genericArbitraryU
 
-instance Arbitrary EntitiesCommittee.V0.EntitiesCommitteeOut where
-  arbitrary = genericArbitraryU
-
-instance Arbitrary EntitiesCommittee.V0.CanonicalCommitteeState where arbitrary = genericArbitraryU
-
-instance Arbitrary EntitiesCommittee.V0.CanonicalCommitteeAuthorization where
-  arbitrary = fmap EntitiesCommittee.V0.mkCanonicalCommitteeAuthorization arbitrary
-
-instance Arbitrary GovCommittee.V0.GovCommitteeOut where
-  arbitrary = genericArbitraryU
-
-instance Arbitrary GovCommittee.V0.CanonicalCommittee where arbitrary = genericArbitraryU
-
 instance Arbitrary (GovPParams.V0.GovPParamsOut ConwayEra) where
   arbitrary = genericArbitraryU
-
-instance Arbitrary CanonicalExUnits where
-  arbitrary = mkCanonicalExUnits <$> arbitrary
 
 instance Arbitrary (GovProposals.V0.GovProposalOut CanonicalGovActionState) where
   arbitrary = snd . fromGovActionState 0 <$> arbitrary
@@ -70,26 +54,47 @@ instance Arbitrary GovProposals.V0.CanonicalGovActionId where
 instance Arbitrary GovProposals.Roots.V0.GovProposalsRootsOut where
   arbitrary = genericArbitraryU
 
-instance Arbitrary EntitiesAccounts.V0.CanonicalAccountState where
+instance Arbitrary EntitiesStakePoolsVRFKeyHashes.V0.EntitiesStakePoolsVRFKeyHashesOut where
   arbitrary = genericArbitraryU
 
-instance Arbitrary EntitiesAccounts.V0.EntitiesAccountsOut where
+instance Arbitrary EntitiesCommittee.V0.EntitiesCommitteeOut where
   arbitrary = genericArbitraryU
 
-instance Arbitrary EntitiesDReps.V0.CanonicalDRepState where
+instance Arbitrary EntitiesCommittee.V0.CanonicalCommitteeState where
   arbitrary = genericArbitraryU
+
+instance Arbitrary EntitiesCommittee.V0.CanonicalCommitteeAuthorization where
+  arbitrary = fmap EntitiesCommittee.V0.mkCanonicalCommitteeAuthorization arbitrary
+
+instance Arbitrary GovCommittee.V0.GovCommitteeOut where
+  arbitrary = genericArbitraryU
+
+instance Arbitrary GovCommittee.V0.CanonicalCommittee where
+  arbitrary = genericArbitraryU
+
+instance Arbitrary CanonicalExUnits where
+  arbitrary = mkCanonicalExUnits <$> arbitrary
 
 instance Arbitrary EntitiesStakePools.V0.CanonicalStakePoolState where
-  arbitrary = genericArbitraryU
-
-instance Arbitrary EntitiesStakePools.V0.CanonicalStakePoolParams where
   arbitrary = genericArbitraryU
 
 instance Arbitrary EntitiesStakePools.V0.CanonicalStakePool where
   arbitrary = genericArbitraryU
 
+instance Arbitrary EntitiesStakePools.V0.CanonicalStakePoolParams where
+  arbitrary = genericArbitraryU
+
 instance Arbitrary EntitiesStakePools.V0.EntitiesStakePoolsOut where
   arbitrary = genericArbitraryU
 
-instance Arbitrary EntitiesStakePoolsVRFKeyHashes.V0.EntitiesStakePoolsVRFKeyHashesOut where
+instance Arbitrary EntitiesDReps.V0.CanonicalDRepState where
+  arbitrary = genericArbitraryU
+
+instance Arbitrary EntitiesDReps.V0.EntitiesDRepsOut where
+  arbitrary = genericArbitraryU
+
+instance Arbitrary EntitiesAccounts.V0.CanonicalAccountState where
+  arbitrary = genericArbitraryU
+
+instance Arbitrary EntitiesAccounts.V0.EntitiesAccountsOut where
   arbitrary = genericArbitraryU

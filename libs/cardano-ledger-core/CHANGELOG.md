@@ -37,6 +37,9 @@
 
 ### `testlib`
 
+* Add `EraRulesWithFailures` type family to `EraTest`
+* Remove `roundTripAllPredicateFailures`, `EraRuleProof` and `RuleListEra`
+* Add `examplePParams` and `examplePParamsUpdate` to `EraTest`.
 * Add `EraSpec` and `ledgerEraTestMain`
 * Add `toPackageGolden` and `itGolden`
 * Add `goldenForToJSON`, `itGoldenToJSON`, `aesonGoldenSpec` and `roundTripAesonProperty`

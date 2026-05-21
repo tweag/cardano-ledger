@@ -2,12 +2,11 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
-{-# OPTIONS_GHC -Wno-orphans #-}
 
-module Test.Cardano.Ledger.Mary.Imp (spec) where
+module Test.Cardano.Ledger.Mary.Imp (spec, Allegra.shelleyToBabbageSpec) where
 
 import Cardano.Ledger.Core
-import Cardano.Ledger.Shelley.Rules
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import qualified Test.Cardano.Ledger.Allegra.Imp as Allegra
 import Test.Cardano.Ledger.Imp.Common
 import qualified Test.Cardano.Ledger.Mary.Imp.UtxoSpec as UTXO
@@ -15,7 +14,7 @@ import Test.Cardano.Ledger.Mary.ImpTest
 
 spec ::
   ( MaryEraImp era
-  , Event (EraRule "RUPD" era) ~ RupdEvent
+  , Shelley.Event (EraRule "RUPD" era) ~ Shelley.RupdEvent
   ) =>
   proxy era ->
   Spec

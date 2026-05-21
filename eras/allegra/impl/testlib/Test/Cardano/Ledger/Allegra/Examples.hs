@@ -8,6 +8,7 @@
 -- don't care, we are only interested in serialisation, not validation.
 module Test.Cardano.Ledger.Allegra.Examples (
   ledgerExamples,
+  exampleAllegraTx,
   exampleAllegraBasedTx,
 ) where
 
@@ -16,12 +17,7 @@ import Cardano.Ledger.Allegra.Core
 import Cardano.Ledger.Allegra.Scripts
 import Cardano.Ledger.Allegra.TxBody
 import Cardano.Ledger.Genesis (NoGenesis (..))
-import Cardano.Ledger.Shelley.Rules (
-  ShelleyDelegPredFailure (DelegateeNotRegisteredDELEG),
-  ShelleyDelegsPredFailure (DelplFailure),
-  ShelleyDelplPredFailure (DelegFailure),
-  ShelleyLedgerPredFailure (DelegsFailure),
- )
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Cardano.Ledger.Shelley.Scripts
 import Cardano.Slotting.Slot
 import qualified Data.MapExtras as Map
@@ -43,20 +39,20 @@ import Test.Cardano.Ledger.Shelley.Examples (
 ledgerExamples :: LedgerExamples AllegraEra
 ledgerExamples =
   mkShelleyBasedLedgerExamples
-    ( AllegraApplyTxError . pure . DelegsFailure . DelplFailure . DelegFailure $
-        DelegateeNotRegisteredDELEG @AllegraEra (mkKeyHash 1)
+    ( AllegraApplyTxError . pure . Shelley.DelegsFailure . Shelley.DelplFailure . Shelley.DelegFailure $
+        Shelley.DelegateeNotRegisteredDELEG @AllegraEra (mkKeyHash 1)
     )
     exampleCoin
     exampleAllegraTx
     NoGenesis
-  where
-    exampleAllegraTx :: Tx TopTx AllegraEra
-    exampleAllegraTx =
-      exampleAllegraBasedTx
-        & addShelleyBasedTopTxExampleFee
-        & addShelleyToBabbageExampleProposedPUpdates
-        & addShelleyToBabbageTxCerts
-        & addShelleyToConwayTxCerts
+
+exampleAllegraTx :: Tx TopTx AllegraEra
+exampleAllegraTx =
+  exampleAllegraBasedTx
+    & addShelleyBasedTopTxExampleFee
+    & addShelleyToBabbageExampleProposedPUpdates
+    & addShelleyToBabbageTxCerts
+    & addShelleyToConwayTxCerts
 
 -- Complete transaction which is compatible with any era starting with Allegra.
 -- This transaction forms the basis on which future era transactions will be

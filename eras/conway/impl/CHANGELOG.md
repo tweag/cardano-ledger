@@ -12,7 +12,7 @@
 * Add `validateRefScriptSize`, `updateDormantDRepExpiries`, `updateVotingDRepExpiries`
 * Add `ApplyTick` instance for `ConwayEra`
 * Add `ConwayUtxosEnv`
-* Change `STS` instance of `ConwayUTXOS`: use `ConwayUtxosEnv` as `Environment` and `()` as `State`
+* Change `STS` instance of `ConwayUTXOS`: use `()` as `Environment` and `State`
 * Add `updateTreasuryDonation`
 * Add `checkReferenceInputsNotDisjointFromInputs`
 * Add `ConwayEraScript` superclass to `ConwayEraPlutusTxInfo`
@@ -46,11 +46,15 @@
 
 ### `testlib`
 
+* Add to `Test.Cardano.Ledger.Conway.Examples`:
+  - `exampleConwayOnwardsEraPParams`
+  - `exampleConwayOnwardsEraPParamsUpdate`
+* Change `exampleProposalProcedureParameterChange` to use `exampleConwayOnwardsEraPParamsUpdate`.
 * Export `conwayEraSpecificSpec`
 * Make `Test.Cardano.Ledger.Conway.Imp.spec` accept `Proxy era`
 * In `Test.Cardano.Ledger.Conway.Examples`:
   - Remove `mkConwayBasedExampleTx`, `exampleConwayBasedTxBody`
-  - Add `exampleConwayBasedTx`, `exampleConwayBasedTopTx`
+  - Add `exampleConwayBasedTx`, `exampleConwayBasedTopTx`, `exampleConwayTx`
 
 ## 1.22.0.0
 

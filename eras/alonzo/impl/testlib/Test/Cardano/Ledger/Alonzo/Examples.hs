@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -11,8 +12,13 @@
 module Test.Cardano.Ledger.Alonzo.Examples (
   ledgerExamples,
   mkAlonzoBasedLedgerExamples,
+  exampleAlonzoTx,
   exampleAlonzoBasedTx,
   exampleAlonzoBasedTopTx,
+  exampleAlonzoOnwardsEraPParams,
+  exampleAlonzoOnwardsEraPParamsUpdate,
+  exampleAlonzoPParams,
+  exampleAlonzoPParamsUpdate,
   addAlonzoToConwayExampleReqSigners,
   exampleDatum,
 ) where
@@ -26,7 +32,7 @@ import Cardano.Ledger.Alonzo.Scripts (
   Prices (..),
  )
 import Cardano.Ledger.Alonzo.TxWits (Redeemers (..), TxDats (..))
-import Cardano.Ledger.BaseTypes (StrictMaybe (..))
+import Cardano.Ledger.BaseTypes (Nonce (..), ProtVer (..), StrictMaybe (..))
 import Cardano.Ledger.Coin (Coin (..))
 import Cardano.Ledger.Mary.Value (MaryValue)
 import Cardano.Ledger.Plutus.Data (Data (..), hashData)
@@ -37,12 +43,7 @@ import Cardano.Ledger.Shelley.API (
   NewEpochState (..),
   ProposedPPUpdates (..),
  )
-import Cardano.Ledger.Shelley.Rules (
-  ShelleyDelegPredFailure (DelegateeNotRegisteredDELEG),
-  ShelleyDelegsPredFailure (DelplFailure),
-  ShelleyDelplPredFailure (DelegFailure),
-  ShelleyLedgerPredFailure (DelegsFailure),
- )
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Data.Default (def)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
@@ -54,12 +55,13 @@ import Lens.Micro
 import qualified PlutusLedgerApi.Common as P
 import Test.Cardano.Ledger.Alonzo.Arbitrary (alwaysSucceeds)
 import Test.Cardano.Ledger.Core.KeyPair (mkAddr)
+import Test.Cardano.Ledger.Core.Rational (IsRatio (..))
 import Test.Cardano.Ledger.Core.Utils (mkDummySafeHash, unsafeBoundRational)
 import Test.Cardano.Ledger.Mary.Examples (
   exampleMaryBasedTx,
   exampleMultiAssetValue,
  )
-import Test.Cardano.Ledger.Plutus (alwaysFailsPlutus, zeroTestingCostModelV1)
+import Test.Cardano.Ledger.Plutus (alwaysFailsPlutus, testingCostModels, zeroTestingCostModelV1)
 import Test.Cardano.Ledger.Shelley.Examples (
   LedgerExamples (..),
   addShelleyBasedTopTxExampleFee,
@@ -70,6 +72,8 @@ import Test.Cardano.Ledger.Shelley.Examples (
   exampleNonMyopicRewards,
   examplePayKey,
   examplePoolDistr,
+  exampleShelleyOnwardsEraPParams,
+  exampleShelleyOnwardsEraPParamsUpdate,
   exampleStakeKey,
   exampleTxIns,
   mkKeyHash,
@@ -82,24 +86,15 @@ ledgerExamples =
   mkAlonzoBasedLedgerExamples
     ( AlonzoApplyTxError $
         pure $
-          DelegsFailure $
-            DelplFailure $
-              DelegFailure $
-                DelegateeNotRegisteredDELEG @AlonzoEra (mkKeyHash 1)
+          Shelley.DelegsFailure $
+            Shelley.DelplFailure $
+              Shelley.DelegFailure $
+                Shelley.DelegateeNotRegisteredDELEG @AlonzoEra (mkKeyHash 1)
     )
     exampleAlonzoNewEpochState
     exampleAlonzoTx
     exampleAlonzoGenesis
   where
-    exampleAlonzoTx :: Tx TopTx AlonzoEra
-    exampleAlonzoTx =
-      exampleAlonzoBasedTopTx
-        & addShelleyBasedTopTxExampleFee
-        & addShelleyToBabbageExampleProposedPUpdates
-        & addShelleyToBabbageTxCerts
-        & addShelleyToConwayTxCerts
-        & addAlonzoToConwayExampleReqSigners
-
     exampleAlonzoGenesis =
       AlonzoGenesis
         { agCoinsPerUTxOWord = CoinPerWord $ Coin 1
@@ -112,6 +107,15 @@ ledgerExamples =
         , agMaxCollateralInputs = 30
         , agExtraConfig = Nothing
         }
+
+exampleAlonzoTx :: Tx TopTx AlonzoEra
+exampleAlonzoTx =
+  exampleAlonzoBasedTopTx
+    & addShelleyBasedTopTxExampleFee
+    & addShelleyToBabbageExampleProposedPUpdates
+    & addShelleyToBabbageTxCerts
+    & addShelleyToConwayTxCerts
+    & addAlonzoToConwayExampleReqSigners
 
 mkAlonzoBasedLedgerExamples ::
   forall era.
@@ -244,3 +248,59 @@ addAlonzoToConwayExampleReqSigners tx =
 
 exampleDatum :: Era era => Data era
 exampleDatum = Data (P.Constr 0 [P.List [P.I 0], P.Map [(P.I 1, P.B "1")]])
+
+exampleAlonzoOnwardsEraPParams :: AlonzoEraPParams era => PParams era
+exampleAlonzoOnwardsEraPParams =
+  exampleShelleyOnwardsEraPParams
+    & ppCostModelsL .~ testingCostModels [PlutusV1]
+    & ppPricesL
+      .~ Prices
+        { prMem = 577 %! 10_000
+        , prSteps = 721 %! 10_000_000
+        }
+    & ppMaxTxExUnitsL .~ ExUnits 14_000_000 10_000_000_000
+    & ppMaxBlockExUnitsL .~ ExUnits 62_000_000 20_000_000_000
+    & ppMaxValSizeL .~ 5_000
+    & ppCollateralPercentageL .~ 150
+    & ppMaxCollateralInputsL .~ 3
+
+exampleAlonzoOnwardsEraPParamsUpdate :: AlonzoEraPParams era => PParamsUpdate era
+exampleAlonzoOnwardsEraPParamsUpdate =
+  exampleShelleyOnwardsEraPParamsUpdate
+    & ppuCostModelsL .~ SJust (testingCostModels [PlutusV1])
+    & ppuPricesL
+      .~ SJust
+        Prices
+          { prMem = 577 %! 10_000
+          , prSteps = 721 %! 10_000_000
+          }
+    & ppuMaxTxExUnitsL .~ SJust (ExUnits 14_000_000 10_000_000_000)
+    & ppuMaxBlockExUnitsL .~ SJust (ExUnits 62_000_000 20_000_000_000)
+    & ppuMaxValSizeL .~ SJust 5_000
+    & ppuCollateralPercentageL .~ SJust 150
+    & ppuMaxCollateralInputsL .~ SJust 3
+
+exampleAlonzoPParams ::
+  forall era.
+  (AlonzoEraPParams era, AtMostEra "Alonzo" era, ExactEra AlonzoEra era) =>
+  PParams era
+exampleAlonzoPParams =
+  exampleAlonzoOnwardsEraPParams
+    & ppDL .~ 1 %! 2
+    & ppExtraEntropyL .~ NeutralNonce
+    & ppCoinsPerUTxOWordL .~ CoinPerWord (Coin 34_482)
+
+exampleAlonzoPParamsUpdate ::
+  forall era.
+  ( AlonzoEraPParams era
+  , AtMostEra "Alonzo" era
+  , AtMostEra "Babbage" era
+  , ExactEra AlonzoEra era
+  ) =>
+  PParamsUpdate era
+exampleAlonzoPParamsUpdate =
+  exampleAlonzoOnwardsEraPParamsUpdate
+    & ppuDL .~ SJust (1 %! 2)
+    & ppuExtraEntropyL .~ SJust NeutralNonce
+    & ppuCoinsPerUTxOWordL .~ SJust (CoinPerWord (Coin 34_482))
+    & ppuProtocolVersionL .~ SJust (ProtVer (eraProtVerHigh @era) 0)

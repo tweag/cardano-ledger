@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -10,14 +11,18 @@
 module Test.Cardano.Ledger.Babbage.Examples (
   ledgerExamples,
   exampleBabbageNewEpochState,
+  exampleBabbageTx,
   exampleBabbageBasedTx,
   exampleBabbageBasedTopTx,
+  exampleBabbageOnwardsEraPParams,
+  exampleBabbageOnwardsEraPParamsUpdate,
+  exampleBabbagePParamsUpdate,
 ) where
 
 import Cardano.Ledger.Alonzo.Plutus.Context (EraPlutusTxInfo)
 import Cardano.Ledger.Babbage (ApplyTxError (BabbageApplyTxError), BabbageEra)
 import Cardano.Ledger.Babbage.Core
-import Cardano.Ledger.BaseTypes (StrictMaybe (..))
+import Cardano.Ledger.BaseTypes (ProtVer (..), StrictMaybe (..))
 import Cardano.Ledger.Coin (Coin (..), CompactForm (..))
 import Cardano.Ledger.Genesis (NoGenesis (..))
 import Cardano.Ledger.Mary.Value (MaryValue (..))
@@ -26,13 +31,14 @@ import Cardano.Ledger.Plutus.Data (
   dataToBinaryData,
  )
 import Cardano.Ledger.Plutus.Language (Language (..), plutusBinary)
-import Cardano.Ledger.Shelley.LedgerState (NewEpochState (..))
-import Cardano.Ledger.Shelley.Rules (
-  ShelleyDelegPredFailure (DelegateeNotRegisteredDELEG),
-  ShelleyDelegsPredFailure (DelplFailure),
-  ShelleyDelplPredFailure (DelegFailure),
-  ShelleyLedgerPredFailure (DelegsFailure),
+import Cardano.Ledger.Shelley.LedgerState (
+  EraCertState (..),
+  NewEpochState (..),
+  StashedAVVMAddresses,
  )
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
+import Cardano.Ledger.State (EraStake, EraUTxO)
+import Data.Default (Default)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
 import qualified Data.MapExtras as Map
@@ -44,13 +50,14 @@ import Test.Cardano.Ledger.Alonzo.Examples (
   addAlonzoToConwayExampleReqSigners,
   exampleAlonzoBasedTopTx,
   exampleAlonzoBasedTx,
+  exampleAlonzoOnwardsEraPParams,
+  exampleAlonzoOnwardsEraPParamsUpdate,
   exampleDatum,
   mkAlonzoBasedLedgerExamples,
  )
-import Test.Cardano.Ledger.Babbage.Era
 import Test.Cardano.Ledger.Core.KeyPair (mkAddr)
 import Test.Cardano.Ledger.Mary.Examples (exampleMultiAssetValue)
-import Test.Cardano.Ledger.Plutus (alwaysSucceedsPlutus)
+import Test.Cardano.Ledger.Plutus (alwaysSucceedsPlutus, testingCostModels)
 import Test.Cardano.Ledger.Shelley.Examples (
   LedgerExamples (..),
   addShelleyBasedTopTxExampleFee,
@@ -70,27 +77,32 @@ ledgerExamples =
   mkAlonzoBasedLedgerExamples
     ( BabbageApplyTxError $
         pure $
-          DelegsFailure $
-            DelplFailure $
-              DelegFailure $
-                DelegateeNotRegisteredDELEG (mkKeyHash 1)
+          Shelley.DelegsFailure $
+            Shelley.DelplFailure $
+              Shelley.DelegFailure $
+                Shelley.DelegateeNotRegisteredDELEG (mkKeyHash 1)
     )
     exampleBabbageNewEpochState
     exampleBabbageTx
     NoGenesis
-  where
-    exampleBabbageTx :: Tx TopTx BabbageEra
-    exampleBabbageTx =
-      exampleBabbageBasedTopTx
-        & addShelleyBasedTopTxExampleFee
-        & addShelleyToBabbageExampleProposedPUpdates
-        & addShelleyToBabbageTxCerts
-        & addShelleyToConwayTxCerts
-        & addAlonzoToConwayExampleReqSigners
+
+exampleBabbageTx :: Tx TopTx BabbageEra
+exampleBabbageTx =
+  exampleBabbageBasedTopTx
+    & addShelleyBasedTopTxExampleFee
+    & addShelleyToBabbageExampleProposedPUpdates
+    & addShelleyToBabbageTxCerts
+    & addShelleyToConwayTxCerts
+    & addAlonzoToConwayExampleReqSigners
 
 exampleBabbageNewEpochState ::
-  ( BabbageEraTest era
+  ( BabbageEraPParams era
+  , EraGov era
+  , EraStake era
+  , EraCertState era
+  , EraUTxO era
   , Value era ~ MaryValue
+  , Default (StashedAVVMAddresses era)
   ) =>
   NewEpochState era
 exampleBabbageNewEpochState =
@@ -191,3 +203,23 @@ exampleCollateralOutput =
   mkBasicTxOut
     (mkAddr examplePayKey exampleStakeKey)
     (MaryValue (Coin 8675309) mempty)
+
+exampleBabbageOnwardsEraPParams :: BabbageEraPParams era => PParams era
+exampleBabbageOnwardsEraPParams =
+  exampleAlonzoOnwardsEraPParams
+    & ppCostModelsL .~ testingCostModels [PlutusV1, PlutusV2]
+    & ppCoinsPerUTxOByteL .~ CoinPerByte (CompactCoin 4_310)
+
+exampleBabbageOnwardsEraPParamsUpdate :: BabbageEraPParams era => PParamsUpdate era
+exampleBabbageOnwardsEraPParamsUpdate =
+  exampleAlonzoOnwardsEraPParamsUpdate
+    & ppuCostModelsL .~ SJust (testingCostModels [PlutusV1, PlutusV2])
+    & ppuCoinsPerUTxOByteL .~ SJust (CoinPerByte (CompactCoin 4_310))
+
+exampleBabbagePParamsUpdate ::
+  forall era.
+  (BabbageEraPParams era, AtMostEra "Babbage" era) =>
+  PParamsUpdate era
+exampleBabbagePParamsUpdate =
+  exampleBabbageOnwardsEraPParamsUpdate
+    & ppuProtocolVersionL .~ SJust (ProtVer (eraProtVerHigh @era) 0)
