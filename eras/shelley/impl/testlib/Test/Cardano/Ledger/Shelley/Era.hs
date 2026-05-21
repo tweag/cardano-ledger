@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedLists #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
@@ -30,10 +31,16 @@ import Data.Default
 import qualified Data.Map.Strict as Map
 import Data.Typeable
 import Lens.Micro
+import Paths_cardano_ledger_shelley (getDataFileName)
 import Test.Cardano.Ledger.Common
 import Test.Cardano.Ledger.Era
 import Test.Cardano.Ledger.Shelley.Arbitrary ()
 import Test.Cardano.Ledger.Shelley.Binary.Annotator ()
+import Test.Cardano.Ledger.Shelley.Examples (
+  exampleShelleyPParams,
+  exampleShelleyPParamsUpdate,
+  exampleShelleyTx,
+ )
 import Test.Cardano.Ledger.Shelley.TreeDiff ()
 
 class
@@ -58,11 +65,32 @@ class
   ShelleyEraTest era
 
 instance EraTest ShelleyEra where
+  type
+    EraRulesWithFailures ShelleyEra =
+      '[ "BBODY"
+       , "DELEG"
+       , "DELEGS"
+       , "DELPL"
+       , "LEDGER"
+       , "LEDGERS"
+       , "POOL"
+       , "PPUP"
+       , "UTXO"
+       , "UTXOW"
+       ]
   zeroCostModels = emptyCostModels
 
   mkTestAccountState = mkShelleyTestAccountState
 
   accountsFromAccountsMap = shelleyAccountsFromAccountsMap
+
+  mkEraFullPath = getDataFileName
+
+  exampleTx = exampleShelleyTx
+
+  examplePParams = exampleShelleyPParams
+
+  examplePParamsUpdate = exampleShelleyPParamsUpdate
 
 instance ShelleyEraTest ShelleyEra
 

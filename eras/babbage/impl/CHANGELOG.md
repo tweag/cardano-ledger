@@ -2,6 +2,8 @@
 
 ## 1.14.0.0
 
+* Replace arguments of `babbageEvalScriptsTxInvalid` with `StAnnTx`
+* Replace arguments of `expectScriptsToPass` with `StAnnTx`
 * Change `Signal` to `StAnnTx TopTx era` for: `BabbageLEDGER`, `BabbageUTXOW`, `BabbageUTXO`, `BabbageUTXOS`
 * Remove `ToCBOR` and `FromCBOR` instances for `BabbageTxOut`
 * Add `ApplyTick` instance for `BabbageEra`
@@ -29,12 +31,16 @@
 
 ### `testlib`
 
+* Add  to `Test.Cardano.Ledger.Babbage.Examples`:
+  - `exampleBabbagePParamsUpdate`
+  - `exampleBabbageOnwardsEraPParams`
+  - `exampleBabbageOnwardsEraPParamsUpdate`
 * Add `proxy era` argument to `babbageEraSpecificSpec`
 * Make `Test.Cardano.Ledger.Babbage.Imp.spec` accept `Proxy era`
 * Add `Test.Cardano.Ledger.Babbage.Imp.PoolSpec` module with `babbageEraSpecificSpec`
 * In `Test.Cardano.Ledger.Babbage.Examples`:
   - Remove `mkBabbageBasedExampleTx`, `exampleBabbageBasedTxBody`
-  - Add `exampleBabbageBasedTx`, `exampleBabbageBasedTopTx`
+  - Add `exampleBabbageBasedTx`, `exampleBabbageBasedTopTx`, `exampleBabbageTx`
 
 ## 1.13.0.0
 

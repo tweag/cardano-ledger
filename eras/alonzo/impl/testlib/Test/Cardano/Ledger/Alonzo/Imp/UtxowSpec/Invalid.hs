@@ -7,7 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Test.Cardano.Ledger.Alonzo.Imp.UtxowSpec.Invalid (spec, alonzoEraSpecificSpec) where
+module Test.Cardano.Ledger.Alonzo.Imp.UtxowSpec.Invalid (spec, alonzoToConwaySpec) where
 
 import Cardano.Ledger.Allegra.Scripts (AllegraEraScript (..))
 import Cardano.Ledger.Alonzo (AlonzoEra)
@@ -32,7 +32,7 @@ import Cardano.Ledger.Plutus (
   withSLanguage,
  )
 import Cardano.Ledger.Shelley.LedgerState (epochStateStakePoolsL, nesEsL)
-import Cardano.Ledger.Shelley.Rules (ShelleyUtxowPredFailure (..))
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Data.Map.Strict as Map
 import Data.Maybe (isJust)
@@ -58,7 +58,9 @@ spec = describe "Invalid transactions" $ do
     scriptHash <- impAddNativeScript $ mkTimeStart 100
     txIn <- produceScript scriptHash
     let tx = mkBasicTx mkBasicTxBody & bodyTxL . inputsTxBodyL .~ [txIn]
-    submitFailingTx tx [injectFailure $ ScriptWitnessNotValidatingUTXOW $ NES.singleton scriptHash]
+    submitFailingTx
+      tx
+      [injectFailure $ Shelley.ScriptWitnessNotValidatingUTXOW $ NES.singleton scriptHash]
 
   let resetAddrWits tx = updateAddrTxWits $ tx & witsTxL . addrTxWitsL .~ []
       fixupResetAddrWits = fixupPPHash >=> resetAddrWits
@@ -161,7 +163,7 @@ spec = describe "Invalid transactions" $ do
                   . (witsTxL . rdmrsTxWitsL .~ mempty)
               resetScriptHash = pure . (bodyTxL . scriptIntegrityHashTxBodyL .~ SNothing)
           withPostFixup (dropScriptWitnesses >=> resetScriptHash >=> resetAddrWits) $
-            submitFailingTx tx [injectFailure $ MissingScriptWitnessesUTXOW $ NES.singleton scriptHash]
+            submitFailingTx tx [injectFailure $ Shelley.MissingScriptWitnessesUTXOW $ NES.singleton scriptHash]
 
         it "Redeemer with incorrect purpose" $ do
           let scriptHash = alwaysSucceedsWithDatumHash
@@ -200,7 +202,7 @@ spec = describe "Invalid transactions" $ do
           withPostFixup (pure . dropCollateralWitness) $
             submitFailingTx
               tx
-              [injectFailure $ MissingVKeyWitnessesUTXOW $ NES.singleton $ asWitness collateralHash]
+              [injectFailure $ Shelley.MissingVKeyWitnessesUTXOW $ NES.singleton $ asWitness collateralHash]
 
         -- Post-Alonzo eras produce additional post-Alonzo predicate failures that we can't include here
         unless (lang > eraMaxLanguage @AlonzoEra) $ do
@@ -227,11 +229,11 @@ spec = describe "Invalid transactions" $ do
             it "Spending" $
               testPurpose (mkSpendingPurpose $ AsIx 99)
 
-alonzoEraSpecificSpec ::
+alonzoToConwaySpec ::
   forall era.
   (AlonzoEraImp era, ShelleyEraTxCert era) =>
   SpecWith (ImpInit (LedgerSpec era))
-alonzoEraSpecificSpec = describe "Invalid transactions" $ do
+alonzoToConwaySpec = describe "Invalid transactions" $ do
   forM_ (eraLanguages @era) $ \lang ->
     withSLanguage lang $ \slang ->
       describe (show lang) $ do
