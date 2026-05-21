@@ -80,10 +80,8 @@ import Cardano.Ledger.Binary (
   DecoderError (..),
   EncCBOR (..),
   Encoding,
-  FromCBOR (..),
   Interns,
   Sized (..),
-  ToCBOR (..),
   TokenType (..),
   cborError,
   decodeBreakOr,
@@ -91,10 +89,13 @@ import Cardano.Ledger.Binary (
   decodeListLenOrIndef,
   decodeMemPack,
   decodeNestedCborBytes,
+  decodeSparseKeyed,
   encodeListLen,
   encodeNestedCbor,
   getDecoderVersion,
+  ifDecoderVersionAtLeast,
   interns,
+  natVersion,
   peekTokenType,
  )
 import Cardano.Ledger.Binary.Coders
@@ -496,14 +497,6 @@ pattern TxOutCompactDH addr vl dh <-
 
 {-# COMPLETE TxOutCompact, TxOutCompactDH #-}
 
-instance (EraScript era, Val (Value era)) => ToCBOR (BabbageTxOut era) where
-  toCBOR = toEraCBOR @era
-  {-# INLINE toCBOR #-}
-
-instance (EraScript era, Val (Value era)) => FromCBOR (BabbageTxOut era) where
-  fromCBOR = fromEraCBOR @era
-  {-# INLINE fromCBOR #-}
-
 instance (EraScript era, Val (Value era)) => EncCBOR (BabbageTxOut era) where
   encCBOR = \case
     TxOutCompactRefScript addr cv d rs -> encodeTxOut addr cv d (SJust rs)
@@ -614,7 +607,11 @@ decodeTxOut ::
   (forall s'. Decoder s' (Addr, CompactAddr)) ->
   Decoder s (BabbageTxOut era)
 decodeTxOut decAddr = do
-  dtxo <- decode $ SparseKeyed "TxOut" initial bodyFields requiredFields
+  dtxo <-
+    ifDecoderVersionAtLeast
+      (natVersion @12)
+      (decodeSparseKeyed "TxOut" requiredFields initial decoderForKey)
+      (decode $ SparseKeyed "TxOut" initial bodyFields requiredFields)
   case dtxo of
     DecodingTxOut SNothing _ _ _ ->
       cborError $ DecoderErrorCustom "BabbageTxOut" "Impossible: no Addr"
@@ -623,6 +620,22 @@ decodeTxOut decAddr = do
   where
     initial :: DecodingTxOut era
     initial = DecodingTxOut SNothing mempty NoDatum SNothing
+    decoderForKey :: DecodingTxOut era -> Word -> Maybe (Decoder s (DecodingTxOut era))
+    decoderForKey txo = \case
+      0 -> Just $ do
+        !x <- decAddr
+        pure txo {decodingTxOutAddr = SJust x}
+      1 -> Just $ do
+        !x <- decCBOR
+        pure txo {decodingTxOutVal = x}
+      2 -> Just $ do
+        !x <- decCBOR
+        pure txo {decodingTxOutDatum = x}
+      3 -> Just $ do
+        !x <- decodeCIC "Script"
+        pure txo {decodingTxOutScript = SJust x}
+      _ -> Nothing
+    {-# INLINE decoderForKey #-}
     bodyFields :: (Word -> Field (DecodingTxOut era))
     bodyFields 0 =
       field

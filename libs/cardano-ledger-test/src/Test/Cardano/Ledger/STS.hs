@@ -17,7 +17,9 @@ import Cardano.Ledger.BaseTypes
 import Cardano.Ledger.Coin (Coin)
 import Cardano.Ledger.Conway.Core
 import Cardano.Ledger.Credential (Credential)
-import Cardano.Ledger.Shelley.Rules hiding (epochNo, slotNo)
+import Cardano.Ledger.Shelley.API.Mempool (ApplyTx (..))
+import Cardano.Ledger.Shelley.LedgerState (utxosUtxo)
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Constrained.API hiding (forAll)
 import Control.Monad.Reader
 import Control.State.Transition.Extended
@@ -66,7 +68,7 @@ stsPropertyV2 ::
   , Signal (EraRule r era) ~ sig
   , PredicateFailure (EraRule r era) ~ fail
   , STS (EraRule r era)
-  , BaseM (EraRule r era) ~ ReaderT Globals Identity
+  , BaseM (EraRule r era) ~ ReaderT Globals Shelley.Identity
   , Testable p
   , HasSpec env
   , HasSpec st
@@ -91,7 +93,7 @@ stsPropertyV2' ::
   , Signal (EraRule r ConwayEra) ~ sig
   , PredicateFailure (EraRule r ConwayEra) ~ fail
   , STS (EraRule r ConwayEra)
-  , BaseM (EraRule r ConwayEra) ~ ReaderT Globals Identity
+  , BaseM (EraRule r ConwayEra) ~ ReaderT Globals Shelley.Identity
   , Testable p
   , HasSpec env
   , HasSpec st
@@ -137,6 +139,44 @@ stsPropertyV2' specEnv specState specSig specPostState theProp =
                             )
                             $ theProp env st sig st'
 
+-- | A variant of 'stsPropertyV2' for rules whose 'Signal' has no 'HasSpec'
+-- instance (for example 'StAnnTx').
+stsPropertyV2Gen ::
+  forall r era env st sig fail p.
+  ( era ~ ConwayEra
+  , Environment (EraRule r era) ~ env
+  , State (EraRule r era) ~ st
+  , Signal (EraRule r era) ~ sig
+  , PredicateFailure (EraRule r era) ~ fail
+  , STS (EraRule r era)
+  , BaseM (EraRule r era) ~ ReaderT Globals Shelley.Identity
+  , Testable p
+  , HasSpec env
+  , HasSpec st
+  , ToExpr env
+  , ToExpr st
+  , ToExpr sig
+  , ToExpr fail
+  ) =>
+  Specification env ->
+  (env -> Specification st) ->
+  (env -> st -> Gen sig) ->
+  (env -> st -> sig -> st -> p) ->
+  Property
+stsPropertyV2Gen specEnv specState genSig theProp =
+  withMaxShrinks 200 $
+    uncurry forAllShrinkBlind (genShrinkFromSpec specEnv) $ \env ->
+      counterexample (show $ toExpr env) $
+        uncurry forAllShrinkBlind (genShrinkFromSpec $ specState env) $ \st ->
+          counterexample (show $ toExpr st) $
+            forAllBlind (genSig env st) $ \sig ->
+              counterexample (show $ toExpr sig) $
+                runShelleyBase $ do
+                  res <- applySTS @(EraRule r ConwayEra) $ TRC (env, st, sig)
+                  pure $ case res of
+                    Left pfailures -> counterexample (show $ toExpr pfailures) $ property False
+                    Right st' -> property $ theProp env st sig st'
+
 -- STS properties ---------------------------------------------------------
 
 prop_GOV :: Property
@@ -178,10 +218,21 @@ prop_ENACT =
 
 prop_UTXOS :: Property
 prop_UTXOS =
-  stsPropertyV2 @"UTXOS"
+  stsPropertyV2Gen @"UTXOS"
     trueSpec
     (\_env -> trueSpec)
-    (\_env _st -> trueSpec)
+    ( \_env _st -> do
+        pp <- genFromSpec trueSpec
+        utxo <- genFromSpec trueSpec
+        tx <- genFromSpec trueSpec
+        pure $
+          mkStAnnTx
+            (epochInfo testGlobals)
+            (systemStart testGlobals)
+            pp
+            utxo
+            tx
+    )
     $ \_env _st _sig _st' -> True
 
 -- prop_LEDGER :: Property
@@ -271,10 +322,19 @@ prop_GOVCERT =
 
 prop_UTXOW :: Property
 prop_UTXOW =
-  stsPropertyV2 @"UTXOW"
+  stsPropertyV2Gen @"UTXOW"
     trueSpec
     (\_env -> trueSpec)
-    (\_env _st -> trueSpec)
+    ( \env st -> do
+        tx <- genFromSpec trueSpec
+        pure $
+          mkStAnnTx
+            (epochInfo testGlobals)
+            (systemStart testGlobals)
+            (Shelley.uePParams env)
+            (utxosUtxo st)
+            tx
+    )
     $ \_env _st _sig _st' -> True
 
 -- prop_UTXO :: Property

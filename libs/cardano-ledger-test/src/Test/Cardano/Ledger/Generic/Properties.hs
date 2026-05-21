@@ -14,22 +14,18 @@
 module Test.Cardano.Ledger.Generic.Properties where
 
 import Cardano.Ledger.Alonzo.Tx (IsValid (..))
-import Cardano.Ledger.BaseTypes (ShelleyBase)
+import Cardano.Ledger.BaseTypes (ShelleyBase, epochInfo, systemStart)
 import Cardano.Ledger.Coin (Coin (..))
 import Cardano.Ledger.Core
+import Cardano.Ledger.Shelley.API.Mempool (ApplyTx (..))
 import Cardano.Ledger.Shelley.LedgerState (
   LedgerState (..),
   NewEpochState,
   PulsingRewUpdate,
   UTxOState,
+  utxosUtxo,
  )
-import Cardano.Ledger.Shelley.Rules (
-  LedgerEnv (..),
-  RupdEnv,
-  ShelleyLedgersEnv,
-  ShelleyTICK,
-  UtxoEnv (..),
- )
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Cardano.Ledger.Shelley.State
 import Cardano.Slotting.Slot (EpochNo, SlotNo (..))
 import Control.Monad.Trans.RWS.Strict (gets)
@@ -75,6 +71,7 @@ import Test.Cardano.Ledger.Generic.TxGen (
  )
 import Test.Cardano.Ledger.Shelley.Serialisation.EraIndepGenerators ()
 import Test.Cardano.Ledger.Shelley.TreeDiff ()
+import Test.Cardano.Ledger.Shelley.Utils (testGlobals)
 import Test.Control.State.Transition.Trace (Trace (..), lastState)
 import Test.Control.State.Transition.Trace.Generator.QuickCheck (HasTrace (..))
 
@@ -82,24 +79,26 @@ import Test.Control.State.Transition.Trace.Generator.QuickCheck (HasTrace (..))
 -- Top level generators of TRC
 
 genTxAndUTXOState ::
-  ( Signal (EraRule "LEDGER" era) ~ Tx TopTx era
+  ( ApplyTx era
+  , Signal (EraRule "LEDGER" era) ~ StAnnTx TopTx era
   , State (EraRule "LEDGER" era) ~ LedgerState era
-  , Environment (EraRule "LEDGER" era) ~ LedgerEnv era
-  , Environment (EraRule "UTXOW" era) ~ UtxoEnv era
+  , Environment (EraRule "LEDGER" era) ~ Shelley.LedgerEnv era
+  , Environment (EraRule "UTXOW" era) ~ Shelley.UtxoEnv era
   , State (EraRule "UTXOW" era) ~ UTxOState era
-  , Tx TopTx era ~ Signal (EraRule "UTXOW" era)
+  , StAnnTx TopTx era ~ Signal (EraRule "UTXOW" era)
   , EraGenericGen era
   ) =>
   GenSize -> Gen (TRC (EraRule "UTXOW" era), GenState era)
 genTxAndUTXOState gsize = do
-  (TRC (LedgerEnv slotNo _ _ pp _, ledgerState, vtx), genState) <- genTxAndLEDGERState gsize
-  pure (TRC (UtxoEnv slotNo pp def, lsUTxOState ledgerState, vtx), genState)
+  (TRC (Shelley.LedgerEnv slotNo _ _ pp _, ledgerState, vtx), genState) <- genTxAndLEDGERState gsize
+  pure (TRC (Shelley.UtxoEnv slotNo pp def, lsUTxOState ledgerState, vtx), genState)
 
 genTxAndLEDGERState ::
   forall era.
-  ( Signal (EraRule "LEDGER" era) ~ Tx TopTx era
+  ( ApplyTx era
+  , Signal (EraRule "LEDGER" era) ~ StAnnTx TopTx era
   , State (EraRule "LEDGER" era) ~ LedgerState era
-  , Environment (EraRule "LEDGER" era) ~ LedgerEnv era
+  , Environment (EraRule "LEDGER" era) ~ Shelley.LedgerEnv era
   , EraGenericGen era
   ) =>
   GenSize ->
@@ -114,8 +113,15 @@ genTxAndLEDGERState sizes = do
         model <- gets gsModel
         pp <- gets (gePParams . gsGenEnv)
         let ledgerState = extract @(LedgerState era) model
-            ledgerEnv = LedgerEnv slotNo Nothing txIx pp (ChainAccountState (Coin 0) (Coin 0))
-        pure $ TRC (ledgerEnv, ledgerState, tx)
+            ledgerEnv = Shelley.LedgerEnv slotNo Nothing txIx pp (ChainAccountState (Coin 0) (Coin 0))
+            stAnnTx =
+              mkStAnnTx
+                (epochInfo testGlobals)
+                (systemStart testGlobals)
+                pp
+                (utxosUtxo (lsUTxOState ledgerState))
+                tx
+        pure $ TRC (ledgerEnv, ledgerState, stAnnTx)
   (trc, genstate) <- runGenRS sizes (initStableFields >> genT)
   pure (trc, genstate)
 
@@ -125,7 +131,7 @@ genTxAndLEDGERState sizes = do
 testTxValidForLEDGER ::
   forall era.
   ( Reflect era
-  , Signal (EraRule "LEDGER" era) ~ Tx TopTx era
+  , Signal (EraRule "LEDGER" era) ~ StAnnTx TopTx era
   , State (EraRule "LEDGER" era) ~ LedgerState era
   , ToExpr (PredicateFailure (EraRule "LEDGER" era))
   , EraTest era
@@ -135,24 +141,25 @@ testTxValidForLEDGER ::
   ) =>
   (TRC (EraRule "LEDGER" era), GenState era) ->
   Property
-testTxValidForLEDGER (trc@(TRC (env, ledgerState, vtx)), _genstate) =
-  -- trc encodes the initial (generated) state, vtx is the transaction
-  case runSTSWithContext @era trc of
-    Right ledgerState' ->
-      -- UTxOState and CertState after applying the transaction $$$
-      classify (coerce (isValid' (reify @era) vtx)) "TxValid" $
-        totalAda ledgerState' === totalAda ledgerState
-    Left errs ->
-      counterexample
-        ( showExpr env
-            ++ "\n\n"
-            ++ showExpr ledgerState
-            ++ "\n\n"
-            ++ showExpr vtx
-            ++ "\n\n"
-            ++ showExpr errs
-        )
-        (property False)
+testTxValidForLEDGER (trc@(TRC (env, ledgerState, vstAnnTx)), _genstate) =
+  -- trc encodes the initial (generated) state, vstAnnTx is the transaction
+  let vtx = vstAnnTx ^. txStAnnTxG
+   in case runSTSWithContext @era trc of
+        Right ledgerState' ->
+          -- UTxOState and CertState after applying the transaction $$$
+          classify (coerce (isValid' (reify @era) vtx)) "TxValid" $
+            totalAda ledgerState' === totalAda ledgerState
+        Left errs ->
+          counterexample
+            ( showExpr env
+                ++ "\n\n"
+                ++ showExpr ledgerState
+                ++ "\n\n"
+                ++ showExpr vtx
+                ++ "\n\n"
+                ++ showExpr errs
+            )
+            (property False)
 
 -- =============================================
 -- Make some property tests
@@ -258,19 +265,19 @@ adaIsPreservedInEachEpoch ::
   , State (EraRule "LEDGER" era) ~ LedgerState era
   , State (EraRule "LEDGERS" era) ~ LedgerState era
   , Environment (EraRule "NEWEPOCH" era) ~ ()
-  , Environment (EraRule "RUPD" era) ~ RupdEnv era
-  , Environment (EraRule "LEDGERS" era) ~ ShelleyLedgersEnv era
+  , Environment (EraRule "RUPD" era) ~ Shelley.RupdEnv era
+  , Environment (EraRule "LEDGERS" era) ~ Shelley.ShelleyLedgersEnv era
   , Environment (EraRule "TICK" era) ~ ()
-  , Environment (EraRule "LEDGER" era) ~ LedgerEnv era
+  , Environment (EraRule "LEDGER" era) ~ Shelley.LedgerEnv era
   , Signal (EraRule "NEWEPOCH" era) ~ EpochNo
   , Signal (EraRule "RUPD" era) ~ SlotNo
   , Signal (EraRule "LEDGERS" era) ~ Seq (Tx TopTx era)
   , Signal (EraRule "TICK" era) ~ SlotNo
-  , Signal (EraRule "LEDGER" era) ~ Tx TopTx era
+  , Signal (EraRule "LEDGER" era) ~ StAnnTx TopTx era
   , BaseM (EraRule "NEWEPOCH" era) ~ ShelleyBase
   , Embed (EraRule "TICK" era) (MOCKCHAIN era)
-  , Embed (EraRule "NEWEPOCH" era) (ShelleyTICK era)
-  , Embed (EraRule "RUPD" era) (ShelleyTICK era)
+  , Embed (EraRule "NEWEPOCH" era) (Shelley.ShelleyTICK era)
+  , Embed (EraRule "RUPD" era) (Shelley.ShelleyTICK era)
   , Embed (EraRule "LEDGERS" era) (MOCKCHAIN era)
   , EraGenericGen era
   , ToExpr (PredicateFailure (EraRule "NEWEPOCH" era))

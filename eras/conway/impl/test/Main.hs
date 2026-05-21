@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeApplications #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
 
 module Main where
 
@@ -12,13 +13,21 @@ import qualified Test.Cardano.Ledger.Conway.GenesisSpec as Genesis
 import qualified Test.Cardano.Ledger.Conway.GoldenSpec as GoldenSpec
 import qualified Test.Cardano.Ledger.Conway.GoldenTranslation as GoldenTranslation
 import qualified Test.Cardano.Ledger.Conway.GovActionReorderSpec as GovActionReorder
+import qualified Test.Cardano.Ledger.Conway.Imp as Imp
 import Test.Cardano.Ledger.Conway.Plutus.PlutusSpec as PlutusSpec
 import qualified Test.Cardano.Ledger.Conway.Spec as ConwaySpec
 import qualified Test.Cardano.Ledger.Conway.TxInfoSpec as TxInfo
+import Test.Cardano.Ledger.Era
 import Test.Cardano.Ledger.Shelley.JSON (roundTripJsonShelleyEraSpec)
 
+instance EraSpec ConwayEra where
+  eraImpSpec era = do
+    Imp.alonzoToConwaySpec era
+    Imp.conwayOnlySpec
+    Imp.spec era
+
 main :: IO ()
-main = ledgerTestMain $ do
+main = ledgerEraTestMain @ConwayEra $ do
   describe "Conway era-generic" $ ConwaySpec.spec @ConwayEra
   describe "Conway era-specific" $ do
     GoldenTranslation.spec

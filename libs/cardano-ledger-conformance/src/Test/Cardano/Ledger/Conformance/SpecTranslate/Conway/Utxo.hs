@@ -3,6 +3,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -11,23 +13,17 @@
 module Test.Cardano.Ledger.Conformance.SpecTranslate.Conway.Utxo () where
 
 import Cardano.Ledger.Coin (Coin (..))
-import Cardano.Ledger.Conway.Core (EraPParams (..), PParams)
-import Cardano.Ledger.Shelley.Rules (UtxoEnv (..))
-import Data.Functor.Identity (Identity)
-import qualified MAlonzo.Code.Ledger.Foreign.API as Agda
+import Cardano.Ledger.Conway (ConwayEra)
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
+import qualified MAlonzo.Code.Ledger.Conway.Foreign.API as Agda
 import Test.Cardano.Ledger.Conformance.SpecTranslate.Conway.Base (SpecTranslate (..))
 import Test.Cardano.Ledger.Conformance.SpecTranslate.Conway.Cert ()
 
-instance
-  ( SpecRep (PParams era) ~ Agda.PParams
-  , SpecTranslate ctx (PParamsHKD Identity era)
-  ) =>
-  SpecTranslate ctx (UtxoEnv era)
-  where
-  type SpecRep (UtxoEnv era) = Agda.UTxOEnv
+instance SpecTranslate ConwayEra (Shelley.UtxoEnv ConwayEra) where
+  type SpecRep ConwayEra (Shelley.UtxoEnv ConwayEra) = Agda.UTxOEnv
 
   toSpecRep x =
     Agda.MkUTxOEnv
-      <$> toSpecRep (ueSlot x)
-      <*> toSpecRep (uePParams x)
+      <$> toSpecRep (Shelley.ueSlot x)
+      <*> toSpecRep (Shelley.uePParams x)
       <*> toSpecRep (Coin 10_000_000) -- TODO: Fix generating types

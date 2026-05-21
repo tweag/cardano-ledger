@@ -4,9 +4,11 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
 
 module Test.Cardano.Ledger.Conformance.Spec.Base (spec) where
 
+import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Hashes (ADDRHASH)
 import Cardano.Ledger.TxIn (TxId)
 import Data.List (isInfixOf)
@@ -24,12 +26,13 @@ import Test.Cardano.Ledger.Conformance (
 import Test.Cardano.Ledger.Conformance.Spec.Conway ()
 
 hashDisplayProp ::
-  forall a.
+  forall era a.
   ( Typeable a
   , Arbitrary a
-  , SpecTranslate () a
-  , SpecNormalize (SpecRep a)
-  , ToExpr (SpecRep a)
+  , SpecTranslate era a
+  , SpecContext era a ~ ()
+  , SpecNormalize (SpecRep era a)
+  , ToExpr (SpecRep era a)
   , ToExpr a
   ) =>
   Spec
@@ -37,7 +40,7 @@ hashDisplayProp = prop (show $ typeRep (Proxy @a)) $ do
   someHash <- arbitrary @a
   let
     specRes =
-      case runSpecTransM () (specNormalize <$> toSpecRep someHash) of
+      case runSpecTransM () (specNormalize <$> toSpecRep @era someHash) of
         Left e -> error $ "Failed to translate hash: " <> show e
         Right x -> x
   pure
@@ -51,7 +54,7 @@ spec :: Spec
 spec =
   describe "Translation" $ do
     describe "Hashes are displayed in the same way in the implementation and in the spec" $ do
-      hashDisplayProp @TxId
+      hashDisplayProp @ConwayEra @TxId
     describe "Utility properties" $ do
       prop "vkeyToInteger and vkeyFromInteger are inverses" $
         \vk -> vkeyFromInteger (vkeyToInteger vk) === Just vk

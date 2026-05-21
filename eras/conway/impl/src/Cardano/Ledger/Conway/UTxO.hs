@@ -25,6 +25,10 @@ import Cardano.Ledger.Alonzo.UTxO (
   getMintingScriptsNeeded,
   getRewardingScriptsNeeded,
   getSpendingScriptsNeeded,
+  plutusLanguagesUsedAlonzoStAnnTx,
+  plutusScriptsWithContextAlonzoStAnnTx,
+  scriptsNeededAlonzoStAnnTx,
+  scriptsProvidedAlonzoStAnnTx,
   zipAsIxItem,
  )
 import Cardano.Ledger.Babbage.UTxO (
@@ -150,6 +154,14 @@ instance AlonzoEraUTxO ConwayEra where
   getSupplementalDataHashes = getBabbageSupplementalDataHashes
 
   getSpendingDatum = getBabbageSpendingDatum
+
+  scriptsProvidedStAnnTx = scriptsProvidedAlonzoStAnnTx
+
+  scriptsNeededStAnnTx = scriptsNeededAlonzoStAnnTx
+
+  plutusScriptsWithContextStAnnTx = plutusScriptsWithContextAlonzoStAnnTx
+
+  plutusLanguagesUsedStAnnTx = plutusLanguagesUsedAlonzoStAnnTx
 
 getConwayMinFeeTxUtxo ::
   ( EraTx era

@@ -37,18 +37,21 @@ import Cardano.Ledger.Mary.TxBody (TxBody (..))
 import Cardano.Ledger.Mary.UTxO ()
 import Cardano.Ledger.Mary.Value (MaryValue)
 import Cardano.Ledger.Shelley.API
-import Cardano.Ledger.Shelley.Rules (ShelleyLedgerPredFailure)
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Data.Bifunctor (Bifunctor (first))
 import Data.List.NonEmpty (NonEmpty)
 import GHC.Generics (Generic)
 
 instance ApplyTx MaryEra where
-  newtype ApplyTxError MaryEra = MaryApplyTxError (NonEmpty (ShelleyLedgerPredFailure MaryEra))
+  newtype ApplyTxError MaryEra = MaryApplyTxError (NonEmpty (Shelley.ShelleyLedgerPredFailure MaryEra))
     deriving (Eq, Show)
     deriving newtype (EncCBOR, DecCBOR, Semigroup, Generic)
-  applyTxValidation validationPolicy globals env state tx =
+
+  mkStAnnTx _ _ _ _ = id
+
+  applyTxValidation validationPolicy globals env state stAnnTx =
     first MaryApplyTxError $
-      ruleApplyTxValidation @"LEDGER" validationPolicy globals env state tx
+      ruleApplyTxValidation @"LEDGER" validationPolicy globals env state stAnnTx
 
 instance ApplyTick MaryEra
 

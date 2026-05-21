@@ -37,7 +37,7 @@
 
     cardano-ledger-release-tool = {
       # Tag should match the ones used in .github/workflows/*.yml
-      url = "github:input-output-hk/cardano-ledger-release-tool?ref=0.3.0.0";
+      url = "github:input-output-hk/cardano-ledger-release-tool?ref=0.5.0.0";
       inputs.haskell-nix.follows = "haskellNix";
       inputs.hackage.follows = "hackageNix";
       inputs.pre-commit-hooks.follows = "pre-commit-hooks";
@@ -51,13 +51,7 @@
   };
 
   outputs = inputs:
-    let
-      supportedSystems = [
-        "x86_64-linux"
-        "x86_64-darwin"
-        # "aarch64-linux" - disable these temporarily because the build is broken
-        "aarch64-darwin"
-      ];
+    let supportedSystems = [ "x86_64-linux" "aarch64-darwin" ];
     in inputs.flake-utils.lib.eachSystem supportedSystems (system:
       let
         # setup our nixpkgs with the haskell.nix overlays, and the iohk-nix
@@ -152,7 +146,7 @@
 
             # and from nixpkgs or other inputs
             nativeBuildInputs = with nixpkgs;
-              [
+              with (import nix/doctest.nix { inherit config nixpkgs; }); [
                 (python3.withPackages (ps:
                   with ps; [
                     sphinx
@@ -164,18 +158,9 @@
                 haskellPackages.implicit-hie
                 shellcheck
                 act
+                doctest
                 inputs.cardano-ledger-release-tool.packages.${system}.default
-              ] ++ (let
-                doctest = haskell-nix.hackage-package {
-                  name = "doctest";
-                  version = "0.24.3";
-                  configureArgs = "-f cabal-doctest";
-                  inherit (config) compiler-nix-name;
-                };
-              in [
-                (doctest.getComponent "exe:cabal-doctest")
-                (doctest.getComponent "exe:doctest")
-              ]);
+              ];
             # disable Hoogle until someone request it
             withHoogle = false;
             # Skip cross compilers for the shell

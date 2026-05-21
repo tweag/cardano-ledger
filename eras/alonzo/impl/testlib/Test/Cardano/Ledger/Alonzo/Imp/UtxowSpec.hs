@@ -5,7 +5,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 
-module Test.Cardano.Ledger.Alonzo.Imp.UtxowSpec (spec, alonzoEraSpecificSpec) where
+module Test.Cardano.Ledger.Alonzo.Imp.UtxowSpec (spec, alonzoToConwaySpec) where
 
 import Cardano.Ledger.Shelley.Core (ShelleyEraTxCert)
 import qualified Test.Cardano.Ledger.Alonzo.Imp.UtxowSpec.Invalid as Invalid
@@ -19,9 +19,10 @@ spec = do
     Valid.spec
     Invalid.spec
 
-alonzoEraSpecificSpec ::
+alonzoToConwaySpec ::
   forall era. (AlonzoEraImp era, ShelleyEraTxCert era) => SpecWith (ImpInit (LedgerSpec era))
-alonzoEraSpecificSpec = do
+alonzoToConwaySpec = do
   describe "UTXOW" $ do
-    Valid.alonzoEraSpecificSpec
-    Invalid.alonzoEraSpecificSpec
+    describe "Certificates without deposits" $ do
+      Valid.alonzoToConwaySpec
+      Invalid.alonzoToConwaySpec

@@ -4,11 +4,12 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
+-- | The example transactions in this module are not valid transactions. We
+-- don't care, we are only interested in serialisation, not validation.
 module Test.Cardano.Ledger.Allegra.Examples (
   ledgerExamples,
-  mkAllegraBasedExampleTx,
-  exampleAllegraBasedTxBody,
-  exampleAllegraBasedShelleyTxBody,
+  exampleAllegraTx,
+  exampleAllegraBasedTx,
 ) where
 
 import Cardano.Ledger.Allegra
@@ -16,77 +17,61 @@ import Cardano.Ledger.Allegra.Core
 import Cardano.Ledger.Allegra.Scripts
 import Cardano.Ledger.Allegra.TxBody
 import Cardano.Ledger.Genesis (NoGenesis (..))
-import Cardano.Ledger.Shelley.Rules (
-  ShelleyDelegPredFailure (DelegateeNotRegisteredDELEG),
-  ShelleyDelegsPredFailure (DelplFailure),
-  ShelleyDelplPredFailure (DelegFailure),
-  ShelleyLedgerPredFailure (DelegsFailure),
- )
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Cardano.Ledger.Shelley.Scripts
 import Cardano.Slotting.Slot
+import qualified Data.MapExtras as Map
 import qualified Data.Sequence.Strict as StrictSeq
+import Data.Typeable (Typeable)
 import Lens.Micro
 import Test.Cardano.Ledger.Shelley.Examples (
   LedgerExamples,
+  addShelleyBasedTopTxExampleFee,
+  addShelleyToBabbageExampleProposedPUpdates,
+  addShelleyToBabbageTxCerts,
+  addShelleyToConwayTxCerts,
   exampleCoin,
-  exampleShelleyBasedShelleyTxBody,
-  exampleShelleyBasedTxBody,
+  exampleShelleyBasedTx,
   mkKeyHash,
-  mkShelleyBasedExampleTx,
   mkShelleyBasedLedgerExamples,
  )
 
 ledgerExamples :: LedgerExamples AllegraEra
 ledgerExamples =
   mkShelleyBasedLedgerExamples
-    ( AllegraApplyTxError . pure . DelegsFailure . DelplFailure . DelegFailure $
-        DelegateeNotRegisteredDELEG @AllegraEra (mkKeyHash 1)
+    ( AllegraApplyTxError . pure . Shelley.DelegsFailure . Shelley.DelplFailure . Shelley.DelegFailure $
+        Shelley.DelegateeNotRegisteredDELEG @AllegraEra (mkKeyHash 1)
     )
     exampleCoin
-    (mkAllegraBasedExampleTx $ exampleAllegraBasedShelleyTxBody exampleCoin)
+    exampleAllegraTx
     NoGenesis
 
-mkAllegraBasedExampleTx ::
-  forall era.
+exampleAllegraTx :: Tx TopTx AllegraEra
+exampleAllegraTx =
+  exampleAllegraBasedTx
+    & addShelleyBasedTopTxExampleFee
+    & addShelleyToBabbageExampleProposedPUpdates
+    & addShelleyToBabbageTxCerts
+    & addShelleyToConwayTxCerts
+
+-- Complete transaction which is compatible with any era starting with Allegra.
+-- This transaction forms the basis on which future era transactions will be
+-- at the very least based on.
+exampleAllegraBasedTx ::
+  forall era l.
   ( EraTx era
   , AllegraEraTxAuxData era
   , AllegraEraScript era
+  , AllegraEraTxBody era
+  , Typeable l
   ) =>
-  TxBody TopTx era ->
-  Tx TopTx era
-mkAllegraBasedExampleTx txBody =
-  mkShelleyBasedExampleTx @era txBody
-    & auxDataTxL
-      %~ fmap
-        ( \auxData ->
-            auxData & nativeScriptsTxAuxDataL <>~ StrictSeq.singleton exampleTimelock
-        )
-
-exampleAllegraBasedShelleyTxBody ::
-  forall era.
-  ( AllegraEraTxBody era
-  , ShelleyEraTxBody era
-  ) =>
-  Value era ->
-  TxBody TopTx era
-exampleAllegraBasedShelleyTxBody value =
-  mkAllegraBasedExampleTxBody (exampleShelleyBasedShelleyTxBody value)
-
-exampleAllegraBasedTxBody ::
-  forall era.
-  AllegraEraTxBody era =>
-  Value era ->
-  TxBody TopTx era
-exampleAllegraBasedTxBody value =
-  mkAllegraBasedExampleTxBody (exampleShelleyBasedTxBody value)
-
-mkAllegraBasedExampleTxBody ::
-  forall era.
-  AllegraEraTxBody era =>
-  TxBody TopTx era ->
-  TxBody TopTx era
-mkAllegraBasedExampleTxBody txBody =
-  txBody & vldtTxBodyL .~ ValidityInterval (SJust (SlotNo 2)) (SJust (SlotNo 4))
+  Tx l era
+exampleAllegraBasedTx =
+  exampleShelleyBasedTx
+    & witsTxL . scriptTxWitsL <>~ Map.fromElems hashScript [fromNativeScript exampleTimelock]
+    & modifyTxAuxData
+      (nativeScriptsTxAuxDataL <>~ StrictSeq.singleton exampleTimelock)
+    & bodyTxL . vldtTxBodyL .~ ValidityInterval (SJust (SlotNo 2)) (SJust (SlotNo 4))
 
 exampleTimelock :: AllegraEraScript era => NativeScript era
 exampleTimelock =

@@ -47,18 +47,11 @@ import Cardano.Ledger.CanonicalState.Namespace.EntitiesDReps.V0 (
   EntitiesDRepsOut (EntitiesDRepsOut),
   fromCanonicalDRepState,
  )
-import Cardano.Ledger.CanonicalState.Namespace.EntitiesDormantEpochs.V0 (
-  EntitiesDormantEpochsOut (EntitiesDormantEpochsOut),
- )
-import Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.FutureParams.V0 (
-  EntitiesStakePoolsFutureParamsIn (EntitiesStakePoolsFutureParamsIn),
-  EntitiesStakePoolsFutureParamsOut (EntitiesStakePoolsFutureParamsOut),
-  fromCanonicalStakePoolParams,
- )
 import Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.V0 (
   CanonicalStakePool (CanonicalStakePool),
   EntitiesStakePoolsIn (EntitiesStakePoolsIn),
   EntitiesStakePoolsOut (EntitiesStakePoolsOut),
+  fromCanonicalStakePoolParams,
   fromCanonicalStakePoolState,
  )
 import Cardano.Ledger.CanonicalState.Namespace.EntitiesStakePools.VRFKeyHashes.V0 (
@@ -105,6 +98,7 @@ import Cardano.Ledger.Conway.Governance (
   pRootsL,
   toPrevGovActionIds,
  )
+import Cardano.Ledger.Conway.Rules (updateDormantDRepExpiry)
 import Cardano.Ledger.Conway.State (
   CanSetAccounts (accountsL),
   CanSetUTxO (utxoL),
@@ -120,7 +114,6 @@ import Cardano.Ledger.Conway.State (
   psVRFKeyHashesL,
   vsCommitteeStateL,
   vsDRepsL,
-  vsNumDormantEpochsL,
  )
 import Cardano.Ledger.Shelley.LedgerState (
   NewEpochState (..),
@@ -152,7 +145,7 @@ import Data.List (sortOn)
 import qualified Data.Map as Map
 import qualified Data.OMap.Strict as OMap
 import GHC.TypeLits (KnownSymbol)
-import Lens.Micro ((&), (.~), (^.))
+import Lens.Micro ((%~), (&), (.~), (^.))
 import qualified Streaming.Prelude as S
 import System.IO (Handle, IOMode (ReadMode), withBinaryFile)
 
@@ -310,10 +303,10 @@ instance ImportCanonicalNamespace ConwayEra "entities/dreps/v0" where
 instance ImportCanonicalNamespace ConwayEra "entities/stake_pools/v0" where
   importNamespace nes =
     S.fold_
-      ( \(stakePoolStates, retiringEpochNos)
+      ( \(stakePoolStates, retiringEpochNos, futureStakePoolParams)
          ( ChunkEntry
              (EntitiesStakePoolsIn k)
-             (EntitiesStakePoolsOut (CanonicalStakePool mStakePoolState mRetiringEpochNo))
+             (EntitiesStakePoolsOut (CanonicalStakePool mStakePoolState mFutureStakePoolParams mRetiringEpochNo))
            ) ->
             let stakePoolStates' =
                   strictMaybe
@@ -321,10 +314,15 @@ instance ImportCanonicalNamespace ConwayEra "entities/stake_pools/v0" where
                     (flip (Map.insert k) stakePoolStates . fromCanonicalStakePoolState)
                     mStakePoolState
                 retiringEpochNos' = strictMaybe retiringEpochNos (flip (Map.insert k) retiringEpochNos) mRetiringEpochNo
-             in (stakePoolStates', retiringEpochNos')
+                futureStakePoolParams' =
+                  strictMaybe
+                    futureStakePoolParams
+                    (flip (Map.insert k) futureStakePoolParams . fromCanonicalStakePoolParams)
+                    mFutureStakePoolParams
+             in (stakePoolStates', retiringEpochNos', futureStakePoolParams')
       )
       mempty
-      ( \(stakePoolStates, retiringEpochNos) ->
+      ( \(stakePoolStates, retiringEpochNos, futureStakePoolParams) ->
           nes
             & nesEsL
             . esLStateL
@@ -338,27 +336,12 @@ instance ImportCanonicalNamespace ConwayEra "entities/stake_pools/v0" where
             . certPStateL
             . psRetiringL
             .~ retiringEpochNos
-      )
-
-instance ImportCanonicalNamespace ConwayEra "entities/stake_pools/future_params/v0" where
-  importNamespace nes =
-    S.fold_
-      ( \stakePoolsParams
-         ( ChunkEntry
-             (EntitiesStakePoolsFutureParamsIn k)
-             (EntitiesStakePoolsFutureParamsOut canonicalStakePoolParams)
-           ) ->
-            Map.insert k (fromCanonicalStakePoolParams canonicalStakePoolParams) stakePoolsParams
-      )
-      mempty
-      ( \stakePoolsParams ->
-          nes
             & nesEsL
             . esLStateL
             . lsCertStateL
             . certPStateL
             . psFutureStakePoolParamsL
-            .~ stakePoolsParams
+            .~ futureStakePoolParams
       )
 
 instance ImportCanonicalNamespace ConwayEra "entities/stake_pools/vrf_key_hashes/v0" where
@@ -382,24 +365,6 @@ instance ImportCanonicalNamespace ConwayEra "entities/stake_pools/vrf_key_hashes
             .~ stakePoolsVrfKeyHashes
       )
 
-instance ImportCanonicalNamespace ConwayEra "entities/dormant_epochs/v0" where
-  importNamespace nes s =
-    maybe
-      nes
-      ( \( ChunkEntry
-             _
-             (EntitiesDormantEpochsOut numDormantEpochs)
-           ) ->
-            nes
-              & nesEsL
-              . esLStateL
-              . lsCertStateL
-              . certVStateL
-              . vsNumDormantEpochsL
-              .~ numDormantEpochs
-      )
-      <$> S.head_ s
-
 instance ImportCanonicalState ConwayEra where
   importCanonicalState filepath epochNo = do
     flip withLatestManifestFrame filepath $ \Manifest {slotNo} ->
@@ -415,15 +380,14 @@ instance ImportCanonicalState ConwayEra where
           >>= importNs @"entities/accounts/v0" h
           >>= importNs @"entities/stake_pools/v0" h
           >>= importNs @"entities/dreps/v0" h
-          >>= importNs @"entities/stake_pools/future_params/v0" h
           >>= importNs @"entities/stake_pools/vrf_key_hashes/v0" h
-          >>= importNs @"entities/dormant_epochs/v0" h
           >>= \nes -> do
             -- Finalize the state with the data that requires computation/cross-namespace data
             let govState = nes ^. newEpochStateGovStateL
                 certState = nes ^. nesEsL . esLStateL . lsCertStateL
                 proposalsMap = govState ^. cgsProposalsL . pPropsL
                 prevActionsIds = toPrevGovActionIds (govState ^. cgsProposalsL . pRootsL)
+            -- TODO: dormant epochs
             proposals <- mkProposals prevActionsIds proposalsMap
             let nes' =
                   nes
@@ -435,6 +399,11 @@ instance ImportCanonicalState ConwayEra where
                     & newEpochStateGovStateL
                     . cgsProposalsL
                     .~ proposals
+                    & nesEsL
+                    . esLStateL
+                    . lsCertStateL
+                    . certVStateL
+                    %~ updateDormantDRepExpiry epochNo
              in pure (SlotNo (SSlotNo.unSlotNo slotNo), nes')
     where
       importNs ::

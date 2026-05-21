@@ -14,12 +14,21 @@ module Test.Cardano.Ledger.Conformance.ExecSpecRule.Conway.Gov () where
 import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.Core (EraPParams (..))
 import Cardano.Ledger.Conway.Governance
-import Cardano.Ledger.Conway.Rules
+import qualified Cardano.Ledger.Conway.Rules as Conway
 import Control.State.Transition.Extended (TRC (..))
 import Lens.Micro ((&), (.~), (^.))
-import qualified MAlonzo.Code.Ledger.Foreign.API as Agda
-import Test.Cardano.Ledger.Conformance
+import qualified MAlonzo.Code.Ledger.Conway.Foreign.API as Agda
 import Test.Cardano.Ledger.Conformance.ExecSpecRule.Conway.Base ()
+import Test.Cardano.Ledger.Conformance.ExecSpecRule.Core (
+  ExecSpecRule (ExecContext, runAgdaRule, translateInputs),
+  SpecTRC (SpecTRC),
+ )
+import Test.Cardano.Ledger.Conformance.SpecTranslate.Base (
+  SpecTranslate (toSpecRep),
+  askSpecTransM,
+  unComputationResult,
+  withCtxSpecTransM,
+ )
 import Test.Cardano.Ledger.Conway.Arbitrary ()
 
 instance ExecSpecRule "GOV" ConwayEra where
@@ -27,14 +36,13 @@ instance ExecSpecRule "GOV" ConwayEra where
 
   runAgdaRule (SpecTRC env st sig) = unComputationResult $ Agda.govStep env st sig
 
-  translateInputs enactState (TRC (env@GovEnv {gePParams}, st, sig)) = do
-    runSpecTransM ctx $
-      SpecTRC
-        <$> toSpecRep env
-        <*> toSpecRep st
-        <*> toSpecRep sig
-    where
-      ctx =
-        enactState
-          & ensPrevGovActionIdsL .~ toPrevGovActionIds (st ^. pRootsL)
-          & ensProtVerL .~ (gePParams ^. ppProtocolVersionL)
+  translateInputs (TRC (env@Conway.GovEnv {Conway.gePParams}, st, sig)) = do
+    enactState <- askSpecTransM
+    let ctx =
+          enactState
+            & ensPrevGovActionIdsL .~ toPrevGovActionIds (st ^. pRootsL)
+            & ensProtVerL .~ (gePParams ^. ppProtocolVersionL)
+    agdaEnv <- withCtxSpecTransM ctx $ toSpecRep env
+    agdaSt <- withCtxSpecTransM () $ toSpecRep st
+    agdaSig <- withCtxSpecTransM () $ toSpecRep sig
+    pure $ SpecTRC agdaEnv agdaSt agdaSig

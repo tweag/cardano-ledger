@@ -90,6 +90,7 @@ import Cardano.Ledger.BaseTypes (
   ProtVer,
   ToKeyValuePairs (..),
   UnitInterval,
+  decodeProtVer,
   maybeToStrictMaybe,
  )
 import Cardano.Ledger.Binary (
@@ -109,8 +110,10 @@ import Cardano.Ledger.Binary (
   encodeListLen,
   encodeNullStrictMaybe,
   encodeWord8,
+  ifDecoderVersionAtLeast,
   internsFromMap,
   invalidKey,
+  natVersion,
  )
 import Cardano.Ledger.Binary.Coders (
   Decode (..),
@@ -178,10 +181,13 @@ data GovActionId = GovActionId
 
 instance DecCBOR GovActionId where
   decCBOR =
-    decode $
-      RecD GovActionId
-        <! From
-        <! From
+    ifDecoderVersionAtLeast (natVersion @12) decodeGovActionId $
+      decode $
+        RecD GovActionId <! From <! From
+    where
+      decodeGovActionId =
+        decodeRecordNamed "GovActionId" (const 2) $
+          GovActionId <$> decCBOR <*> decCBOR
 
 instance EncCBOR GovActionId where
   encCBOR GovActionId {..} =
@@ -449,10 +455,15 @@ instance NFData (VotingProcedure era)
 
 instance Era era => DecCBOR (VotingProcedure era) where
   decCBOR =
-    decode $
-      RecD VotingProcedure
-        <! From
-        <! D (decodeNullStrictMaybe decCBOR)
+    ifDecoderVersionAtLeast (natVersion @12) decodeVotingProcedure $
+      decode $
+        RecD VotingProcedure
+          <! From
+          <! D (decodeNullStrictMaybe decCBOR)
+    where
+      decodeVotingProcedure =
+        decodeRecordNamed "VotingProcedure" (const 2) $
+          VotingProcedure <$> decCBOR <*> decodeNullStrictMaybe decCBOR
   {-# INLINE decCBOR #-}
 
 instance Era era => EncCBOR (VotingProcedure era) where
@@ -510,12 +521,17 @@ instance EraPParams era => NFData (ProposalProcedure era)
 
 instance EraPParams era => DecCBOR (ProposalProcedure era) where
   decCBOR =
-    decode $
-      RecD ProposalProcedure
-        <! From
-        <! From
-        <! From
-        <! From
+    ifDecoderVersionAtLeast (natVersion @12) decodeProposalProcedure $
+      decode $
+        RecD ProposalProcedure
+          <! From
+          <! From
+          <! From
+          <! From
+    where
+      decodeProposalProcedure =
+        decodeRecordNamed "ProposalProcedure" (const 4) $
+          ProposalProcedure <$> decCBOR <*> decCBOR <*> decCBOR <*> decCBOR
   {-# INLINE decCBOR #-}
 
 instance EraPParams era => EncCBOR (ProposalProcedure era) where
@@ -860,7 +876,10 @@ instance EraPParams era => DecCBOR (GovAction era) where
           <! D (decodeNullStrictMaybe decCBOR)
           <! From
           <! D (decodeNullStrictMaybe decCBOR)
-      1 -> SumD HardForkInitiation <! D (decodeNullStrictMaybe decCBOR) <! From
+      1 ->
+        SumD HardForkInitiation
+          <! D (decodeNullStrictMaybe decCBOR)
+          <! D (decodeProtVer @era)
       2 -> SumD TreasuryWithdrawals <! From <! D (decodeNullStrictMaybe decCBOR)
       3 -> SumD NoConfidence <! D (decodeNullStrictMaybe decCBOR)
       4 -> SumD UpdateCommittee <! D (decodeNullStrictMaybe decCBOR) <! From <! From <! From
@@ -928,10 +947,15 @@ instance Era era => Default (Constitution era) where
 
 instance Era era => DecCBOR (Constitution era) where
   decCBOR =
-    decode $
-      RecD Constitution
-        <! From
-        <! D (decodeNullStrictMaybe decCBOR)
+    ifDecoderVersionAtLeast (natVersion @12) decodeConstitution $
+      decode $
+        RecD Constitution
+          <! From
+          <! D (decodeNullStrictMaybe decCBOR)
+    where
+      decodeConstitution =
+        decodeRecordNamed "Constitution" (const 2) $
+          Constitution <$> decCBOR <*> decodeNullStrictMaybe decCBOR
 
 instance Era era => EncCBOR (Constitution era) where
   encCBOR Constitution {..} =

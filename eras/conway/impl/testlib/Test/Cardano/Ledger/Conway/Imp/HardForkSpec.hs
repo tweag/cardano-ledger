@@ -13,7 +13,7 @@ import Cardano.Ledger.Conway.Governance
 import Cardano.Ledger.Conway.PParams
 import Cardano.Ledger.Conway.State
 import Cardano.Ledger.Shelley.LedgerState
-import Cardano.Ledger.Shelley.Rules (ShelleyPoolPredFailure (..))
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import qualified Data.Map.Strict as Map
 import Lens.Micro
 import Test.Cardano.Ledger.Conway.ImpTest
@@ -24,7 +24,7 @@ spec ::
   forall era.
   ConwayEraImp era =>
   SpecWith (ImpInit (LedgerSpec era))
-spec = do
+spec = describe "HARDFORK" $ do
   it "VRF Keyhashes get populated at v11 HardFork" $ do
     -- Since we're testing the HardFork to 11, the test only makes sense for protocol version 10
     whenMajorVersion @10 $ do
@@ -75,7 +75,7 @@ spec = do
       registerStakePoolTx kh4 vrf >>= \tx ->
         submitFailingTx
           tx
-          [injectFailure $ VRFKeyHashAlreadyRegistered kh4 vrf]
+          [injectFailure $ Shelley.VRFKeyHashAlreadyRegistered kh4 vrf]
 
       retireStakePool kh3 (EpochInterval 1)
       passEpoch

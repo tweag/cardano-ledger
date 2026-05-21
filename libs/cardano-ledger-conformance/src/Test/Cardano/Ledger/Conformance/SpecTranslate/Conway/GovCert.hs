@@ -14,23 +14,23 @@ module Test.Cardano.Ledger.Conformance.SpecTranslate.Conway.GovCert () where
 
 import Cardano.Ledger.BaseTypes
 import Cardano.Ledger.Coin (Coin (..))
+import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.Core
 import Cardano.Ledger.Conway.Governance
-import Cardano.Ledger.Conway.Rules (ConwayGovCertEnv (..))
+import qualified Cardano.Ledger.Conway.Rules as Conway
 import Cardano.Ledger.Conway.State
 import Cardano.Ledger.Conway.TxCert (ConwayGovCert (..))
 import Cardano.Ledger.Credential (Credential (..))
 import Data.Default (Default (..))
-import Data.Functor.Identity (Identity)
 import Data.Map.Strict (Map, keysSet)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (mapMaybe)
-import qualified MAlonzo.Code.Ledger.Foreign.API as Agda
+import qualified MAlonzo.Code.Ledger.Conway.Foreign.API as Agda
 import Test.Cardano.Ledger.Conformance.SpecTranslate.Base
 import Test.Cardano.Ledger.Conformance.SpecTranslate.Conway.Base
 
-instance SpecTranslate ctx ConwayGovCert where
-  type SpecRep ConwayGovCert = Agda.DCert
+instance SpecTranslate ConwayEra ConwayGovCert where
+  type SpecRep ConwayEra ConwayGovCert = Agda.DCert
 
   toSpecRep (ConwayRegDRep c d a) =
     Agda.Regdrep
@@ -55,19 +55,14 @@ instance SpecTranslate ctx ConwayGovCert where
       <$> toSpecRep c
       <*> toSpecRep (SNothing @(Credential _))
 
-instance
-  ( SpecTranslate ctx (PParamsHKD Identity era)
-  , SpecRep (PParamsHKD Identity era) ~ Agda.PParams
-  , Inject ctx (VotingProcedures era)
-  , Inject ctx (Map AccountAddress Coin)
-  ) =>
-  SpecTranslate ctx (ConwayGovCertEnv era)
-  where
-  type SpecRep (ConwayGovCertEnv era) = Agda.CertEnv
+instance SpecTranslate ConwayEra (Conway.ConwayGovCertEnv ConwayEra) where
+  type SpecRep ConwayEra (Conway.ConwayGovCertEnv ConwayEra) = Agda.CertEnv
+  type
+    SpecContext ConwayEra (Conway.ConwayGovCertEnv ConwayEra) =
+      (VotingProcedures ConwayEra, Map AccountAddress Coin)
 
-  toSpecRep ConwayGovCertEnv {..} = do
-    votes <- askCtx @(VotingProcedures era)
-    withdrawals <- askCtx @(Map AccountAddress Coin)
+  toSpecRep Conway.ConwayGovCertEnv {..} = do
+    (votes, withdrawals) <- askSpecTransM
     let propGetCCMembers (UpdateCommittee _ _ x _) = Just $ keysSet x
         propGetCCMembers _ = Nothing
         potentialCCMembers =
@@ -77,21 +72,23 @@ instance
         ccColdCreds =
           foldMap (keysSet . committeeMembers) cgceCurrentCommittee
             <> potentialCCMembers cgceCommitteeProposals
-    Agda.MkCertEnv
-      <$> toSpecRep cgceCurrentEpoch
-      <*> toSpecRep cgcePParams
-      <*> toSpecRep votes
-      <*> toSpecRep withdrawals
-      <*> toSpecRep ccColdCreds
+    withCtxSpecTransM () $
+      Agda.MkCertEnv
+        <$> toSpecRep cgceCurrentEpoch
+        <*> toSpecRep cgcePParams
+        <*> toSpecRep votes
+        <*> toSpecRepMap withdrawals
+        <*> toSpecRep ccColdCreds
 
-instance SpecTranslate ctx (VState era) where
-  type SpecRep (VState era) = Agda.GState
+instance SpecTranslate ConwayEra (VState ConwayEra) where
+  type SpecRep ConwayEra (VState ConwayEra) = Agda.GState
 
   toSpecRep VState {..} = do
     Agda.MkGState
-      <$> toSpecRep (updateExpiry . drepExpiry <$> vsDReps)
-      <*> toSpecRep
-        (committeeCredentialToStrictMaybe <$> csCommitteeCreds vsCommitteeState)
+      <$> (toSpecRepMap (updateExpiry . drepExpiry <$> vsDReps))
+      <*> ( toSpecRepMap
+              (committeeCredentialToStrictMaybe <$> csCommitteeCreds vsCommitteeState)
+          )
       <*> deposits
     where
       transEntry (cred, val) =

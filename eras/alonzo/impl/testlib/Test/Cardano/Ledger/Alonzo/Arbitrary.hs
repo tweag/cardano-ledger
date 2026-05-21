@@ -30,6 +30,7 @@ module Test.Cardano.Ledger.Alonzo.Arbitrary (
   genValidCostModel,
   genValidAndUnknownCostModels,
   genAlonzoPlutusPurposePointer,
+  genDatumPresent,
 ) where
 
 import Cardano.Ledger.Alonzo (AlonzoEra, ApplyTxError (..), Tx (..))
@@ -50,6 +51,7 @@ import Cardano.Ledger.Alonzo.Plutus.Context (
 import Cardano.Ledger.Alonzo.Plutus.Evaluate (CollectError)
 import Cardano.Ledger.Alonzo.Plutus.TxInfo (AlonzoContextError)
 import Cardano.Ledger.Alonzo.Rules (
+  AlonzoBbodyPredFailure,
   AlonzoUtxoPredFailure (..),
   AlonzoUtxosPredFailure (..),
   AlonzoUtxowPredFailure (..),
@@ -78,13 +80,13 @@ import Cardano.Ledger.Alonzo.TxWits (
   TxDats (TxDats),
  )
 import Cardano.Ledger.BaseTypes (StrictMaybe (..))
-import Cardano.Ledger.Plutus.Data (hashData)
+import Cardano.Ledger.Plutus.Data (Datum (..), hashData)
 import Cardano.Ledger.Plutus.ExUnits (ExUnits (..))
 import Cardano.Ledger.Plutus.Language (
   Language (..),
   asSLanguage,
  )
-import Cardano.Ledger.Shelley.Rules (PredicateFailure, ShelleyUtxowPredFailure)
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Data.Functor.Identity (Identity)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE (toList)
@@ -98,6 +100,7 @@ import Numeric.Natural (Natural)
 import Test.Cardano.Data (genNonEmptyMap)
 import Test.Cardano.Ledger.Common
 import Test.Cardano.Ledger.Core.Arbitrary (
+  genEraProtVer,
   genValidAndUnknownCostModels,
   genValidCostModel,
   genValidCostModels,
@@ -247,7 +250,7 @@ genPlutusScript lang =
     , (5, alwaysFailsLang lang <$> elements [1, 2, 3])
     ]
 
-instance Arbitrary (AlonzoPParams Identity era) where
+instance Era era => Arbitrary (AlonzoPParams Identity era) where
   arbitrary =
     AlonzoPParams
       <$> arbitrary
@@ -264,7 +267,7 @@ instance Arbitrary (AlonzoPParams Identity era) where
       <*> arbitrary
       <*> arbitrary
       <*> arbitrary
-      <*> arbitrary
+      <*> genEraProtVer @era
       <*> arbitrary
       <*> arbitrary
       <*> genValidCostModels [PlutusV1, PlutusV2]
@@ -277,7 +280,7 @@ instance Arbitrary (AlonzoPParams Identity era) where
 
 deriving instance Arbitrary OrdExUnits
 
-instance Arbitrary (AlonzoPParams StrictMaybe era) where
+instance Era era => Arbitrary (AlonzoPParams StrictMaybe era) where
   arbitrary =
     AlonzoPParams
       <$> arbitrary
@@ -294,7 +297,7 @@ instance Arbitrary (AlonzoPParams StrictMaybe era) where
       <*> arbitrary
       <*> arbitrary
       <*> arbitrary
-      <*> arbitrary
+      <*> oneof [pure SNothing, SJust <$> genEraProtVer @era]
       <*> arbitrary
       <*> arbitrary
       <*> oneof [pure SNothing, SJust <$> genValidCostModels [PlutusV1, PlutusV2]]
@@ -338,7 +341,7 @@ instance
   ( EraTxOut era
   , Arbitrary (Value era)
   , Arbitrary (TxOut era)
-  , Arbitrary (PredicateFailure (EraRule "UTXOS" era))
+  , Arbitrary (Shelley.PredicateFailure (EraRule "UTXOS" era))
   ) =>
   Arbitrary (AlonzoUtxoPredFailure era)
   where
@@ -346,13 +349,21 @@ instance
 
 instance
   ( Era era
-  , Arbitrary (PredicateFailure (EraRule "UTXO" era))
-  , Arbitrary (ShelleyUtxowPredFailure era)
+  , Arbitrary (Shelley.PredicateFailure (EraRule "UTXO" era))
+  , Arbitrary (Shelley.ShelleyUtxowPredFailure era)
   , Arbitrary (TxCert era)
   , Arbitrary (PlutusPurpose AsItem era)
   , Arbitrary (PlutusPurpose AsIx era)
   ) =>
   Arbitrary (AlonzoUtxowPredFailure era)
+  where
+  arbitrary = genericArbitraryU
+
+instance
+  ( Era era
+  , Arbitrary (Shelley.PredicateFailure (EraRule "LEDGERS" era))
+  ) =>
+  Arbitrary (AlonzoBbodyPredFailure era)
   where
   arbitrary = genericArbitraryU
 
@@ -484,3 +495,6 @@ instance Arbitrary LangDepView where
   arbitrary = LangDepView <$> arbitrary <*> arbitrary
 
 deriving instance Arbitrary AlonzoExtraConfig
+
+genDatumPresent :: Era era => Gen (Datum era)
+genDatumPresent = oneof [DatumHash <$> arbitrary, Datum <$> arbitrary]

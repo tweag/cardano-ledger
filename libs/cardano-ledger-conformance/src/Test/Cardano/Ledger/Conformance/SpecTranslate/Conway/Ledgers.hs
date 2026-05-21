@@ -12,35 +12,30 @@
 
 module Test.Cardano.Ledger.Conformance.SpecTranslate.Conway.Ledgers () where
 
-import Cardano.Ledger.BaseTypes (Inject)
-import Cardano.Ledger.Conway.Core (EraPParams (..))
+import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.Governance (Constitution (..), EnactState (..))
-import Cardano.Ledger.Shelley.Rules (Identity, ShelleyLedgersEnv (..))
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Cardano.Ledger.Shelley.State (ChainAccountState (..))
-import qualified MAlonzo.Code.Ledger.Foreign.API as Agda
+import qualified MAlonzo.Code.Ledger.Conway.Foreign.API as Agda
 import Test.Cardano.Ledger.Conformance (
   SpecTranslate (..),
-  askCtx,
+  askSpecTransM,
+  withCtxSpecTransM,
  )
 import Test.Cardano.Ledger.Conformance.SpecTranslate.Conway.Base ()
 
-instance
-  ( EraPParams era
-  , SpecTranslate ctx (PParamsHKD Identity era)
-  , Inject ctx (EnactState era)
-  , SpecRep (PParamsHKD Identity era) ~ Agda.PParams
-  ) =>
-  SpecTranslate ctx (ShelleyLedgersEnv era)
-  where
-  type SpecRep (ShelleyLedgersEnv era) = Agda.LEnv
+instance SpecTranslate ConwayEra (Shelley.ShelleyLedgersEnv ConwayEra) where
+  type SpecRep ConwayEra (Shelley.ShelleyLedgersEnv ConwayEra) = Agda.LEnv
+  type SpecContext ConwayEra (Shelley.ShelleyLedgersEnv ConwayEra) = EnactState ConwayEra
 
-  toSpecRep LedgersEnv {..} = do
-    enactState <- askCtx @(EnactState era)
+  toSpecRep Shelley.LedgersEnv {..} = do
+    enactState <- askSpecTransM
     let
       guardrailsScriptHash = constitutionGuardrailsScriptHash $ ensConstitution enactState
-    Agda.MkLEnv
-      <$> toSpecRep ledgersSlotNo
-      <*> toSpecRep guardrailsScriptHash
-      <*> toSpecRep ledgersPp
-      <*> toSpecRep enactState
-      <*> toSpecRep (casTreasury ledgersAccount)
+    withCtxSpecTransM () $
+      Agda.MkLEnv
+        <$> toSpecRep ledgersSlotNo
+        <*> toSpecRep guardrailsScriptHash
+        <*> toSpecRep ledgersPp
+        <*> toSpecRep enactState
+        <*> toSpecRep (casTreasury ledgersAccount)

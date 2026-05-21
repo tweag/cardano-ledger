@@ -7,7 +7,12 @@
 {-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
-module Test.Cardano.Ledger.Conway.Imp (spec, conwayEraGenericSpec) where
+module Test.Cardano.Ledger.Conway.Imp (
+  spec,
+  conwayEraGenericSpec,
+  Babbage.alonzoToConwaySpec,
+  conwayOnlySpec,
+) where
 
 import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.Core
@@ -16,69 +21,65 @@ import Cardano.Ledger.Conway.Rules (
   ConwayHardForkEvent,
   ConwayNewEpochEvent,
  )
-import Cardano.Ledger.Shelley.Rules (RupdEvent)
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Control.State.Transition.Extended
-import qualified Test.Cardano.Ledger.Alonzo.Imp as AlonzoImp
-import qualified Test.Cardano.Ledger.Babbage.Imp as BabbageImp
-import qualified Test.Cardano.Ledger.Conway.Imp.BbodySpec as Bbody
-import qualified Test.Cardano.Ledger.Conway.Imp.CertsSpec as Certs
-import qualified Test.Cardano.Ledger.Conway.Imp.DelegSpec as Deleg
-import qualified Test.Cardano.Ledger.Conway.Imp.EnactSpec as Enact
-import qualified Test.Cardano.Ledger.Conway.Imp.EpochSpec as Epoch
-import qualified Test.Cardano.Ledger.Conway.Imp.GovCertSpec as GovCert
-import qualified Test.Cardano.Ledger.Conway.Imp.GovSpec as Gov
-import qualified Test.Cardano.Ledger.Conway.Imp.HardForkSpec as HardFork
-import qualified Test.Cardano.Ledger.Conway.Imp.LedgerSpec as Ledger
-import qualified Test.Cardano.Ledger.Conway.Imp.RatifySpec as Ratify
-import qualified Test.Cardano.Ledger.Conway.Imp.UtxoSpec as Utxo
-import qualified Test.Cardano.Ledger.Conway.Imp.UtxosSpec as Utxos
-import qualified Test.Cardano.Ledger.Conway.Imp.UtxowSpec as Utxow
+import Data.Proxy
+import qualified Test.Cardano.Ledger.Babbage.Imp as Babbage
+import qualified Test.Cardano.Ledger.Conway.Imp.BbodySpec as BBODY
+import qualified Test.Cardano.Ledger.Conway.Imp.CertsSpec as CERTS
+import qualified Test.Cardano.Ledger.Conway.Imp.DelegSpec as DELEG
+import qualified Test.Cardano.Ledger.Conway.Imp.EnactSpec as ENACT
+import qualified Test.Cardano.Ledger.Conway.Imp.EpochSpec as EPOCH
+import qualified Test.Cardano.Ledger.Conway.Imp.GovCertSpec as GOVCERT
+import qualified Test.Cardano.Ledger.Conway.Imp.GovSpec as GOV
+import qualified Test.Cardano.Ledger.Conway.Imp.HardForkSpec as HARDFORK
+import qualified Test.Cardano.Ledger.Conway.Imp.LedgerSpec as LEDGER
+import qualified Test.Cardano.Ledger.Conway.Imp.RatifySpec as RATIFY
+import qualified Test.Cardano.Ledger.Conway.Imp.UtxoSpec as UTXO
+import qualified Test.Cardano.Ledger.Conway.Imp.UtxosSpec as UTXOS
+import qualified Test.Cardano.Ledger.Conway.Imp.UtxowSpec as UTXOW
 import Test.Cardano.Ledger.Conway.ImpTest
 import Test.Cardano.Ledger.Imp.Common
 
-spec ::
-  forall era.
-  ( ConwayEraImp era
-  , EraSpecificSpec era
-  , Event (EraRule "HARDFORK" era) ~ ConwayHardForkEvent era
-  , Event (EraRule "EPOCH" era) ~ ConwayEpochEvent era
-  , Event (EraRule "NEWEPOCH" era) ~ ConwayNewEpochEvent era
-  , Event (EraRule "RUPD" era) ~ RupdEvent
-  ) =>
-  Spec
-spec = do
-  BabbageImp.spec @era
-  withEachEraVersion @era $ conwayEraGenericSpec @era
-
 conwayEraGenericSpec ::
-  forall era.
   ( ConwayEraImp era
   , Event (EraRule "HARDFORK" era) ~ ConwayHardForkEvent era
   , Event (EraRule "EPOCH" era) ~ ConwayEpochEvent era
   , Event (EraRule "NEWEPOCH" era) ~ ConwayNewEpochEvent era
   ) =>
+  proxy era ->
   SpecWith (ImpInit (LedgerSpec era))
-conwayEraGenericSpec = do
-  describe "BBODY" Bbody.spec
-  describe "CERTS" Certs.spec
-  describe "DELEG" Deleg.spec
-  describe "ENACT" Enact.spec
-  describe "EPOCH" Epoch.spec
-  describe "GOV" Gov.spec
-  describe "GOVCERT" GovCert.spec
-  describe "LEDGER" Ledger.spec
-  describe "HARDFORK" HardFork.spec
-  describe "RATIFY" Ratify.spec
-  describe "UTXO" Utxo.spec
-  describe "UTXOS" Utxos.spec
-  describe "UTXOW" Utxow.spec
+conwayEraGenericSpec _ = do
+  BBODY.spec
+  DELEG.spec
+  ENACT.spec
+  EPOCH.spec
+  GOV.spec
+  GOVCERT.spec
+  LEDGER.spec
+  HARDFORK.spec
+  RATIFY.spec
+  UTXO.spec
+  UTXOS.spec
+  UTXOW.spec
 
-conwayEraSpecificSpec :: SpecWith (ImpInit (LedgerSpec ConwayEra))
-conwayEraSpecificSpec = do
-  describe "Conway era specific Imp spec" $ do
-    describe "UTXO" Utxo.conwayEraSpecificSpec
+spec ::
+  ( ConwayEraImp era
+  , Event (EraRule "HARDFORK" era) ~ ConwayHardForkEvent era
+  , Event (EraRule "EPOCH" era) ~ ConwayEpochEvent era
+  , Event (EraRule "NEWEPOCH" era) ~ ConwayNewEpochEvent era
+  , Event (EraRule "RUPD" era) ~ Shelley.RupdEvent
+  ) =>
+  proxy era ->
+  Spec
+spec era = do
+  Babbage.spec era
+  describe "ConwayEra Onwards" $ withImpInitEachEraVersion era $ do
+    conwayEraGenericSpec era
 
-instance EraSpecificSpec ConwayEra where
-  eraSpecificSpec =
-    AlonzoImp.alonzoEraSpecificSpec
-      >> conwayEraSpecificSpec
+conwayOnlySpec :: Spec
+conwayOnlySpec = do
+  describe "ConwayEra Specific" $ withImpInitEachEraVersion (Proxy @ConwayEra) $ do
+    -- TODO: move to `spec` when ready: https://github.com/IntersectMBO/cardano-ledger/issues/5805
+    CERTS.spec
+    UTXO.conwayOnlySpec

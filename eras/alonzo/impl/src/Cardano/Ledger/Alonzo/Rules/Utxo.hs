@@ -38,7 +38,6 @@ import Cardano.Ledger.Address (
   isBootstrapCompactAddr,
   isPayCredScriptCompactAddr,
  )
-import Cardano.Ledger.Allegra.Rules (AllegraUtxoPredFailure, shelleyToAllegraUtxoPredFailure)
 import qualified Cardano.Ledger.Allegra.Rules as Allegra
 import Cardano.Ledger.Allegra.Scripts (ValidityInterval (..))
 import Cardano.Ledger.Alonzo.Era (AlonzoEra, AlonzoUTXO)
@@ -90,12 +89,6 @@ import Cardano.Ledger.Rules.ValidationMode (
   runTestOnSignal,
  )
 import Cardano.Ledger.Shelley.LedgerState (ShelleyGovState, UTxOState (..))
-import Cardano.Ledger.Shelley.Rules (
-  ShelleyPpupPredFailure,
-  ShelleyUtxoPredFailure,
-  UtxoEnv (..),
-  updateUTxOState,
- )
 import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Cardano.Ledger.State
 import Cardano.Ledger.TxIn (TxIn)
@@ -184,13 +177,13 @@ type instance EraRuleFailure "UTXO" AlonzoEra = AlonzoUtxoPredFailure AlonzoEra
 
 instance InjectRuleFailure "UTXO" AlonzoUtxoPredFailure AlonzoEra
 
-instance InjectRuleFailure "UTXO" ShelleyPpupPredFailure AlonzoEra where
+instance InjectRuleFailure "UTXO" Shelley.ShelleyPpupPredFailure AlonzoEra where
   injectFailure = UtxosFailure . injectFailure
 
-instance InjectRuleFailure "UTXO" ShelleyUtxoPredFailure AlonzoEra where
-  injectFailure = allegraToAlonzoUtxoPredFailure . shelleyToAllegraUtxoPredFailure
+instance InjectRuleFailure "UTXO" Shelley.ShelleyUtxoPredFailure AlonzoEra where
+  injectFailure = allegraToAlonzoUtxoPredFailure . Allegra.shelleyToAllegraUtxoPredFailure
 
-instance InjectRuleFailure "UTXO" AllegraUtxoPredFailure AlonzoEra where
+instance InjectRuleFailure "UTXO" Allegra.AllegraUtxoPredFailure AlonzoEra where
   injectFailure = allegraToAlonzoUtxoPredFailure
 
 instance InjectRuleFailure "UTXO" AlonzoUtxosPredFailure AlonzoEra where
@@ -496,13 +489,13 @@ utxoTransition ::
   , AlonzoEraTx era
   , AtMostEra "Babbage" era
   , EraRule "UTXO" era ~ AlonzoUTXO era
-  , InjectRuleFailure "UTXO" ShelleyUtxoPredFailure era
+  , InjectRuleFailure "UTXO" Shelley.ShelleyUtxoPredFailure era
   , InjectRuleFailure "UTXO" AlonzoUtxoPredFailure era
-  , InjectRuleFailure "UTXO" AllegraUtxoPredFailure era
+  , InjectRuleFailure "UTXO" Allegra.AllegraUtxoPredFailure era
   , Embed (EraRule "UTXOS" era) (AlonzoUTXO era)
   , Environment (EraRule "UTXOS" era) ~ UtxosEnv era
   , State (EraRule "UTXOS" era) ~ ShelleyGovState era
-  , Signal (EraRule "UTXOS" era) ~ Tx TopTx era
+  , Signal (EraRule "UTXOS" era) ~ StAnnTx TopTx era
   , EraCertState era
   , EraStake era
   , SafeToHash (TxWits era)
@@ -510,8 +503,9 @@ utxoTransition ::
   ) =>
   TransitionRule (EraRule "UTXO" era)
 utxoTransition = do
-  TRC (UtxoEnv slot pp certState, utxos, tx) <- judgmentContext
-  let utxo = utxosUtxo utxos
+  TRC (Shelley.UtxoEnv slot pp certState, utxos, stAnnTx) <- judgmentContext
+  let tx = stAnnTx ^. txStAnnTxG
+      utxo = utxosUtxo utxos
 
   {-   txb := txbody tx   -}
   let txBody = tx ^. bodyTxL
@@ -577,11 +571,11 @@ utxoTransition = do
 
   updatedGovState <-
     trans @(EraRule "UTXOS" era) $
-      TRC (UtxosEnv slot pp certState utxo, utxosGovState utxos, tx)
+      TRC (UtxosEnv slot pp certState utxo, utxosGovState utxos, stAnnTx)
 
   case tx ^. isValidTxL of
     IsValid True ->
-      updateUTxOState
+      Shelley.updateUTxOState
         pp
         utxos
         txBody
@@ -611,11 +605,11 @@ instance
   , Embed (EraRule "UTXOS" era) (AlonzoUTXO era)
   , Environment (EraRule "UTXOS" era) ~ UtxosEnv era
   , State (EraRule "UTXOS" era) ~ ShelleyGovState era
-  , Signal (EraRule "UTXOS" era) ~ Tx TopTx era
+  , Signal (EraRule "UTXOS" era) ~ StAnnTx TopTx era
   , EraRule "UTXO" era ~ AlonzoUTXO era
-  , InjectRuleFailure "UTXO" ShelleyUtxoPredFailure era
+  , InjectRuleFailure "UTXO" Shelley.ShelleyUtxoPredFailure era
   , InjectRuleFailure "UTXO" AlonzoUtxoPredFailure era
-  , InjectRuleFailure "UTXO" AllegraUtxoPredFailure era
+  , InjectRuleFailure "UTXO" Allegra.AllegraUtxoPredFailure era
   , AtMostEra "Babbage" era
   , EraCertState era
   , EraStake era
@@ -625,8 +619,8 @@ instance
   STS (AlonzoUTXO era)
   where
   type State (AlonzoUTXO era) = UTxOState era
-  type Signal (AlonzoUTXO era) = Tx TopTx era
-  type Environment (AlonzoUTXO era) = UtxoEnv era
+  type Signal (AlonzoUTXO era) = StAnnTx TopTx era
+  type Environment (AlonzoUTXO era) = Shelley.UtxoEnv era
   type BaseM (AlonzoUTXO era) = ShelleyBase
   type PredicateFailure (AlonzoUTXO era) = AlonzoUtxoPredFailure era
   type Event (AlonzoUTXO era) = AlonzoUtxoEvent era
@@ -757,7 +751,7 @@ allegraToAlonzoUtxoPredFailure ::
   ( EraRuleFailure "PPUP" era ~ t era
   , InjectRuleFailure "UTXOS" t era
   ) =>
-  AllegraUtxoPredFailure era ->
+  Allegra.AllegraUtxoPredFailure era ->
   AlonzoUtxoPredFailure era
 allegraToAlonzoUtxoPredFailure = \case
   Allegra.BadInputsUTxO x -> BadInputsUTxO x

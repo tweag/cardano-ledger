@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
@@ -26,6 +27,7 @@ module Cardano.Ledger.BaseTypes (
   module Slotting,
   module NonZero,
   ProtVer (..),
+  decodeProtVer,
   module Cardano.Ledger.Binary.Version,
   FixedPoint,
   (==>),
@@ -111,6 +113,8 @@ import Cardano.Ledger.Binary (
   FromCBOR,
   ToCBOR,
   cborError,
+  decodeIntegralRational,
+  decodeRecordNamed,
   encodeListLen,
   fromPlainDecoder,
   ifDecoderVersionAtLeast,
@@ -130,6 +134,7 @@ import Cardano.Ledger.Binary.Plain (
  )
 import qualified Cardano.Ledger.Binary.Plain as Plain
 import Cardano.Ledger.Binary.Version
+import Cardano.Ledger.Core.Era (Era (..))
 import Cardano.Ledger.Hashes (HashAnnotated, SafeHash, SafeToHash)
 import Cardano.Ledger.Keys (KeyHash, KeyRole (..))
 import Cardano.Ledger.NonIntegral (ln')
@@ -239,6 +244,25 @@ instance DecCBORGroup ProtVer where
         (natVersion @12)
         (fromIntegral @Word32 @Natural <$> decCBOR @Word32)
         (decCBOR @Natural)
+
+-- | Decoder for `ProtVer` that only accepts versions where the major fits in
+-- the bounds of what's allowed for the provided Era.
+--
+-- /Note/ - Thanks to the Ledger rules, only the current major protocol version
+-- and the very next major protocol version from the current one will be accepted
+-- by the Ledger anywhere in the block, regardless that this decoder allows a
+-- broader range.
+decodeProtVer :: forall era s. Era era => Decoder s ProtVer
+decodeProtVer = do
+  maxMajorVersion <- succVersion (natVersion @(ProtVerHigh era))
+  pv@(ProtVer major _) <- decCBOR
+  when (major > maxMajorVersion) $
+    fail $
+      "Protocol version "
+        <> show major
+        <> " exceeds the maximum expected version of "
+        <> show maxMajorVersion
+  pure pv
 
 data E34
 
@@ -382,11 +406,27 @@ instance
 instance (ToCBOR (BoundedRatio b a), Typeable b, Typeable a) => EncCBOR (BoundedRatio b a)
 
 instance
-  (FromCBOR (BoundedRatio b a), Typeable b, Typeable a, Typeable (BoundedRatio b a)) =>
+  ( FromCBOR (BoundedRatio b a)
+  , Bounded (BoundedRatio b a)
+  , Bounded a
+  , Integral a
+  , DecCBOR a
+  , Typeable b
+  , Typeable a
+  , Typeable (BoundedRatio b a)
+  ) =>
   DecCBOR (BoundedRatio b a)
   where
-  decCBOR = fromPlainDecoder fromCBOR
-  {-# INLINE decCBOR #-}
+  decCBOR =
+    ifDecoderVersionAtLeast
+      (natVersion @12)
+      ( do
+          r <- decodeIntegralRational @a
+          case boundRational r of
+            Nothing -> cborError $ DecoderErrorCustom "BoundedRatio" (Text.pack $ show r)
+            Just u -> pure u
+      )
+      (fromPlainDecoder fromCBOR)
 
 instance Bounded (BoundedRatio b Word64) => ToJSON (BoundedRatio b Word64) where
   toJSON :: BoundedRatio b Word64 -> Value
@@ -871,7 +911,7 @@ newtype BlocksMade = BlocksMade
 newtype TxIx = TxIx {unTxIx :: Word16}
   deriving stock (Eq, Ord, Show, Generic)
   deriving newtype
-    (NFData, Enum, Bounded, NoThunks, FromCBOR, ToCBOR, EncCBOR, DecCBOR, ToJSON, MemPack)
+    (NFData, Enum, Bounded, NoThunks, EncCBOR, DecCBOR, ToJSON, MemPack)
 
 instance Random TxIx
 
@@ -899,7 +939,7 @@ mkTxIxPartial i =
 -- from other integral types that are larger than `Word16`
 newtype CertIx = CertIx {unCertIx :: Word16}
   deriving stock (Eq, Ord, Show)
-  deriving newtype (NFData, Enum, Bounded, NoThunks, EncCBOR, DecCBOR, ToCBOR, FromCBOR, ToJSON)
+  deriving newtype (NFData, Enum, Bounded, NoThunks, EncCBOR, DecCBOR, ToJSON)
 
 instance Random CertIx
 
@@ -948,10 +988,13 @@ instance NFData Anchor where
 
 instance DecCBOR Anchor where
   decCBOR =
-    decode $
-      RecD Anchor
-        <! From
-        <! From
+    ifDecoderVersionAtLeast (natVersion @12) decodeAnchor $
+      decode $
+        RecD Anchor <! From <! From
+    where
+      decodeAnchor =
+        decodeRecordNamed "Anchor" (const 2) $
+          Anchor <$> decCBOR <*> decCBOR
 
 instance EncCBOR Anchor where
   encCBOR Anchor {..} =

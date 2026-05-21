@@ -23,22 +23,15 @@ module Cardano.Ledger.Dijkstra.Rules.Utxow (
 ) where
 
 import Cardano.Crypto.Hash (ByteString)
-import Cardano.Ledger.Allegra.Rules (
-  AllegraUtxoPredFailure,
+import qualified Cardano.Ledger.Allegra.Rules as Allegra
+import qualified Cardano.Ledger.Alonzo.Rules as Alonzo
+import Cardano.Ledger.Alonzo.UTxO (
+  AlonzoEraUTxO (..),
+  AlonzoScriptsNeeded (..),
  )
-import Cardano.Ledger.Alonzo.Rules (
-  AlonzoUtxoEvent,
-  AlonzoUtxoPredFailure,
-  AlonzoUtxosPredFailure,
-  AlonzoUtxowEvent (WrappedShelleyEraEvent),
-  AlonzoUtxowPredFailure,
- )
-import Cardano.Ledger.Alonzo.UTxO (AlonzoEraUTxO, AlonzoScriptsNeeded)
-import Cardano.Ledger.Babbage.Rules (
-  BabbageUtxoPredFailure,
-  BabbageUtxowPredFailure,
-  babbageUtxowTransition,
- )
+import qualified Cardano.Ledger.Babbage.Rules as Babbage
+import Cardano.Ledger.Babbage.Tx (mkScriptIntegrity)
+import Cardano.Ledger.Babbage.UTxO (getReferenceScripts)
 import Cardano.Ledger.BaseTypes (
   Mismatch (..),
   Relation (..),
@@ -55,38 +48,37 @@ import Cardano.Ledger.Binary.Coders (
   (<!),
  )
 import Cardano.Ledger.Conway.Core
-import Cardano.Ledger.Conway.Rules (
-  ConwayUtxoPredFailure,
-  ConwayUtxosPredFailure,
-  ConwayUtxowPredFailure,
-  alonzoToConwayUtxowPredFailure,
-  babbageToConwayUtxowPredFailure,
-  shelleyToConwayUtxowPredFailure,
- )
 import qualified Cardano.Ledger.Conway.Rules as Conway
+import Cardano.Ledger.Credential (Credential)
 import Cardano.Ledger.Dijkstra.Era (DijkstraEra, DijkstraUTXO, DijkstraUTXOW)
-import Cardano.Ledger.Dijkstra.Rules.Utxo (DijkstraUtxoPredFailure)
+import Cardano.Ledger.Dijkstra.Rules.Utxo (DijkstraUtxoEnv (..), DijkstraUtxoPredFailure)
+import Cardano.Ledger.Dijkstra.TxBody (DijkstraEraTxBody (..))
+import Cardano.Ledger.Dijkstra.UTxO (DijkstraEraUTxO (..))
 import Cardano.Ledger.Keys (VKey)
-import qualified Cardano.Ledger.Shelley.LedgerState as Shelley (UTxOState)
-import Cardano.Ledger.Shelley.Rules (
-  ShelleyUtxoPredFailure,
-  ShelleyUtxowEvent (UtxoEvent),
-  ShelleyUtxowPredFailure,
- )
-import qualified Cardano.Ledger.Shelley.Rules as Shelley (
-  UtxoEnv,
- )
+import Cardano.Ledger.Rules.ValidationMode (runTest, runTestOnSignal)
+import Cardano.Ledger.Shelley.LedgerState (UTxOState)
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Cardano.Ledger.State (EraUTxO (..))
 import Cardano.Ledger.TxIn (TxIn)
 import Control.DeepSeq (NFData)
 import Control.State.Transition.Extended (
   Embed (..),
   STS (..),
+  TRC (..),
+  TransitionRule,
+  failureOnNonEmptySet,
+  judgmentContext,
+  trans,
  )
 import Data.List.NonEmpty (NonEmpty)
+import qualified Data.Map.Strict as Map
+import qualified Data.OMap.Strict as OMap
+import qualified Data.OSet.Strict as OSet
 import Data.Set (Set)
+import qualified Data.Set as Set
 import Data.Set.NonEmpty (NonEmptySet)
 import GHC.Generics (Generic)
+import Lens.Micro ((^.))
 
 -- ================================
 
@@ -137,48 +129,50 @@ data DijkstraUtxowPredFailure era
     ScriptIntegrityHashMismatch
       (Mismatch RelEQ (StrictMaybe ScriptIntegrityHash))
       (StrictMaybe ByteString)
+  | -- | Guards required by subtransactions but missing from top-level guards
+    MissingRequiredGuards (NonEmptySet (Credential Guard))
   deriving (Generic)
 
 type instance EraRuleFailure "UTXOW" DijkstraEra = DijkstraUtxowPredFailure DijkstraEra
 
-type instance EraRuleEvent "UTXOW" DijkstraEra = AlonzoUtxowEvent DijkstraEra
+type instance EraRuleEvent "UTXOW" DijkstraEra = Alonzo.AlonzoUtxowEvent DijkstraEra
 
 instance InjectRuleFailure "UTXOW" DijkstraUtxowPredFailure DijkstraEra
 
-instance InjectRuleFailure "UTXOW" ConwayUtxowPredFailure DijkstraEra where
+instance InjectRuleFailure "UTXOW" Conway.ConwayUtxowPredFailure DijkstraEra where
   injectFailure = conwayToDijkstraUtxowPredFailure
 
-instance InjectRuleFailure "UTXOW" BabbageUtxowPredFailure DijkstraEra where
-  injectFailure = conwayToDijkstraUtxowPredFailure . babbageToConwayUtxowPredFailure
+instance InjectRuleFailure "UTXOW" Babbage.BabbageUtxowPredFailure DijkstraEra where
+  injectFailure = conwayToDijkstraUtxowPredFailure . Conway.babbageToConwayUtxowPredFailure
 
-instance InjectRuleFailure "UTXOW" AlonzoUtxowPredFailure DijkstraEra where
-  injectFailure = conwayToDijkstraUtxowPredFailure . alonzoToConwayUtxowPredFailure
+instance InjectRuleFailure "UTXOW" Alonzo.AlonzoUtxowPredFailure DijkstraEra where
+  injectFailure = conwayToDijkstraUtxowPredFailure . Conway.alonzoToConwayUtxowPredFailure
 
-instance InjectRuleFailure "UTXOW" ShelleyUtxowPredFailure DijkstraEra where
-  injectFailure = conwayToDijkstraUtxowPredFailure . shelleyToConwayUtxowPredFailure
+instance InjectRuleFailure "UTXOW" Shelley.ShelleyUtxowPredFailure DijkstraEra where
+  injectFailure = conwayToDijkstraUtxowPredFailure . Conway.shelleyToConwayUtxowPredFailure
 
 instance InjectRuleFailure "UTXOW" DijkstraUtxoPredFailure DijkstraEra where
   injectFailure = UtxoFailure . injectFailure
 
-instance InjectRuleFailure "UTXOW" ConwayUtxoPredFailure DijkstraEra where
+instance InjectRuleFailure "UTXOW" Conway.ConwayUtxoPredFailure DijkstraEra where
   injectFailure = UtxoFailure . injectFailure
 
-instance InjectRuleFailure "UTXOW" BabbageUtxoPredFailure DijkstraEra where
+instance InjectRuleFailure "UTXOW" Babbage.BabbageUtxoPredFailure DijkstraEra where
   injectFailure = UtxoFailure . injectFailure
 
-instance InjectRuleFailure "UTXOW" AlonzoUtxoPredFailure DijkstraEra where
+instance InjectRuleFailure "UTXOW" Alonzo.AlonzoUtxoPredFailure DijkstraEra where
   injectFailure = UtxoFailure . injectFailure
 
-instance InjectRuleFailure "UTXOW" AlonzoUtxosPredFailure DijkstraEra where
+instance InjectRuleFailure "UTXOW" Alonzo.AlonzoUtxosPredFailure DijkstraEra where
   injectFailure = UtxoFailure . injectFailure
 
-instance InjectRuleFailure "UTXOW" ConwayUtxosPredFailure DijkstraEra where
+instance InjectRuleFailure "UTXOW" Conway.ConwayUtxosPredFailure DijkstraEra where
   injectFailure = UtxoFailure . injectFailure
 
-instance InjectRuleFailure "UTXOW" ShelleyUtxoPredFailure DijkstraEra where
+instance InjectRuleFailure "UTXOW" Shelley.ShelleyUtxoPredFailure DijkstraEra where
   injectFailure = UtxoFailure . injectFailure
 
-instance InjectRuleFailure "UTXOW" AllegraUtxoPredFailure DijkstraEra where
+instance InjectRuleFailure "UTXOW" Allegra.AllegraUtxoPredFailure DijkstraEra where
   injectFailure = UtxoFailure . injectFailure
 
 deriving instance
@@ -204,50 +198,148 @@ instance
 -- DijkstraUTXOW STS
 --------------------------------------------------------------------------------
 
-instance
+dijkstraUtxowTransition ::
   forall era.
   ( AlonzoEraTx era
-  , AlonzoEraUTxO era
+  , DijkstraEraUTxO era
   , ScriptsNeeded era ~ AlonzoScriptsNeeded era
-  , ConwayEraTxBody era
+  , DijkstraEraTxBody era
   , EraRule "UTXOW" era ~ DijkstraUTXOW era
-  , InjectRuleFailure "UTXOW" ShelleyUtxowPredFailure era
-  , InjectRuleFailure "UTXOW" AlonzoUtxowPredFailure era
-  , InjectRuleFailure "UTXOW" BabbageUtxowPredFailure era
-  , InjectRuleFailure "UTXOW" ConwayUtxowPredFailure era
+  , InjectRuleFailure "UTXOW" Shelley.ShelleyUtxowPredFailure era
+  , InjectRuleFailure "UTXOW" Alonzo.AlonzoUtxowPredFailure era
+  , InjectRuleFailure "UTXOW" Babbage.BabbageUtxowPredFailure era
   , InjectRuleFailure "UTXOW" DijkstraUtxowPredFailure era
   , -- Allow UTXOW to call UTXO
     Embed (EraRule "UTXO" era) (DijkstraUTXOW era)
-  , Environment (EraRule "UTXO" era) ~ Shelley.UtxoEnv era
-  , State (EraRule "UTXO" era) ~ Shelley.UTxOState era
-  , Signal (EraRule "UTXO" era) ~ Tx TopTx era
+  , Environment (EraRule "UTXO" era) ~ DijkstraUtxoEnv era
+  , State (EraRule "UTXO" era) ~ UTxOState era
+  , Signal (EraRule "UTXO" era) ~ StAnnTx TopTx era
+  ) =>
+  TransitionRule (EraRule "UTXOW" era)
+dijkstraUtxowTransition = do
+  TRC (DijkstraUtxoEnv slot pp certState originalUtxo, u, stAnnTx) <- judgmentContext
+  let tx = stAnnTx ^. txStAnnTxG
+      scriptsProvided = scriptsProvidedStAnnTx stAnnTx
+
+  let txBody = tx ^. bodyTxL
+      subTxs = OMap.elems $ txBody ^. subTransactionsTxBodyL
+      witsKeyHashes = keyHashWitnessesTxWits (tx ^. witsTxL)
+
+  -- All lookups use originalUtxo.
+  -- A subtx may consume a txout that the top-level tx references, so the UTXO threaded in the state may not contain it.
+
+  -- scriptsNeeded for the top-level tx
+  let topScriptsNeeded = scriptsNeededStAnnTx stAnnTx
+      topScriptHashesNeeded = getScriptsHashesNeeded topScriptsNeeded
+      subStAnnTxs = subTransactionsStAnnTx stAnnTx
+
+  -- scriptsNeeded aggregated across all levels
+  let allScriptHashesNeeded =
+        Set.unions $
+          topScriptHashesNeeded
+            : (getScriptsHashesNeeded . scriptsNeededStAnnTx <$> subStAnnTxs)
+
+  {- ∀s ∈ (txscripts txw utxo neededHashes ) ∩ Scriptph1 , validateScript s tx -}
+  -- Per-level: phase-1 script validation is per-tx (script execution)
+  runTest $ Babbage.validateFailedBabbageScripts tx scriptsProvided topScriptHashesNeeded
+
+  {- neededHashes − dom(refScripts tx utxo) = dom(txwitscripts txw) -}
+  -- Aggregated: missing/extraneous scripts across all levels.
+  let witnessScripts =
+        Map.keysSet (tx ^. witsTxL . scriptTxWitsL)
+          <> foldMap (Map.keysSet . (^. witsTxL . scriptTxWitsL)) subTxs
+      allRefScriptInputs =
+        txBody ^. referenceInputsTxBodyL
+          <> txBody ^. inputsTxBodyL
+          <> foldMap
+            ( \subTx ->
+                subTx ^. bodyTxL . referenceInputsTxBodyL
+                  <> subTx ^. bodyTxL . inputsTxBodyL
+            )
+            subTxs
+      refScripts = Map.keysSet $ getReferenceScripts originalUtxo allRefScriptInputs
+  runTest $ Babbage.babbageMissingScripts pp allScriptHashesNeeded refScripts witnessScripts
+
+  {-  inputHashes ⊆  dom(txdats txw) ⊆  allowed -}
+  -- Per-level: datum check for top-level tx's own spend inputs
+  runTest $ Alonzo.missingRequiredDatums scriptsProvided originalUtxo tx
+
+  {- dom (txrdmrs tx) = { rdptr txb sp | (sp, h) ∈ scriptsNeeded utxo tx,
+                          h ↦ s ∈ txscripts txw, s ∈ Scriptph2} -}
+  -- Per-level: redeemer indexing is per-tx
+  runTest $ Alonzo.hasExactSetOfRedeemers tx scriptsProvided topScriptsNeeded
+
+  -- check VKey witnesses
+  {- ∀ (vk ↦ σ) ∈ (txwitsVKey txw), V_vk⟦ txbodyHash ⟧_σ -}
+  runTestOnSignal $ Shelley.validateVerifiedWits tx
+
+  {- witsVKeyNeeded utxo tx genDelegs ⊆ witsKeyHashes -}
+  runTest $ Shelley.validateNeededWitnesses witsKeyHashes certState originalUtxo txBody
+
+  -- check metadata hash
+  {- ((adh = ◇) ∧ (ad= ◇)) ∨ (adh = hashAD ad) -}
+  runTestOnSignal $ Shelley.validateMetadata pp tx
+
+  {- ∀x ∈ range(txdats txw) ∪ range(txwitscripts txw) ∪ (⋃ ( , ,d,s) ∈ txouts tx {s, d}),
+                       x ∈ Script ∪ Datum ⇒ isWellFormed x -}
+  runTest $ Babbage.validateScriptsWellFormed pp tx
+
+  {- scriptIntegrityHash txb = hashScriptIntegrity pp (languages txw) (txrdmrs txw) -}
+  -- Per-level: script integrity is per-tx (depends on that tx's redeemers and language views)
+  let scriptIntegrity = mkScriptIntegrity pp tx (plutusLanguagesUsedStAnnTx stAnnTx)
+  runTest $ Alonzo.checkScriptIntegrityHash tx pp scriptIntegrity
+
+  {- concatMapˡ (λ txSub → mapˢ proj₁ (TopLevelGuardsOf txSub)) (SubTransactionsOf txTop) ⊆ GuardsOf txTop -}
+  let requiredGuardsBySubTxs =
+        foldMap (Map.keysSet . (^. bodyTxL . requiredTopLevelGuardsL)) subTxs
+      topLevelGuards = OSet.toSet (txBody ^. guardsTxBodyL)
+      missingGuards = requiredGuardsBySubTxs `Set.difference` topLevelGuards
+  runTestOnSignal $ failureOnNonEmptySet missingGuards MissingRequiredGuards
+
+  -- Pass through to UTXO sub-rule, carrying the original UTxO
+  trans @(EraRule "UTXO" era) $
+    TRC (DijkstraUtxoEnv slot pp certState originalUtxo, u, stAnnTx)
+
+instance
+  forall era.
+  ( AlonzoEraTx era
+  , DijkstraEraUTxO era
+  , ScriptsNeeded era ~ AlonzoScriptsNeeded era
+  , DijkstraEraTxBody era
+  , EraRule "UTXOW" era ~ DijkstraUTXOW era
+  , InjectRuleFailure "UTXOW" Shelley.ShelleyUtxowPredFailure era
+  , InjectRuleFailure "UTXOW" Alonzo.AlonzoUtxowPredFailure era
+  , InjectRuleFailure "UTXOW" Babbage.BabbageUtxowPredFailure era
+  , InjectRuleFailure "UTXOW" Conway.ConwayUtxowPredFailure era
+  , InjectRuleFailure "UTXOW" DijkstraUtxowPredFailure era
+  , -- Allow UTXOW to call UTXO
+    Embed (EraRule "UTXO" era) (DijkstraUTXOW era)
+  , Environment (EraRule "UTXO" era) ~ DijkstraUtxoEnv era
+  , State (EraRule "UTXO" era) ~ UTxOState era
+  , Signal (EraRule "UTXO" era) ~ StAnnTx TopTx era
   , Eq (PredicateFailure (EraRule "UTXOS" era))
   , Show (PredicateFailure (EraRule "UTXOS" era))
   ) =>
   STS (DijkstraUTXOW era)
   where
-  type State (DijkstraUTXOW era) = Shelley.UTxOState era
-  type Signal (DijkstraUTXOW era) = Tx TopTx era
-  type Environment (DijkstraUTXOW era) = Shelley.UtxoEnv era
+  type State (DijkstraUTXOW era) = UTxOState era
+  type Signal (DijkstraUTXOW era) = StAnnTx TopTx era
+  type Environment (DijkstraUTXOW era) = DijkstraUtxoEnv era
   type BaseM (DijkstraUTXOW era) = ShelleyBase
   type PredicateFailure (DijkstraUTXOW era) = DijkstraUtxowPredFailure era
-  type Event (DijkstraUTXOW era) = AlonzoUtxowEvent era
-  transitionRules = [babbageUtxowTransition @era]
+  type Event (DijkstraUTXOW era) = Alonzo.AlonzoUtxowEvent era
+  transitionRules = [dijkstraUtxowTransition @era]
   initialRules = []
 
 instance
-  ( Era era
-  , STS (DijkstraUTXO era)
+  ( STS (DijkstraUTXO era)
   , PredicateFailure (EraRule "UTXO" era) ~ DijkstraUtxoPredFailure era
-  , Event (EraRule "UTXO" era) ~ AlonzoUtxoEvent era
-  , BaseM (DijkstraUTXOW era) ~ ShelleyBase
-  , PredicateFailure (DijkstraUTXOW era) ~ DijkstraUtxowPredFailure era
-  , Event (DijkstraUTXOW era) ~ AlonzoUtxowEvent era
+  , Event (EraRule "UTXO" era) ~ Alonzo.AlonzoUtxoEvent era
   ) =>
   Embed (DijkstraUTXO era) (DijkstraUTXOW era)
   where
   wrapFailed = UtxoFailure
-  wrapEvent = WrappedShelleyEraEvent . UtxoEvent
+  wrapEvent = Alonzo.WrappedShelleyEraEvent . Shelley.UtxoEvent
 
 --------------------------------------------------------------------------------
 -- Serialisation
@@ -280,6 +372,7 @@ instance
       MalformedScriptWitnesses x -> Sum MalformedScriptWitnesses 16 !> To x
       MalformedReferenceScripts x -> Sum MalformedReferenceScripts 17 !> To x
       ScriptIntegrityHashMismatch x y -> Sum ScriptIntegrityHashMismatch 18 !> To x !> To y
+      MissingRequiredGuards x -> Sum MissingRequiredGuards 19 !> To x
 
 instance
   ( ConwayEraScript era
@@ -307,6 +400,7 @@ instance
     16 -> SumD MalformedScriptWitnesses <! From
     17 -> SumD MalformedReferenceScripts <! From
     18 -> SumD ScriptIntegrityHashMismatch <! From <! From
+    19 -> SumD MissingRequiredGuards <! From
     n -> Invalid n
 
 -- =====================================================
@@ -314,7 +408,7 @@ instance
 
 conwayToDijkstraUtxowPredFailure ::
   forall era.
-  ConwayUtxowPredFailure era ->
+  Conway.ConwayUtxowPredFailure era ->
   DijkstraUtxowPredFailure era
 conwayToDijkstraUtxowPredFailure = \case
   Conway.UtxoFailure f -> UtxoFailure f

@@ -18,7 +18,8 @@
 
 module Cardano.Ledger.Dijkstra.TxInfo (
   DijkstraContextError (..),
-  transFailSubTxIsNotSupported,
+  guardDijkstraFeaturesForPlutusV1toV3,
+  transFailUnsupportedScriptInSubTx,
 ) where
 
 import Cardano.Crypto.Hash.Class (hashToBytes)
@@ -29,7 +30,6 @@ import Cardano.Ledger.Alonzo.Plutus.Context (
   PlutusTxInfo,
   PlutusTxInfoResult (..),
   SupportedLanguage (..),
-  toPlutusWithContext,
  )
 import qualified Cardano.Ledger.Alonzo.Plutus.TxInfo as Alonzo
 import Cardano.Ledger.Alonzo.Scripts (AsPurpose (..))
@@ -46,10 +46,11 @@ import Cardano.Ledger.Conway.TxInfo (
   transTxInInfoV3,
  )
 import qualified Cardano.Ledger.Conway.TxInfo as Conway
-import Cardano.Ledger.Credential (StakeReference (..))
+import Cardano.Ledger.Credential (Credential (..), StakeReference (..))
 import Cardano.Ledger.Dijkstra.Core
 import Cardano.Ledger.Dijkstra.Era (DijkstraEra)
 import Cardano.Ledger.Dijkstra.Scripts (
+  AccountBalanceIntervals (..),
   PlutusScript (..),
   pattern GuardingPurpose,
  )
@@ -58,8 +59,11 @@ import Cardano.Ledger.Dijkstra.UTxO ()
 import Cardano.Ledger.Plutus (
   Language (..),
   PlutusArgs (..),
+  PlutusLanguage,
   SLanguage (..),
   TxOutSource (..),
+  plutusLanguage,
+  plutusSLanguage,
   transCoinToLovelace,
   transCoinToValue,
   transCred,
@@ -71,13 +75,17 @@ import Cardano.Ledger.Plutus.Data (Data)
 import Cardano.Ledger.Plutus.ToPlutusData (ToPlutusData (..))
 import Cardano.Ledger.State (StakePoolParams (..))
 import Cardano.Ledger.TxIn (TxId)
+import Control.Arrow (left)
 import Control.DeepSeq (NFData)
-import Control.Monad (zipWithM)
+import Control.Monad (forM, unless, zipWithM)
 import Data.Aeson (KeyValue (..), ToJSON (..))
 import Data.Foldable (Foldable (..))
 import qualified Data.Foldable as F
 import Data.List.NonEmpty (NonEmpty (..))
 import qualified Data.List.NonEmpty as NE
+import qualified Data.Map.Strict as Map
+import qualified Data.OMap.Strict as OMap
+import Data.Proxy (Proxy (..))
 import qualified Data.Set as Set
 import GHC.Generics (Generic)
 import Lens.Micro ((^.))
@@ -87,15 +95,26 @@ import qualified PlutusLedgerApi.V3 as PV3
 
 data DijkstraContextError era
   = ConwayContextError (ConwayContextError era)
+  | -- | Failure translating sub-transactions for Guarding purpose at the top level
+    SubTxContextError TxId (ContextError era)
   | PointerPresentInOutput (NonEmpty (TxOut era))
   | -- | Attempt to use PlutusV1-V3 in a sub-transaction will result in this failure
-    SubTxIsNotSupported TxId
+    UnsupportedScriptInSubTx Language TxId
+  | -- | Attempt to use PlutusV1-V3 with non-empty direct deposits will result in this failure
+    DirectDepositsNotSupported DirectDeposits
+  | -- | Attempt to use PlutusV1-V3 with non-empty account balance intervals will result in this failure
+    AccountBalanceIntervalsNotSupported (AccountBalanceIntervals era)
+  | -- | Attempt to use sub-transactions with PlutusV1-V3 scripts at the top level will result in this failure
+    SubTxsAreNotSupported (NonEmpty TxId)
+  | -- | Attempt to use PlutusV1-V3 with script hashes in guards will result in this failure
+    GuardScriptHashesNotSupported (NonEmpty ScriptHash)
   deriving (Generic)
 
 deriving instance
   ( AlonzoEraScript era
   , EraTxCert era
   , EraTxOut era
+  , Eq (ContextError era)
   ) =>
   Eq (DijkstraContextError era)
 
@@ -103,6 +122,7 @@ deriving instance
   ( AlonzoEraScript era
   , EraTxCert era
   , EraTxOut era
+  , Show (ContextError era)
   ) =>
   Show (DijkstraContextError era)
 
@@ -110,27 +130,49 @@ instance
   ( AlonzoEraScript era
   , EraTxCert era
   , EraTxOut era
+  , NFData (ContextError era)
   ) =>
   NFData (DijkstraContextError era)
 
 instance
-  ( ToJSON (TxCert era)
+  ( ToJSON (TxOut era)
+  , ToJSON (TxCert era)
+  , ToJSON (ContextError era)
   , ToJSON (PlutusPurpose AsIx era)
   , ToJSON (PlutusPurpose AsItem era)
-  , ToJSON (TxOut era)
   , EraPParams era
   ) =>
   ToJSON (DijkstraContextError era)
   where
   toJSON = \case
     ConwayContextError x -> toJSON x
+    SubTxContextError txId subTxError ->
+      kindObject
+        "SubTxContextError"
+        [ "txId" .= toJSON txId
+        , "subTxError" .= toJSON subTxError
+        ]
     PointerPresentInOutput x -> kindObject "PointerPresentInOutput" ["txOut" .= toJSON x]
-    SubTxIsNotSupported txId -> kindObject "SubTxIsNotSupported" ["txId" .= toJSON txId]
+    UnsupportedScriptInSubTx lang txId ->
+      kindObject
+        "UnsupportedScriptInSubTx"
+        [ "language" .= toJSON lang
+        , "txId" .= toJSON txId
+        ]
+    DirectDepositsNotSupported dd ->
+      kindObject "DirectDepositsNotSupported" ["direct_deposits" .= show dd]
+    AccountBalanceIntervalsNotSupported abi ->
+      kindObject "AccountBalanceIntervalsNotSupported" ["account_balance_intervals" .= show abi]
+    SubTxsAreNotSupported txIds ->
+      kindObject "SubTxsAreNotSupported" ["txIds" .= toJSON txIds]
+    GuardScriptHashesNotSupported scriptHashes ->
+      kindObject "GuardScriptHashesNotSupported" ["script_hashes" .= toJSON scriptHashes]
 
 instance
   ( EraPParams era
-  , DecCBOR (TxCert era)
   , DecCBOR (TxOut era)
+  , DecCBOR (TxCert era)
+  , DecCBOR (ContextError era)
   , DecCBOR (PlutusPurpose AsIx era)
   , DecCBOR (PlutusPurpose AsItem era)
   ) =>
@@ -138,14 +180,20 @@ instance
   where
   decCBOR = decode $ Summands "ContextError" $ \case
     16 -> SumD ConwayContextError <! From
-    17 -> SumD PointerPresentInOutput <! From
-    18 -> SumD SubTxIsNotSupported <! From
+    17 -> SumD SubTxContextError <! From <! From
+    18 -> SumD PointerPresentInOutput <! From
+    19 -> SumD UnsupportedScriptInSubTx <! From <! From
+    20 -> SumD DirectDepositsNotSupported <! From
+    21 -> SumD AccountBalanceIntervalsNotSupported <! From
+    22 -> SumD SubTxsAreNotSupported <! From
+    23 -> SumD GuardScriptHashesNotSupported <! From
     k -> Invalid k
 
 instance
   ( EraPParams era
-  , EncCBOR (TxCert era)
   , EncCBOR (TxOut era)
+  , EncCBOR (TxCert era)
+  , EncCBOR (ContextError era)
   , EncCBOR (PlutusPurpose AsIx era)
   , EncCBOR (PlutusPurpose AsItem era)
   ) =>
@@ -154,8 +202,15 @@ instance
   encCBOR =
     encode . \case
       ConwayContextError x -> Sum ConwayContextError 16 !> To x
-      PointerPresentInOutput x -> Sum PointerPresentInOutput 17 !> To x
-      SubTxIsNotSupported txId -> Sum SubTxIsNotSupported 18 !> To txId
+      SubTxContextError txId subTxError -> Sum SubTxContextError 17 !> To txId !> To subTxError
+      PointerPresentInOutput x -> Sum PointerPresentInOutput 18 !> To x
+      UnsupportedScriptInSubTx lang txId ->
+        Sum UnsupportedScriptInSubTx 19 !> To lang !> To txId
+      DirectDepositsNotSupported dd -> Sum DirectDepositsNotSupported 20 !> To dd
+      AccountBalanceIntervalsNotSupported abi -> Sum AccountBalanceIntervalsNotSupported 21 !> To abi
+      SubTxsAreNotSupported txIds -> Sum SubTxsAreNotSupported 22 !> To txIds
+      GuardScriptHashesNotSupported scriptHashes ->
+        Sum GuardScriptHashesNotSupported 23 !> To scriptHashes
 
 instance Inject (ConwayContextError era) (DijkstraContextError era) where
   inject = ConwayContextError
@@ -195,10 +250,10 @@ instance EraPlutusContext DijkstraEra where
   lookupTxInfoResult SPlutusV4 (DijkstraTxInfoResult _ _ _ tirPlutusV4) = tirPlutusV4
 
   mkPlutusWithContext = \case
-    DijkstraPlutusV1 p -> toPlutusWithContext $ Left p
-    DijkstraPlutusV2 p -> toPlutusWithContext $ Left p
-    DijkstraPlutusV3 p -> toPlutusWithContext $ Left p
-    DijkstraPlutusV4 p -> toPlutusWithContext $ Left p
+    DijkstraPlutusV1 p -> Alonzo.toPlutusWithContext $ Left p
+    DijkstraPlutusV2 p -> Alonzo.toPlutusWithContext $ Left p
+    DijkstraPlutusV3 p -> Alonzo.toPlutusWithContext $ Left p
+    DijkstraPlutusV4 p -> Alonzo.toPlutusWithContext $ Left p
 
 instance EraPlutusTxInfo 'PlutusV1 DijkstraEra where
   toPlutusTxCert _ _ = transTxCertV1V2
@@ -206,9 +261,10 @@ instance EraPlutusTxInfo 'PlutusV1 DijkstraEra where
   toPlutusScriptPurpose = Conway.transPlutusPurposeV1V2
 
   toPlutusTxInfo proxy LedgerTxInfo {ltiProtVer, ltiEpochInfo, ltiSystemStart, ltiUTxO, ltiTx} =
-    flip (withBothTxLevels ltiTx) transFailSubTxIsNotSupported $ \tx -> PlutusTxInfoResult $ do
+    flip (withBothTxLevels ltiTx) transFailUnsupportedScriptInSubTx $ \tx -> PlutusTxInfoResult $ do
       let txBody = tx ^. bodyTxL
       Conway.guardConwayFeaturesForPlutusV1V2 tx
+      guardDijkstraFeaturesForPlutusV1toV3 tx
       timeRange <- Conway.transValidityInterval tx ltiEpochInfo ltiSystemStart (txBody ^. vldtTxBodyL)
       inputs <- mapM (Conway.transTxInInfoV1 ltiUTxO) (Set.toList (txBody ^. inputsTxBodyL))
       mapM_ (Conway.transTxInInfoV1 ltiUTxO) (Set.toList (txBody ^. referenceInputsTxBodyL))
@@ -267,9 +323,10 @@ instance EraPlutusTxInfo 'PlutusV2 DijkstraEra where
   toPlutusScriptPurpose = Conway.transPlutusPurposeV1V2
 
   toPlutusTxInfo proxy LedgerTxInfo {ltiProtVer, ltiEpochInfo, ltiSystemStart, ltiUTxO, ltiTx} =
-    flip (withBothTxLevels ltiTx) transFailSubTxIsNotSupported $ \tx -> PlutusTxInfoResult $ do
+    flip (withBothTxLevels ltiTx) transFailUnsupportedScriptInSubTx $ \tx -> PlutusTxInfoResult $ do
       let txBody = tx ^. bodyTxL
       Conway.guardConwayFeaturesForPlutusV1V2 tx
+      guardDijkstraFeaturesForPlutusV1toV3 tx
       timeRange <-
         Conway.transValidityInterval tx ltiEpochInfo ltiSystemStart (txBody ^. vldtTxBodyL)
       inputs <- mapM (Babbage.transTxInInfoV2 ltiUTxO) (Set.toList (txBody ^. inputsTxBodyL))
@@ -310,11 +367,12 @@ instance EraPlutusTxInfo 'PlutusV3 DijkstraEra where
   toPlutusScriptPurpose = Conway.transPlutusPurposeV3
 
   toPlutusTxInfo proxy LedgerTxInfo {ltiProtVer, ltiEpochInfo, ltiSystemStart, ltiUTxO, ltiTx} =
-    flip (withBothTxLevels ltiTx) transFailSubTxIsNotSupported $ \tx -> PlutusTxInfoResult $ do
+    flip (withBothTxLevels ltiTx) transFailUnsupportedScriptInSubTx $ \tx -> PlutusTxInfoResult $ do
       let
         txBody = tx ^. bodyTxL
         txInputs = txBody ^. inputsTxBodyL
         refInputs = txBody ^. referenceInputsTxBodyL
+      guardDijkstraFeaturesForPlutusV1toV3 tx
       timeRange <-
         Conway.transValidityInterval tx ltiEpochInfo ltiSystemStart (txBody ^. vldtTxBodyL)
       inputsInfo <- mapM (Conway.transTxInInfoV3 ltiUTxO) (Set.toList txInputs)
@@ -359,12 +417,53 @@ instance EraPlutusTxInfo 'PlutusV3 DijkstraEra where
 
   toPlutusTxInInfo _ = transTxInInfoV3
 
-transFailSubTxIsNotSupported ::
+guardDijkstraFeaturesForPlutusV1toV3 ::
+  forall era.
+  ( EraTx era
+  , DijkstraEraTxBody era
+  , Inject (DijkstraContextError era) (ContextError era)
+  ) =>
+  Tx TopTx era ->
+  Either (ContextError era) ()
+guardDijkstraFeaturesForPlutusV1toV3 tx = do
+  let txBody = tx ^. bodyTxL
+      directDeposits = txBody ^. directDepositsTxBodyL
+      accountBalanceIntervals = txBody ^. accountBalanceIntervalsTxBodyL
+      subTransactions = txBody ^. subTransactionsTxBodyL
+      scriptHashes = [sh | ScriptHashObj sh <- toList (txBody ^. guardsTxBodyL)]
+  unless (null $ unDirectDeposits directDeposits) $
+    Left $
+      inject $
+        DirectDepositsNotSupported @era directDeposits
+  unless (null $ unAccountBalanceIntervals accountBalanceIntervals) $
+    Left $
+      inject $
+        AccountBalanceIntervalsNotSupported @era accountBalanceIntervals
+  case NE.nonEmpty . toList $ OMap.toStrictSeqOKeys subTransactions of
+    Nothing -> Right ()
+    Just subTxIds ->
+      Left $
+        inject $
+          SubTxsAreNotSupported @era subTxIds
+  case NE.nonEmpty scriptHashes of
+    Nothing -> Right ()
+    Just neScriptHashes ->
+      Left $
+        inject $
+          GuardScriptHashesNotSupported @era neScriptHashes
+
+transFailUnsupportedScriptInSubTx ::
   forall l era.
-  (EraTx era, Inject (DijkstraContextError era) (ContextError era)) =>
+  ( EraTx era
+  , Inject (DijkstraContextError era) (ContextError era)
+  , PlutusLanguage l
+  ) =>
   Tx SubTx era -> PlutusTxInfoResult l era
-transFailSubTxIsNotSupported tx =
-  PlutusTxInfoResult $ Left $ inject $ SubTxIsNotSupported @era (txIdTx tx)
+transFailUnsupportedScriptInSubTx tx =
+  PlutusTxInfoResult $
+    Left $
+      inject $
+        UnsupportedScriptInSubTx @era (plutusLanguage (Proxy @l)) (txIdTx tx)
 
 transTxCert ::
   (ConwayEraTxCert era, TxCert era ~ DijkstraTxCert era) => TxCert era -> PV3.TxCert
@@ -411,15 +510,31 @@ instance EraPlutusTxInfo 'PlutusV4 DijkstraEra where
 
   toPlutusScriptPurpose _ = error "stub: PlutusV4 not yet implemented"
 
-  toPlutusTxInfo proxy LedgerTxInfo {ltiProtVer, ltiEpochInfo, ltiSystemStart, ltiUTxO, ltiTx} = do
+  toPlutusTxInfo proxy lti@LedgerTxInfo {ltiProtVer, ltiEpochInfo, ltiSystemStart, ltiUTxO, ltiTx} = do
     withBothTxLevels ltiTx mkTopTxInfo mkSubTxInfo
     where
       mkTopTxInfo tx = PlutusTxInfoResult $ do
         txInfo <- mkAnyLevelTxInfo tx
-        let topTxInfo = txInfo {PV3.txInfoFee = transCoinToLovelace (tx ^. bodyTxL . feeTxBodyL)}
+        let
+          topTxInfo = txInfo {PV3.txInfoFee = transCoinToLovelace (tx ^. bodyTxL . feeTxBodyL)}
         Right $ \case
-          GuardingPurpose AsPurpose ->
-            -- TODO: Add Sub transactions
+          purpose@(GuardingPurpose AsPurpose) -> do
+            _subTxInfosForGuards <-
+              forM (OMap.elems (tx ^. bodyTxL . subTransactionsTxBodyL)) $ \subTx -> do
+                let txId = txIdTx subTx
+                mkTxInfo <-
+                  unPlutusTxInfoResult $
+                    case Map.lookup txId (ltiMemoizedSubTransactions lti) of
+                      Nothing ->
+                        toPlutusTxInfo proxy $
+                          lti
+                            { ltiTx = subTx
+                            , ltiMemoizedSubTransactions = mempty
+                            }
+                      Just txInfoResults ->
+                        lookupTxInfoResult (plutusSLanguage proxy) txInfoResults
+                left (SubTxContextError txId) $ mkTxInfo purpose
+            -- TODO: Include _subTxInfosForGuards
             Right topTxInfo
           _ -> Right topTxInfo
       mkSubTxInfo tx = PlutusTxInfoResult $ do

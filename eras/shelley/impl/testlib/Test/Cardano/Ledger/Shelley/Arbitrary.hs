@@ -53,6 +53,7 @@ import Cardano.Ledger.Shelley.Rewards (
  )
 import Cardano.Ledger.Shelley.Rules (
   PredicateFailure,
+  ShelleyBbodyPredFailure,
   ShelleyDelegPredFailure,
   ShelleyDelegsPredFailure,
   ShelleyDelplPredFailure,
@@ -95,7 +96,7 @@ import Test.Cardano.Base.Bytes (genByteArray)
 import Test.Cardano.Chain.UTxO.Gen (genCompactTxOut)
 import Test.Cardano.Data.Arbitrary ()
 import Test.Cardano.Ledger.Common
-import Test.Cardano.Ledger.Core.Arbitrary ()
+import Test.Cardano.Ledger.Core.Arbitrary (genEraProtVer)
 import Test.Cardano.Ledger.Core.Utils (unsafeBoundRational)
 import Test.QuickCheck.Hedgehog (hedgehog)
 
@@ -104,11 +105,17 @@ import Test.QuickCheck.Hedgehog (hedgehog)
 ------------------------------------------------------------------------------------------
 
 instance Era era => Arbitrary (ShelleyPParams Identity era) where
-  arbitrary = genericArbitraryU
+  arbitrary = do
+    p <- genericArbitraryU @(ShelleyPParams Identity era)
+    pv <- genEraProtVer @era
+    pure (p {sppProtocolVersion = pv})
   shrink = genericShrink
 
 instance Era era => Arbitrary (ShelleyPParams StrictMaybe era) where
-  arbitrary = genericArbitraryU
+  arbitrary = do
+    p <- genericArbitraryU @(ShelleyPParams StrictMaybe era)
+    pv <- oneof [pure SNothing, SJust <$> genEraProtVer @era]
+    pure (p {sppProtocolVersion = pv})
   shrink = genericShrink
 
 instance (Era era, Arbitrary (PParamsUpdate era)) => Arbitrary (ProposedPPUpdates era) where
@@ -606,6 +613,7 @@ instance
     sgGenDelegs <- arbitrary
     sgInitialFunds <- arbitrary
     sgStaking <- arbitrary
+    let sgExtraConfig = SNothing
     pure ShelleyGenesis {..}
 
 instance Arbitrary ShelleyGenesisStaking where
@@ -681,6 +689,15 @@ instance
 
 instance
   ( Era era
+  , Arbitrary (PredicateFailure (EraRule "LEDGERS" era))
+  ) =>
+  Arbitrary (ShelleyBbodyPredFailure era)
+  where
+  arbitrary = genericArbitraryU
+  shrink _ = []
+
+instance
+  ( Era era
   , Arbitrary (PredicateFailure (EraRule "DELEGS" era))
   , Arbitrary (PredicateFailure (EraRule "UTXOW" era))
   ) =>
@@ -694,6 +711,17 @@ instance
   , Arbitrary (PredicateFailure (EraRule "UTXO" era))
   ) =>
   Arbitrary (ShelleyUtxowPredFailure era)
+  where
+  arbitrary = genericArbitraryU
+  shrink _ = []
+
+instance
+  ( Era era
+  , Arbitrary (Value era)
+  , Arbitrary (TxOut era)
+  , Arbitrary (EraRuleFailure "PPUP" era)
+  ) =>
+  Arbitrary (ShelleyUtxoPredFailure era)
   where
   arbitrary = genericArbitraryU
   shrink _ = []
@@ -713,17 +741,6 @@ instance
 deriving newtype instance Arbitrary (Tx TopTx ShelleyEra)
 
 deriving newtype instance Arbitrary (ApplyTxError ShelleyEra)
-
-instance
-  ( Era era
-  , Arbitrary (Value era)
-  , Arbitrary (TxOut era)
-  , Arbitrary (EraRuleFailure "PPUP" era)
-  ) =>
-  Arbitrary (ShelleyUtxoPredFailure era)
-  where
-  arbitrary = genericArbitraryU
-  shrink _ = []
 
 data RawSeed = RawSeed !Word64 !Word64 !Word64 !Word64 !Word64
   deriving (Eq, Show)

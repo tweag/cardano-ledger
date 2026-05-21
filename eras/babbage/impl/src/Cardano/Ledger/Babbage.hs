@@ -28,6 +28,7 @@ module Cardano.Ledger.Babbage (
   bfProtocolVersionL,
 ) where
 
+import Cardano.Ledger.Alonzo (mkAlonzoStAnnTx)
 import Cardano.Ledger.Alonzo.Scripts (AlonzoScript (..))
 import Cardano.Ledger.Alonzo.TxAuxData (AlonzoTxAuxData (..))
 import Cardano.Ledger.Babbage.BlockBody ()
@@ -51,18 +52,22 @@ import Cardano.Ledger.Babbage.UTxO ()
 import Cardano.Ledger.Binary (DecCBOR, EncCBOR)
 import Cardano.Ledger.Block (EraBlockHeader)
 import Cardano.Ledger.Shelley.API
-import Cardano.Ledger.Shelley.Rules (ShelleyLedgerPredFailure)
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Data.Bifunctor (Bifunctor (first))
 import Data.List.NonEmpty (NonEmpty)
 import GHC.Generics (Generic)
 
 instance ApplyTx BabbageEra where
-  newtype ApplyTxError BabbageEra = BabbageApplyTxError (NonEmpty (ShelleyLedgerPredFailure BabbageEra))
+  newtype ApplyTxError BabbageEra
+    = BabbageApplyTxError (NonEmpty (Shelley.ShelleyLedgerPredFailure BabbageEra))
     deriving (Eq, Show)
     deriving newtype (EncCBOR, DecCBOR, Semigroup, Generic)
-  applyTxValidation validationPolicy globals env state tx =
+
+  mkStAnnTx = mkAlonzoStAnnTx
+
+  applyTxValidation validationPolicy globals env state stAnnTx =
     first BabbageApplyTxError $
-      ruleApplyTxValidation @"LEDGER" validationPolicy globals env state tx
+      ruleApplyTxValidation @"LEDGER" validationPolicy globals env state stAnnTx
 
 instance ApplyTick BabbageEra
 

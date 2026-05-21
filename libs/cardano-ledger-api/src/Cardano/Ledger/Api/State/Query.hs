@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -13,6 +14,15 @@
 {-# OPTIONS_GHC -Wno-deprecations #-}
 
 module Cardano.Ledger.Api.State.Query (
+  module Account,
+  module Governance,
+
+  -- * @GetEpochNo@
+  queryCurrentEpochNo,
+
+  -- * @GetAccountState@
+  queryChainAccountState,
+
   -- * @GetFilteredDelegationsAndRewardAccounts@
   queryStakePoolDelegsAndRewards,
 
@@ -43,14 +53,6 @@ module Cardano.Ledger.Api.State.Query (
   -- * @GetCommitteeMembersState@
   queryCommitteeMembersState,
 
-  -- * @GetChainAccountState@
-  queryChainAccountState,
-  CommitteeMemberState (..),
-  CommitteeMembersState (..),
-  HotCredAuthStatus (..),
-  MemberStatus (..),
-  NextEpochChange (..),
-
   -- * @GetCurrentPParams@
   queryCurrentPParams,
 
@@ -73,23 +75,32 @@ module Cardano.Ledger.Api.State.Query (
   QueryPoolStateResult (..),
   mkQueryPoolStateResult,
 
+  -- * @GetPoolDistr2@
+  querySetSnapshotStakePoolDistr,
+
   -- * @GetStakeSnapshots@
   queryStakeSnapshots,
   StakeSnapshot (..),
   StakeSnapshots (..),
 
+  -- * @GetLedgerPeerSnapshot@
+  queryStakePoolRelays,
+
   -- * For testing
   getNextEpochCommitteeMembers,
 ) where
 
-import Cardano.Ledger.Api.State.Query.CommitteeMembersState (
-  CommitteeMemberState (..),
-  CommitteeMembersState (..),
-  HotCredAuthStatus (..),
-  MemberStatus (..),
-  NextEpochChange (..),
+import Cardano.Ledger.Api.State.Query.Account as Account
+import Cardano.Ledger.Api.State.Query.Governance as Governance
+import Cardano.Ledger.BaseTypes (
+  EpochNo,
+  KeyValuePairs (..),
+  Network,
+  NonZero,
+  ProtVer (..),
+  ToKeyValuePairs (..),
+  strictMaybeToMaybe,
  )
-import Cardano.Ledger.BaseTypes (EpochNo, Network, NonZero, ProtVer (..), strictMaybeToMaybe)
 import Cardano.Ledger.Binary
 import Cardano.Ledger.Coin (Coin (..), CompactForm (..))
 import Cardano.Ledger.Compactible (fromCompact)
@@ -114,7 +125,7 @@ import Cardano.Ledger.Conway.Governance (
   psProposalsL,
   rsEnactStateL,
  )
-import Cardano.Ledger.Conway.Rules (updateDormantDRepExpiry)
+import qualified Cardano.Ledger.Conway.Rules as Conway
 import Cardano.Ledger.Conway.State
 import Cardano.Ledger.Core
 import Cardano.Ledger.Credential (Credential (..))
@@ -122,6 +133,8 @@ import Cardano.Ledger.DRep (credToDRep, dRepToCred)
 import Cardano.Ledger.Shelley.LedgerState
 import Control.DeepSeq
 import Control.Monad (guard)
+import Data.Aeson (ToJSON (..), object, pairs, (.=))
+import qualified Data.Aeson as Aeson
 import Data.Foldable (fold, foldMap')
 import Data.Map (Map)
 import qualified Data.Map.Strict as Map
@@ -134,7 +147,6 @@ import qualified Data.Set as Set
 import qualified Data.VMap as VMap
 import GHC.Generics
 import Lens.Micro
-import Lens.Micro.Extras (view)
 
 -- | Implementation for @GetFilteredDelegationsAndRewardAccounts@ query.
 queryStakePoolDelegsAndRewards ::
@@ -179,7 +191,7 @@ queryDRepState nes creds
   where
     vStateFiltered = vState & vsDRepsL %~ (`Map.restrictKeys` creds)
     vState = nes ^. nesEsL . esLStateL . lsCertStateL . certVStateL
-    updateDormantDRepExpiry' = updateDormantDRepExpiry (nes ^. nesELL)
+    updateDormantDRepExpiry' = Conway.updateDormantDRepExpiry (nes ^. nesELL)
 
 -- | Query the delegators delegated to each DRep, including
 -- @AlwaysAbstain@ and @NoConfidence@.
@@ -371,11 +383,6 @@ queryCommitteeMembersState coldCredsFilter hotCredsFilter statusFilter nes =
       , csEpochNo = currentEpoch
       }
 
-queryChainAccountState ::
-  NewEpochState era ->
-  ChainAccountState
-queryChainAccountState = view chainAccountStateL
-
 getNextEpochCommitteeMembers ::
   ConwayEraGov era =>
   NewEpochState era ->
@@ -450,7 +457,8 @@ data QueryPoolStateResult = QueryPoolStateResult
   , qpsrRetiring :: !(Map (KeyHash StakePool) EpochNo)
   , qpsrDeposits :: !(Map (KeyHash StakePool) Coin)
   }
-  deriving (Show, Eq)
+  deriving (Show, Eq, Generic)
+  deriving (ToJSON) via KeyValuePairs QueryPoolStateResult
 
 instance EncCBOR QueryPoolStateResult where
   encCBOR (QueryPoolStateResult a b c d) =
@@ -464,6 +472,15 @@ instance DecCBOR QueryPoolStateResult where
     qpsrDeposits <- decCBOR
     pure
       QueryPoolStateResult {qpsrStakePoolParams, qpsrFutureStakePoolParams, qpsrRetiring, qpsrDeposits}
+
+instance ToKeyValuePairs QueryPoolStateResult where
+  toKeyValuePairs qpsr@(QueryPoolStateResult _ _ _ _) =
+    let QueryPoolStateResult {..} = qpsr
+     in [ "stakePoolParams" .= qpsrStakePoolParams
+        , "futureStakePoolParams" .= qpsrFutureStakePoolParams
+        , "retiring" .= qpsrRetiring
+        , "deposits" .= qpsrDeposits
+        ]
 
 mkQueryPoolStateResult ::
   (forall x. Map.Map (KeyHash StakePool) x -> Map.Map (KeyHash StakePool) x) ->
@@ -541,6 +558,22 @@ instance DecCBOR StakeSnapshot where
       <*> decCBOR
       <*> decCBOR
 
+instance ToJSON StakeSnapshot where
+  toJSON = object . stakeSnapshotToPair
+  toEncoding = pairs . mconcat . stakeSnapshotToPair
+
+stakeSnapshotToPair :: Aeson.KeyValue e a => StakeSnapshot -> [a]
+stakeSnapshotToPair
+  StakeSnapshot
+    { ssMarkPool
+    , ssSetPool
+    , ssGoPool
+    } =
+    [ "stakeMark" .= ssMarkPool
+    , "stakeSet" .= ssSetPool
+    , "stakeGo" .= ssGoPool
+    ]
+
 data StakeSnapshots = StakeSnapshots
   { ssStakeSnapshots :: !(Map (KeyHash StakePool) StakeSnapshot)
   , ssMarkTotal :: !(NonZero Coin)
@@ -573,6 +606,28 @@ instance DecCBOR StakeSnapshots where
       <*> decCBOR
       <*> decCBOR
       <*> decCBOR
+
+instance ToJSON StakeSnapshots where
+  toJSON = object . stakeSnapshotsToPair
+  toEncoding = pairs . mconcat . stakeSnapshotsToPair
+
+stakeSnapshotsToPair ::
+  Aeson.KeyValue e a => StakeSnapshots -> [a]
+stakeSnapshotsToPair
+  StakeSnapshots
+    { ssStakeSnapshots
+    , ssMarkTotal
+    , ssSetTotal
+    , ssGoTotal
+    } =
+    [ "pools" .= ssStakeSnapshots
+    , "total"
+        .= object
+          [ "stakeMark" .= ssMarkTotal
+          , "stakeSet" .= ssSetTotal
+          , "stakeGo" .= ssGoTotal
+          ]
+    ]
 
 -- | Report stake per pool per snapshot as well as total active stake per snapshot.
 --
@@ -643,3 +698,54 @@ queryStakeSnapshots nes mPoolIds =
         , ssSetTotal = ssTotalActiveStake ssStakeSet
         , ssGoTotal = ssTotalActiveStake ssStakeGo
         }
+
+-- | Query the current epoch number.
+queryCurrentEpochNo :: NewEpochState era -> EpochNo
+queryCurrentEpochNo = nesEL
+
+-- | Query chain account state (treasury and reserves).
+queryChainAccountState ::
+  NewEpochState era ->
+  ChainAccountState
+queryChainAccountState nes = nes ^. chainAccountStateL
+
+-- | Query pool relay information with associated stake fractions.
+-- Returns pools that have at least one registered relay, combining
+-- relays from both current and pending (future) pool registrations.
+--
+-- This provides the ledger-side data needed by consensus for
+-- peer discovery (GetLedgerPeerSnapshot). Consensus applies
+-- networking-specific transformations (relay type conversion, big-peer
+-- stake accumulation) on top of this result.
+queryStakePoolRelays ::
+  EraCertState era =>
+  NewEpochState era ->
+  Map (KeyHash StakePool) (Rational, StrictSeq StakePoolRelay)
+queryStakePoolRelays nes =
+  Map.mapMaybeWithKey getRelays (unPoolDistr (nesPd nes))
+  where
+    pstate = nes ^. nesEsL . esLStateL . lsCertStateL . certPStateL
+    pools = psStakePools pstate
+    futureParams = psFutureStakePoolParams pstate
+    getRelays poolId ips =
+      let curRelays = maybe mempty spsRelays $ Map.lookup poolId pools
+          futRelays = maybe mempty sppRelays $ Map.lookup poolId futureParams
+          allRelays = curRelays <> futRelays
+       in if null allRelays
+            then Nothing
+            else Just (individualPoolStake ips, allRelays)
+
+-- | Query the pool distribution derived from the set-snapshot.
+--
+-- Returns the pre-computed 'PoolDistr' stored in 'NewEpochState'
+-- (@nesPd@), optionally filtered to the given set of pools. Empty set
+-- returns all pools.
+querySetSnapshotStakePoolDistr ::
+  NewEpochState era ->
+  Set (KeyHash StakePool) ->
+  PoolDistr
+querySetSnapshotStakePoolDistr nes poolIds
+  | Set.null poolIds = nesPd nes
+  | otherwise =
+      let pd = nesPd nes
+       in pd {unPoolDistr = Map.restrictKeys (unPoolDistr pd) poolIds}

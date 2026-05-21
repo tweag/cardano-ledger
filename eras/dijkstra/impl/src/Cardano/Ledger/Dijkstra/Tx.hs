@@ -8,6 +8,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -21,28 +22,34 @@
 module Cardano.Ledger.Dijkstra.Tx (
   DijkstraTx (..),
   Tx (..),
+  DijkstraStAnnTx (..),
   validateDijkstraNativeScript,
+  decodeDijkstraTopTx,
 ) where
 
 import Cardano.Ledger.Allegra.TxBody (AllegraEraTxBody (..), StrictMaybe)
+import Cardano.Ledger.Alonzo.Plutus.Context (CollectError, ContextError, TxInfoResult)
 import Cardano.Ledger.Alonzo.Tx (
   AlonzoEraTx,
   IsValid (..),
  )
-import Cardano.Ledger.BaseTypes (StrictMaybe (..), integralToBounded)
+import Cardano.Ledger.BaseTypes (ProtVer, StrictMaybe (..), integralToBounded)
 import Cardano.Ledger.Binary (
   Annotator,
   DecCBOR (..),
+  Decoder,
   EncCBOR (..),
   Encoding,
   ToCBOR (..),
-  decodeListLen,
+  TokenType (..),
   decodeNullStrictMaybe,
+  decodeRecordNamed,
   encodeListLen,
   encodeNullStrictMaybe,
+  peekTokenType,
   serialize,
  )
-import Cardano.Ledger.Binary.Coders (Decode (..), Encode (..), decode, encode, (!>), (<*!))
+import Cardano.Ledger.Binary.Coders (Encode (..), encode, (!>))
 import Cardano.Ledger.Conway.Tx (AlonzoEraTx (..), Tx (..), getConwayMinFeeTx)
 import Cardano.Ledger.Core
 import Cardano.Ledger.Dijkstra.Era (DijkstraEra)
@@ -56,11 +63,15 @@ import Cardano.Ledger.Dijkstra.TxBody (DijkstraEraTxBody (..))
 import Cardano.Ledger.Dijkstra.TxWits ()
 import Cardano.Ledger.Keys.WitVKey (witVKeyHash)
 import Cardano.Ledger.MemoBytes (EqRaw (..))
+import Cardano.Ledger.Plutus (Language, PlutusWithContext)
 import Cardano.Ledger.Shelley.Tx (shelleyTxEqRaw)
+import Cardano.Ledger.State
 import Control.DeepSeq (NFData (..), deepseq)
 import Control.Monad.Trans.Fail.String (errorFail)
 import qualified Data.ByteString.Lazy as LBS
 import Data.Int (Int64)
+import Data.List.NonEmpty (NonEmpty)
+import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Typeable (Typeable)
 import Data.Word (Word32)
@@ -118,43 +129,40 @@ instance (EraTx era, Typeable l) => ToCBOR (DijkstraTx l era) where
 instance EraTx era => EncCBOR (DijkstraTx l era) where
   encCBOR = toCBORForMempoolSubmission
 
+decodeDijkstraTopTx :: EraTx era => Bool -> Decoder s (Annotator (DijkstraTx TopTx era))
+decodeDijkstraTopTx allowIsValid =
+  fst <$> do
+    let isValidBackwardsCompatibleLength isValidFlagSupplied = if isValidFlagSupplied then 4 else 3
+    decodeRecordNamed "DijkstraTx" (isValidBackwardsCompatibleLength . snd) $ do
+      bodyAnn <- decCBOR
+      witsAnn <- decCBOR
+      isValidFlagSupplied <-
+        if allowIsValid
+          then
+            peekTokenType >>= \case
+              TypeBool ->
+                decCBOR >>= \case
+                  True -> pure True
+                  False -> fail "Value `false` not allowed for `isValid`"
+              _ -> pure False
+          else pure False
+      auxAnn <- decodeNullStrictMaybe decCBOR
+      let
+        -- `isValid == False` can no longer be supplied in an encoded transaction.
+        isValid = IsValid True
+        dijkstraTopTx =
+          DijkstraTx <$> bodyAnn <*> witsAnn <*> pure isValid <*> sequence auxAnn
+      pure (dijkstraTopTx, isValidFlagSupplied)
+
 instance (EraTx era, Typeable l) => DecCBOR (Annotator (DijkstraTx l era)) where
   decCBOR = withSTxBothLevels @l $ \case
-    STopTx -> do
-      decodeListLen >>= \case
-        4 -> do
-          bodyAnn <- decCBOR
-          witsAnn <- decCBOR
-          isValid <-
-            decCBOR
-              >>= \case
-                True -> pure (IsValid True)
-                False -> fail "value `false` not allowed for `isValid`"
-          auxAnn <- decodeNullStrictMaybe decCBOR
-          pure $
-            DijkstraTx
-              <$> bodyAnn
-              <*> witsAnn
-              <*> pure isValid
-              <*> sequence auxAnn
-        3 -> do
-          bodyAnn <- decCBOR
-          witsAnn <- decCBOR
-          auxAnn <- decodeNullStrictMaybe decCBOR
-          pure $
-            DijkstraTx
-              <$> bodyAnn
-              <*> witsAnn
-              <*> pure (IsValid True)
-              <*> sequence auxAnn
-        n ->
-          fail $ "Unexpected list length: " <> show n <> ". Expected: 4 or 3."
+    STopTx -> decodeDijkstraTopTx True
     SSubTx ->
-      decode $
-        Ann (RecD DijkstraSubTx)
-          <*! From
-          <*! From
-          <*! D (sequence <$> decodeNullStrictMaybe decCBOR)
+      decodeRecordNamed "DijkstraSubTx" (const 3) $ do
+        body <- decCBOR
+        wits <- decCBOR
+        aux <- sequence <$> decodeNullStrictMaybe decCBOR
+        pure $ DijkstraSubTx <$> body <*> wits <*> aux
 
 instance HasEraTxLevel DijkstraTx DijkstraEra where
   toSTxLevel DijkstraTx {} = STopTx
@@ -182,6 +190,12 @@ instance EraTx DijkstraEra where
   newtype Tx l DijkstraEra = MkDijkstraTx {unDijkstraTx :: DijkstraTx l DijkstraEra}
     deriving newtype (Eq, Show, NFData, NoThunks, ToCBOR, EncCBOR)
     deriving (Generic)
+
+  type StAnnTx l DijkstraEra = DijkstraStAnnTx l DijkstraEra
+
+  txStAnnTxG = to $ \case
+    DijkstraStAnnTopTx {dsattTx} -> dsattTx
+    DijkstraStAnnSubTx {dsastTx} -> dsastTx
 
   mkBasicTx = MkDijkstraTx . mkBasicDijkstraTx
 
@@ -354,3 +368,57 @@ toCBORForMempoolSubmission = \case
         !> To dstBody
         !> To dstWits
         !> E (encodeNullStrictMaybe encCBOR) dstAuxData
+
+data DijkstraStAnnTx l era where
+  DijkstraStAnnTopTx ::
+    { dsattTx :: !(Tx TopTx era)
+    , dsattProtocolVersion :: !ProtVer
+    , dsattScriptsNeeded :: ScriptsNeeded era
+    , dsattScriptsProvided :: ScriptsProvided era
+    , dsattPlutusLegacyMode :: Bool
+    , dsattPlutusLanguagesUsed :: Set Language
+    , dsattPlutusScriptsWithContext :: Either (NonEmpty (CollectError era)) [PlutusWithContext]
+    , dsattSubTransactions :: [DijkstraStAnnTx SubTx era]
+    } ->
+    DijkstraStAnnTx TopTx era
+  DijkstraStAnnSubTx ::
+    { dsastTx :: !(Tx SubTx era)
+    , dsastScriptsNeeded :: ScriptsNeeded era
+    , dsastScriptsProvided :: ScriptsProvided era
+    , dsastTxInfoResult :: TxInfoResult era
+    , dsastPlutusLanguagesUsed :: Set Language
+    , dsastPlutusScriptsWithContext :: Either (NonEmpty (CollectError era)) [PlutusWithContext]
+    } ->
+    DijkstraStAnnTx SubTx era
+
+deriving instance
+  ( DijkstraEraScript era
+  , Eq (Tx l era)
+  , Eq (Tx SubTx era)
+  , Eq (ScriptsNeeded era)
+  , Eq (ScriptsProvided era)
+  , Eq (ContextError era)
+  , Eq (TxInfoResult era)
+  ) =>
+  Eq (DijkstraStAnnTx l era)
+
+deriving instance
+  ( DijkstraEraScript era
+  , Show (Tx l era)
+  , Show (Tx SubTx era)
+  , Show (ScriptsNeeded era)
+  , Show (ScriptsProvided era)
+  , Show (ContextError era)
+  , Show (TxInfoResult era)
+  ) =>
+  Show (DijkstraStAnnTx l era)
+
+instance
+  ( EraTxLevel era
+  , STxLevel SubTx era ~ STxBothLevels SubTx era
+  , STxLevel TopTx era ~ STxBothLevels TopTx era
+  ) =>
+  HasEraTxLevel DijkstraStAnnTx era
+  where
+  toSTxLevel DijkstraStAnnTopTx {} = STopTx @era
+  toSTxLevel DijkstraStAnnSubTx {} = SSubTx @era

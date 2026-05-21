@@ -2,9 +2,17 @@
 
 ## 1.23.0.0
 
+* Add `ToJSON` instance for `DefaultVote`.
+* Add `injectStakeCredentials`, `injectDRepsThenDelegs` to `Cardano.Ledger.Conway.Transition`
+* Add `ConwayExtraConfig` type and `cgExtraConfig` field to `ConwayGenesis`
+* Deprecate `conwayRegisterInitialAccounts`, `registerDRepsThenDelegs`
+* Change `Signal` to `StAnnTx TopTx era` for: `ConwayLEDGER`, `ConwayMEMPOOL`, `ConwayUTXOW`, `ConwayUTXO`, `ConwayUTXOS`
+* Change `conwayRegisterInitialFundsThenStaking` to require `MonadIO`, `MonadThrow`, and accept a `HasFS m h` parameter
+* Remove `ToCBOR` and `FromCBOR` instances for `PulsingSnapshot`, `EnactState`, `ConwayGovPredFailure`
+* Add `validateRefScriptSize`, `updateDormantDRepExpiries`, `updateVotingDRepExpiries`
 * Add `ApplyTick` instance for `ConwayEra`
 * Add `ConwayUtxosEnv`
-* Change `STS` instance of `ConwayUTXOS`: use `ConwayUtxosEnv` as `Environment` and `()` as `State`
+* Change `STS` instance of `ConwayUTXOS`: use `()` as `Environment` and `State`
 * Add `updateTreasuryDonation`
 * Add `checkReferenceInputsNotDisjointFromInputs`
 * Add `ConwayEraScript` superclass to `ConwayEraPlutusTxInfo`
@@ -30,6 +38,23 @@
   - `ConwayUtxowPredFailure`
 * Remove `NoThunks` instance for `ConwayContextError`
 * Make `ConwayContextError` constructors lazy
+* Make `ZeroTreasuryWithdrawals` a permanent check for all eras (not just post-Babbage).
+
+### cddl
+
+* Extend `constr` CDDL rule to include tags 1280–1400 for Plutus `Data` constructor indexes
+
+### `testlib`
+
+* Add to `Test.Cardano.Ledger.Conway.Examples`:
+  - `exampleConwayOnwardsEraPParams`
+  - `exampleConwayOnwardsEraPParamsUpdate`
+* Change `exampleProposalProcedureParameterChange` to use `exampleConwayOnwardsEraPParamsUpdate`.
+* Export `conwayEraSpecificSpec`
+* Make `Test.Cardano.Ledger.Conway.Imp.spec` accept `Proxy era`
+* In `Test.Cardano.Ledger.Conway.Examples`:
+  - Remove `mkConwayBasedExampleTx`, `exampleConwayBasedTxBody`
+  - Add `exampleConwayBasedTx`, `exampleConwayBasedTopTx`, `exampleConwayTx`
 
 ## 1.22.0.0
 

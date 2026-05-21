@@ -37,6 +37,7 @@ import Cardano.SCLS.NamespaceCodec (
   namespaceKeySize,
  )
 import Cardano.SCLS.Versioned (Versioned (..))
+import Data.Maybe.Strict (StrictMaybe)
 import Data.MemPack (MemPack (packM, unpackM))
 import Data.Proxy (Proxy (..))
 import Data.Text (Text)
@@ -83,10 +84,10 @@ deriving instance
   FromCanonicalCBOR "entities/accounts/v0" EntitiesAccountsOut
 
 data CanonicalAccountState = CanonicalAccountState
-  { casBalance :: CanonicalCoin
-  , casDeposit :: CanonicalCoin
-  , casDRepDelegation :: Maybe DRep
-  , casStakePoolDelegation :: Maybe (KeyHash StakePool)
+  { casBalance :: !CanonicalCoin
+  , casDeposit :: !CanonicalCoin
+  , casDRepDelegation :: !(StrictMaybe DRep)
+  , casStakePoolDelegation :: !(StrictMaybe (KeyHash StakePool))
   }
   deriving (Eq, Show, Generic)
 
@@ -111,7 +112,6 @@ instance (Era era, NamespaceEra "entities/accounts/v0" ~ era) => FromCanonicalCB
       decodeNamespacedField @"entities/accounts/v0" ("drep_delegation" :: Text)
     Versioned casStakePoolDelegation <-
       decodeNamespacedField @"entities/accounts/v0" ("stake_pool_delegation" :: Text)
-
     pure $ Versioned $ CanonicalAccountState {..}
 
 deriving via

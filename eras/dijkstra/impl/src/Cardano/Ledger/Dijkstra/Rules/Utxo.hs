@@ -17,25 +17,17 @@
 
 module Cardano.Ledger.Dijkstra.Rules.Utxo (
   DijkstraUTXO,
+  DijkstraUtxoEnv (..),
   DijkstraUtxoPredFailure (..),
   conwayToDijkstraUtxoPredFailure,
   validateWrongNetworkInDirectDeposit,
 ) where
 
 import Cardano.Ledger.Address (DirectDeposits (..))
-import Cardano.Ledger.Allegra.Rules (AllegraUtxoPredFailure, shelleyToAllegraUtxoPredFailure)
 import qualified Cardano.Ledger.Allegra.Rules as Allegra
-import Cardano.Ledger.Alonzo.Rules (
-  AlonzoUtxoEvent,
-  AlonzoUtxoPredFailure,
-  AlonzoUtxosPredFailure,
- )
 import qualified Cardano.Ledger.Alonzo.Rules as Alonzo
-import Cardano.Ledger.Babbage.Rules (
-  BabbageUtxoPredFailure,
-  babbageUtxoValidation,
-  updateUTxOStateByTxValidity,
- )
+import Cardano.Ledger.Alonzo.TxWits (unRedeemersL)
+import qualified Cardano.Ledger.Babbage.Rules as Babbage
 import Cardano.Ledger.BaseTypes (
   Mismatch (..),
   Network,
@@ -43,11 +35,14 @@ import Cardano.Ledger.BaseTypes (
   ShelleyBase,
   SlotNo,
   StrictMaybe (..),
+  epochInfo,
   networkId,
+  systemStart,
  )
 import Cardano.Ledger.Binary (
   DecCBOR (..),
   EncCBOR (..),
+  sizedValue,
  )
 import Cardano.Ledger.Binary.Coders (
   Decode (..),
@@ -58,37 +53,21 @@ import Cardano.Ledger.Binary.Coders (
   (<!),
  )
 import Cardano.Ledger.Coin (Coin, DeltaCoin)
+import Cardano.Ledger.Compactible (fromCompact)
 import Cardano.Ledger.Conway.Core
-import Cardano.Ledger.Conway.Rules (
-  ConwayUTXOS,
-  ConwayUtxoPredFailure,
-  ConwayUtxosEnv (..),
-  ConwayUtxosPredFailure (..),
-  allegraToConwayUtxoPredFailure,
-  alonzoToConwayUtxoPredFailure,
-  babbageToConwayUtxoPredFailure,
-  updateTreasuryDonation,
- )
 import qualified Cardano.Ledger.Conway.Rules as Conway
+import Cardano.Ledger.Conway.State
 import Cardano.Ledger.Credential (StakeReference (..))
 import Cardano.Ledger.Dijkstra.Era (DijkstraEra, DijkstraUTXO)
 import Cardano.Ledger.Dijkstra.Rules.Utxos ()
 import Cardano.Ledger.Dijkstra.TxBody (DijkstraEraTxBody (..))
 import Cardano.Ledger.Plutus (ExUnits)
-import Cardano.Ledger.Rules.ValidationMode (Test, failOnJustStatic, runTestOnSignal)
+import Cardano.Ledger.Rules.ValidationMode (Test, failOnJustStatic, runTest, runTestOnSignal)
 import Cardano.Ledger.Shelley.LedgerState (UTxOState (..))
-import Cardano.Ledger.Shelley.Rules (
-  ShelleyUtxoPredFailure,
-  UtxoEnv (..),
-  validSizeComputationCheck,
- )
-import Cardano.Ledger.State (
-  EraCertState (..),
-  EraStake,
-  EraUTxO,
- )
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Cardano.Ledger.TxIn (TxIn)
 import Control.DeepSeq (NFData)
+import Control.Monad (when)
 import Control.Monad.Trans.Reader (asks)
 import Control.State.Transition.Extended (
   Embed (..),
@@ -96,20 +75,28 @@ import Control.State.Transition.Extended (
   STS (..),
   TRC (..),
   TransitionRule,
+  failureOnNonEmptyMap,
   failureOnNonEmptySet,
   judgmentContext,
   liftSTS,
   trans,
+  validate,
  )
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map.NonEmpty (NonEmptyMap)
 import qualified Data.Map.Strict as Map
+import qualified Data.OMap.Strict as OMap
 import Data.Set.NonEmpty (NonEmptySet)
 import Data.Word (Word16, Word32)
 import GHC.Generics (Generic)
 import Lens.Micro ((^.))
 
--- ======================================================
+data DijkstraUtxoEnv era = DijkstraUtxoEnv
+  { dueSlot :: SlotNo
+  , duePParams :: PParams era
+  , dueCertState :: CertState era
+  , dueOriginalUtxo :: UTxO era
+  }
 
 -- | Predicate failure for the Dijkstra Era
 data DijkstraUtxoPredFailure era
@@ -180,37 +167,41 @@ data DijkstraUtxoPredFailure era
       Network
       -- | the set of account addresses with incorrect network IDs
       (NonEmptySet AccountAddress)
+  | -- | Total withdrawals per account that exceed the original account balance
+    WithdrawalsExceedAccountBalance (NonEmptyMap AccountAddress (Mismatch RelLTEQ Coin))
   deriving (Generic)
 
 type instance EraRuleFailure "UTXO" DijkstraEra = DijkstraUtxoPredFailure DijkstraEra
 
-type instance EraRuleEvent "UTXO" DijkstraEra = AlonzoUtxoEvent DijkstraEra
+type instance EraRuleEvent "UTXO" DijkstraEra = Alonzo.AlonzoUtxoEvent DijkstraEra
 
 instance InjectRuleFailure "UTXO" DijkstraUtxoPredFailure DijkstraEra
 
-instance InjectRuleFailure "UTXO" ConwayUtxoPredFailure DijkstraEra where
+instance InjectRuleFailure "UTXO" Conway.ConwayUtxoPredFailure DijkstraEra where
   injectFailure = conwayToDijkstraUtxoPredFailure
 
-instance InjectRuleFailure "UTXO" BabbageUtxoPredFailure DijkstraEra where
-  injectFailure = conwayToDijkstraUtxoPredFailure . babbageToConwayUtxoPredFailure
+instance InjectRuleFailure "UTXO" Babbage.BabbageUtxoPredFailure DijkstraEra where
+  injectFailure = conwayToDijkstraUtxoPredFailure . Conway.babbageToConwayUtxoPredFailure
 
-instance InjectRuleFailure "UTXO" AlonzoUtxoPredFailure DijkstraEra where
-  injectFailure = conwayToDijkstraUtxoPredFailure . alonzoToConwayUtxoPredFailure
+instance InjectRuleFailure "UTXO" Alonzo.AlonzoUtxoPredFailure DijkstraEra where
+  injectFailure = conwayToDijkstraUtxoPredFailure . Conway.alonzoToConwayUtxoPredFailure
 
-instance InjectRuleFailure "UTXO" ShelleyUtxoPredFailure DijkstraEra where
-  injectFailure =
-    conwayToDijkstraUtxoPredFailure . allegraToConwayUtxoPredFailure . shelleyToAllegraUtxoPredFailure
-
-instance InjectRuleFailure "UTXO" Allegra.AllegraUtxoPredFailure DijkstraEra where
-  injectFailure = conwayToDijkstraUtxoPredFailure . allegraToConwayUtxoPredFailure
-
-instance InjectRuleFailure "UTXO" ConwayUtxosPredFailure DijkstraEra where
-  injectFailure = UtxosFailure
-
-instance InjectRuleFailure "UTXO" AlonzoUtxosPredFailure DijkstraEra where
+instance InjectRuleFailure "UTXO" Shelley.ShelleyUtxoPredFailure DijkstraEra where
   injectFailure =
     conwayToDijkstraUtxoPredFailure
-      . alonzoToConwayUtxoPredFailure
+      . Conway.allegraToConwayUtxoPredFailure
+      . Allegra.shelleyToAllegraUtxoPredFailure
+
+instance InjectRuleFailure "UTXO" Allegra.AllegraUtxoPredFailure DijkstraEra where
+  injectFailure = conwayToDijkstraUtxoPredFailure . Conway.allegraToConwayUtxoPredFailure
+
+instance InjectRuleFailure "UTXO" Conway.ConwayUtxosPredFailure DijkstraEra where
+  injectFailure = UtxosFailure
+
+instance InjectRuleFailure "UTXO" Alonzo.AlonzoUtxosPredFailure DijkstraEra where
+  injectFailure =
+    conwayToDijkstraUtxoPredFailure
+      . Conway.alonzoToConwayUtxoPredFailure
       . Alonzo.UtxosFailure
       . injectFailure
 
@@ -242,10 +233,6 @@ instance
   ) =>
   NFData (DijkstraUtxoPredFailure era)
 
---------------------------------------------------------------------------------
--- DijkstraUTXO STS
---------------------------------------------------------------------------------
-
 validateNoPtrInCollateralReturn ::
   ( BabbageEraTxBody era
   , InjectRuleFailure rule DijkstraUtxoPredFailure era
@@ -258,6 +245,61 @@ validateNoPtrInCollateralReturn txBody = do
         Addr _ _ (StakeRefPtr {}) <- pure $ collateralReturn ^. addrTxOutL
         Just collateralReturn
   failOnJustStatic hasCollateralTxOut (injectFailure . PtrPresentInCollateralReturn)
+
+-- | For each account, the total withdrawals across the entire batch should not exceed the original account balance.
+-- Unregistered accounts are treated as having 0 balance.
+validateBatchWithdrawals ::
+  ( EraTx era
+  , EraAccounts era
+  , DijkstraEraTxBody era
+  ) =>
+  Accounts era ->
+  Tx TopTx era ->
+  Test (DijkstraUtxoPredFailure era)
+validateBatchWithdrawals accounts tx =
+  let allWithdrawals =
+        Map.unionsWith (<>) $
+          unWithdrawals (tx ^. bodyTxL . withdrawalsTxBodyL)
+            : [ unWithdrawals $ subTx ^. bodyTxL . withdrawalsTxBodyL
+              | subTx <- OMap.elems $ tx ^. bodyTxL . subTransactionsTxBodyL
+              ]
+      badWithdrawals =
+        Map.mapMaybeWithKey
+          ( \acctAddr withdrawn ->
+              let balance = getAccountBalance acctAddr
+               in if withdrawn > balance
+                    then Just Mismatch {mismatchSupplied = withdrawn, mismatchExpected = balance}
+                    else Nothing
+          )
+          allWithdrawals
+   in failureOnNonEmptyMap badWithdrawals WithdrawalsExceedAccountBalance
+  where
+    getAccountBalance (AccountAddress _ (AccountId cred)) =
+      case lookupAccountState cred accounts of
+        Nothing -> mempty -- unregistered account, 0 balance
+        Just accountState -> fromCompact $ accountState ^. balanceAccountStateL
+
+-- | Validate collateral if any transaction in the batch has redeemers.
+validateBatchCollateral ::
+  forall era rule.
+  ( AlonzoEraTx era
+  , DijkstraEraTxBody era
+  , InjectRuleFailure rule Alonzo.AlonzoUtxoPredFailure era
+  , InjectRuleFailure rule Babbage.BabbageUtxoPredFailure era
+  ) =>
+  PParams era ->
+  Tx TopTx era ->
+  UTxO era ->
+  Test (EraRuleFailure rule era)
+validateBatchCollateral pp tx (UTxO utxo) =
+  -- TODO OPTIMIZATION: Rewrite in a way that doesn't require this check when rules are executed without validation
+  when (hasAnyRedeemers tx) $
+    Babbage.validateTotalCollateral pp (tx ^. bodyTxL) utxoCollateral
+  where
+    utxoCollateral = Map.restrictKeys utxo (tx ^. bodyTxL . collateralInputsTxBodyL)
+    hasAnyRedeemers t =
+      hasRedeemers t || any hasRedeemers (t ^. bodyTxL . subTransactionsTxBodyL)
+    hasRedeemers = not . null . (^. witsTxL . rdmrsTxWitsL . unRedeemersL)
 
 validateWrongNetworkInDirectDeposit ::
   DijkstraEraTxBody era =>
@@ -280,37 +322,112 @@ dijkstraUtxoTransition ::
   , DijkstraEraTxBody era
   , AlonzoEraTx era
   , EraStake era
-  , InjectRuleFailure "UTXO" ShelleyUtxoPredFailure era
-  , InjectRuleFailure "UTXO" AllegraUtxoPredFailure era
-  , InjectRuleFailure "UTXO" AlonzoUtxoPredFailure era
-  , InjectRuleFailure "UTXO" BabbageUtxoPredFailure era
+  , InjectRuleFailure "UTXO" Shelley.ShelleyUtxoPredFailure era
+  , InjectRuleFailure "UTXO" Allegra.AllegraUtxoPredFailure era
+  , InjectRuleFailure "UTXO" Alonzo.AlonzoUtxoPredFailure era
+  , InjectRuleFailure "UTXO" Babbage.BabbageUtxoPredFailure era
   , InjectRuleFailure "UTXO" DijkstraUtxoPredFailure era
-  , Environment (EraRule "UTXO" era) ~ UtxoEnv era
+  , Environment (EraRule "UTXO" era) ~ DijkstraUtxoEnv era
   , State (EraRule "UTXO" era) ~ UTxOState era
-  , Signal (EraRule "UTXO" era) ~ Tx TopTx era
+  , Signal (EraRule "UTXO" era) ~ StAnnTx TopTx era
   , BaseM (EraRule "UTXO" era) ~ ShelleyBase
   , STS (EraRule "UTXO" era)
-  , Event (EraRule "UTXO" era) ~ AlonzoUtxoEvent era
-  , -- In this function we we call the UTXOS rule, so we need some assumptions
-    Environment (EraRule "UTXOS" era) ~ ConwayUtxosEnv era
+  , Event (EraRule "UTXO" era) ~ Alonzo.AlonzoUtxoEvent era
+  , -- In this function we call the UTXOS rule, so we need some assumptions
+    Environment (EraRule "UTXOS" era) ~ ()
   , State (EraRule "UTXOS" era) ~ ()
-  , Signal (EraRule "UTXOS" era) ~ Tx TopTx era
+  , Signal (EraRule "UTXOS" era) ~ StAnnTx TopTx era
   , Embed (EraRule "UTXOS" era) (EraRule "UTXO" era)
   ) =>
   TransitionRule (EraRule "UTXO" era)
 dijkstraUtxoTransition = do
-  TRC (UtxoEnv _ pp certState, utxos, tx) <- judgmentContext
-  babbageUtxoValidation
-  validateNoPtrInCollateralReturn $ tx ^. bodyTxL
+  TRC (DijkstraUtxoEnv slot pp certState originalUtxo, utxos, stAnnTx) <-
+    judgmentContext
+  let tx = stAnnTx ^. txStAnnTxG
+  -- this is the original Accounts, before any transactions were applied
+  let accounts = certState ^. certDStateL . accountsL
+
+  let txBody = tx ^. bodyTxL
+
+  {- inInterval (SlotOf Γ) (ValidIntervalOf txTop) -}
+  runTest $ Allegra.validateOutsideValidityIntervalUTxO slot txBody
+
+  sysSt <- liftSTS $ asks systemStart
+  ei <- liftSTS $ asks epochInfo
+
+  runTest $ Alonzo.validateOutsideForecast ei slot sysSt tx
+
+  {- SpendInputs ≠ ∅ -}
+  runTestOnSignal $ Shelley.validateInputSetEmptyUTxO txBody
+
+  let allInputs = txBody ^. allInputsTxBodyF
+      inputs = txBody ^. inputsTxBodyL
+
+  {- SpendInputsOf txTop ∪ RefInputsOf txTop ∪ CollInputsOf txTop ⊆ dom(utxo₀) -}
+  runTest $ Shelley.validateBadInputsUTxO originalUtxo allInputs
+
+  {- SpendInputsOf txTop ⊆ dom(utxo_s) — prevents double-spend with subtxs -}
+  runTest $ Shelley.validateBadInputsUTxO (utxosUtxo utxos) inputs
+
+  {- minfee pp txTop utxo₀ ≤ txfee txb -}
+  runTest $ Shelley.validateFeeTooSmallUTxO pp tx originalUtxo
+
+  {- (RedeemersOf txTop ≠ ∅ ⊎ Any (λ txSub → RedeemersOf txSub ≠ ∅) subtxs) → collateralCheck -}
+  validate $ validateBatchCollateral pp tx originalUtxo
+
+  runTest $ validateBatchWithdrawals accounts tx
+
+  {- consumed pp utxo₀ txb = produced pp certState txb -}
+  runTest $ Shelley.validateValueNotConservedUTxO pp originalUtxo certState txBody
+
+  {- ∀ txout ∈ allOuts txb, getValue txout ≥ inject (serSize txout * coinsPerUTxOByte pp) -}
+  let allSizedOutputs = txBody ^. allSizedOutputsTxBodyF
+  runTest $ Babbage.validateOutputTooSmallUTxO pp allSizedOutputs
+
+  let allOutputs = fmap sizedValue allSizedOutputs
+  {- ∀ txout ∈ allOuts txb, serSize (getValue txout) ≤ maxValSize pp -}
+  runTest $ Alonzo.validateOutputTooBigUTxO pp allOutputs
+
+  {- ∀ ( _ ↦ (a,_)) ∈ allOuts txb, a ∈ Addrbootstrap → bootstrapAttrsSize a ≤ 64 -}
+  runTestOnSignal $ Shelley.validateOutputBootAddrAttrsTooBig allOutputs
+
   netId <- liftSTS $ asks networkId
-  runTestOnSignal $ validateWrongNetworkInDirectDeposit netId (tx ^. bodyTxL)
-  () <- trans @(EraRule "UTXOS" era) $ TRC (ConwayUtxosEnv pp (utxosUtxo utxos), (), tx)
-  updateUTxOStateByTxValidity
+
+  {- ∀(_ → (a, _)) ∈ allOuts txb, netId a = NetworkId -}
+  runTestOnSignal $ Shelley.validateWrongNetwork netId allOutputs
+
+  {- ∀(a → ) ∈ txwdrls txb, netId a = NetworkId -}
+  runTestOnSignal $ Shelley.validateWrongNetworkWithdrawal netId txBody
+
+  {- (txnetworkid txb = NetworkId) ∨ (txnetworkid txb = ◇) -}
+  runTestOnSignal $ Alonzo.validateWrongNetworkInTxBody netId txBody
+
+  {- direct deposit network IDs -}
+  runTestOnSignal $ validateWrongNetworkInDirectDeposit netId txBody
+
+  {- no Ptr in collateral return -}
+  validateNoPtrInCollateralReturn txBody
+
+  {- txsize tx ≤ maxTxSize pp -}
+  runTestOnSignal $ Shelley.validateMaxTxSizeUTxO pp tx
+
+  {- totExunits tx ≤ maxTxExUnits pp -}
+  runTest $ Alonzo.validateExUnitsTooBigUTxO pp tx
+
+  {- ‖collateral tx‖ ≤ maxCollInputs pp -}
+  runTest $ Alonzo.validateTooManyCollateralInputs pp txBody
+
+  () <- trans @(EraRule "UTXOS" era) $ TRC ((), (), stAnnTx)
+  Babbage.updateUTxOStateByTxValidity
     pp
     certState
     (utxosGovState utxos)
     tx
-    (updateTreasuryDonation tx utxos)
+    (Conway.updateTreasuryDonation tx utxos)
+
+--------------------------------------------------------------------------------
+-- DijkstraUTXO STS
+--------------------------------------------------------------------------------
 
 instance
   forall era.
@@ -320,22 +437,22 @@ instance
   , DijkstraEraTxBody era
   , AlonzoEraTx era
   , EraRule "UTXO" era ~ DijkstraUTXO era
-  , InjectRuleFailure "UTXO" ShelleyUtxoPredFailure era
-  , InjectRuleFailure "UTXO" AllegraUtxoPredFailure era
-  , InjectRuleFailure "UTXO" AlonzoUtxoPredFailure era
-  , InjectRuleFailure "UTXO" BabbageUtxoPredFailure era
-  , InjectRuleFailure "UTXO" ConwayUtxoPredFailure era
+  , InjectRuleFailure "UTXO" Shelley.ShelleyUtxoPredFailure era
+  , InjectRuleFailure "UTXO" Allegra.AllegraUtxoPredFailure era
+  , InjectRuleFailure "UTXO" Alonzo.AlonzoUtxoPredFailure era
+  , InjectRuleFailure "UTXO" Babbage.BabbageUtxoPredFailure era
+  , InjectRuleFailure "UTXO" Conway.ConwayUtxoPredFailure era
   , InjectRuleFailure "UTXO" DijkstraUtxoPredFailure era
-  , Environment (EraRule "UTXO" era) ~ UtxoEnv era
+  , Environment (EraRule "UTXO" era) ~ DijkstraUtxoEnv era
   , State (EraRule "UTXO" era) ~ UTxOState era
-  , Signal (EraRule "UTXO" era) ~ Tx TopTx era
+  , Signal (EraRule "UTXO" era) ~ StAnnTx TopTx era
   , BaseM (EraRule "UTXO" era) ~ ShelleyBase
   , STS (EraRule "UTXO" era)
   , -- In this function we we call the UTXOS rule, so we need some assumptions
     Embed (EraRule "UTXOS" era) (DijkstraUTXO era)
-  , Environment (EraRule "UTXOS" era) ~ ConwayUtxosEnv era
+  , Environment (EraRule "UTXOS" era) ~ ()
   , State (EraRule "UTXOS" era) ~ ()
-  , Signal (EraRule "UTXOS" era) ~ Tx TopTx era
+  , Signal (EraRule "UTXOS" era) ~ StAnnTx TopTx era
   , EraCertState era
   , EraRule "UTXO" era ~ DijkstraUTXO era
   , SafeToHash (TxWits era)
@@ -343,25 +460,24 @@ instance
   STS (DijkstraUTXO era)
   where
   type State (DijkstraUTXO era) = UTxOState era
-  type Signal (DijkstraUTXO era) = Tx TopTx era
-  type Environment (DijkstraUTXO era) = UtxoEnv era
+  type Signal (DijkstraUTXO era) = StAnnTx TopTx era
+  type Environment (DijkstraUTXO era) = DijkstraUtxoEnv era
   type BaseM (DijkstraUTXO era) = ShelleyBase
   type PredicateFailure (DijkstraUTXO era) = DijkstraUtxoPredFailure era
-  type Event (DijkstraUTXO era) = AlonzoUtxoEvent era
+  type Event (DijkstraUTXO era) = Alonzo.AlonzoUtxoEvent era
 
   initialRules = []
 
   transitionRules = [dijkstraUtxoTransition @era]
 
-  assertions = [validSizeComputationCheck]
+  assertions = [Shelley.validSizeComputationCheck]
 
 instance
-  ( Era era
-  , STS (ConwayUTXOS era)
-  , PredicateFailure (EraRule "UTXOS" era) ~ ConwayUtxosPredFailure era
-  , Event (EraRule "UTXOS" era) ~ Event (ConwayUTXOS era)
+  ( STS (Conway.ConwayUTXOS era)
+  , PredicateFailure (EraRule "UTXOS" era) ~ Conway.ConwayUtxosPredFailure era
+  , Event (EraRule "UTXOS" era) ~ Event (Conway.ConwayUTXOS era)
   ) =>
-  Embed (ConwayUTXOS era) (DijkstraUTXO era)
+  Embed (Conway.ConwayUTXOS era) (DijkstraUTXO era)
   where
   wrapFailed = UtxosFailure
   wrapEvent = Alonzo.UtxosEvent
@@ -404,6 +520,7 @@ instance
       BabbageNonDisjointRefInputs x -> Sum BabbageNonDisjointRefInputs 21 !> To x
       PtrPresentInCollateralReturn x -> Sum PtrPresentInCollateralReturn 22 !> To x
       WrongNetworkInDirectDeposit right wrongs -> Sum (WrongNetworkInDirectDeposit @era) 23 !> To right !> To wrongs
+      WithdrawalsExceedAccountBalance mm -> Sum WithdrawalsExceedAccountBalance 24 !> To mm
 
 instance
   ( Era era
@@ -439,6 +556,7 @@ instance
     21 -> SumD BabbageNonDisjointRefInputs <! From
     22 -> SumD PtrPresentInCollateralReturn <! From
     23 -> SumD WrongNetworkInDirectDeposit <! From <! From
+    24 -> SumD WithdrawalsExceedAccountBalance <! From
     n -> Invalid n
 
 -- =====================================================
@@ -446,7 +564,7 @@ instance
 
 conwayToDijkstraUtxoPredFailure ::
   forall era.
-  ConwayUtxoPredFailure era ->
+  Conway.ConwayUtxoPredFailure era ->
   DijkstraUtxoPredFailure era
 conwayToDijkstraUtxoPredFailure = \case
   Conway.BadInputsUTxO x -> BadInputsUTxO x
@@ -470,5 +588,5 @@ conwayToDijkstraUtxoPredFailure = \case
   Conway.TooManyCollateralInputs m -> TooManyCollateralInputs m
   Conway.NoCollateralInputs -> NoCollateralInputs
   Conway.IncorrectTotalCollateralField dc c -> IncorrectTotalCollateralField dc c
-  Conway.BabbageOutputTooSmallUTxO txouts -> BabbageOutputTooSmallUTxO txouts
+  Conway.BabbageOutputTooSmallUTxO x -> BabbageOutputTooSmallUTxO x
   Conway.BabbageNonDisjointRefInputs txin -> BabbageNonDisjointRefInputs txin

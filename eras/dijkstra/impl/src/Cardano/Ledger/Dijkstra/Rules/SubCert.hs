@@ -31,14 +31,7 @@ import Cardano.Ledger.Binary (
 import Cardano.Ledger.Binary.Coders
 import Cardano.Ledger.Conway.Core
 import Cardano.Ledger.Conway.Governance (ConwayEraGov)
-import Cardano.Ledger.Conway.Rules (
-  CertEnv (..),
-  ConwayCertPredFailure (..),
-  ConwayDelegEnv (..),
-  ConwayDelegPredFailure,
-  ConwayGovCertEnv (..),
-  ConwayGovCertPredFailure,
- )
+import qualified Cardano.Ledger.Conway.Rules as Conway
 import Cardano.Ledger.Conway.State
 import Cardano.Ledger.Dijkstra.Era (
   DijkstraEra,
@@ -52,7 +45,7 @@ import Cardano.Ledger.Dijkstra.Rules.SubDeleg (DijkstraSubDelegPredFailure)
 import Cardano.Ledger.Dijkstra.Rules.SubGovCert (DijkstraSubGovCertPredFailure)
 import Cardano.Ledger.Dijkstra.Rules.SubPool (DijkstraSubPoolEvent, DijkstraSubPoolPredFailure)
 import Cardano.Ledger.Dijkstra.TxCert
-import Cardano.Ledger.Shelley.Rules (PoolEnv (..), PoolEvent, ShelleyPoolPredFailure)
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Control.DeepSeq (NFData)
 import Control.State.Transition.Extended
 import Data.Void (absurd)
@@ -130,7 +123,7 @@ instance InjectRuleFailure "SUBCERT" DijkstraSubPoolPredFailure DijkstraEra wher
 instance InjectRuleFailure "SUBCERT" DijkstraSubGovCertPredFailure DijkstraEra where
   injectFailure = SubGovCertFailure
 
-instance InjectRuleFailure "SUBCERT" ConwayCertPredFailure DijkstraEra where
+instance InjectRuleFailure "SUBCERT" Conway.ConwayCertPredFailure DijkstraEra where
   injectFailure = conwayToDijkstraSubCertPredFailure
 
 instance InjectRuleEvent "SUBCERT" DijkstraSubCertEvent DijkstraEra
@@ -158,7 +151,7 @@ instance
   where
   type State (DijkstraSUBCERT era) = CertState era
   type Signal (DijkstraSUBCERT era) = TxCert era
-  type Environment (DijkstraSUBCERT era) = CertEnv era
+  type Environment (DijkstraSUBCERT era) = Conway.CertEnv era
   type BaseM (DijkstraSUBCERT era) = ShelleyBase
   type PredicateFailure (DijkstraSUBCERT era) = DijkstraSubCertPredFailure era
   type Event (DijkstraSUBCERT era) = DijkstraSubCertEvent era
@@ -179,28 +172,25 @@ dijkstraSubCertTransition ::
   ) =>
   TransitionRule (EraRule "SUBCERT" era)
 dijkstraSubCertTransition = do
-  TRC (CertEnv pp currentEpoch committee committeeProposals, certState, c) <- judgmentContext
+  TRC (Conway.CertEnv pp currentEpoch committee committeeProposals, certState, c) <- judgmentContext
   let
     certPState = certState ^. certPStateL
     pools = psStakePools certPState
   case c of
     DijkstraTxCertDeleg delegCert ->
       trans @(EraRule "SUBDELEG" era) $
-        TRC (ConwayDelegEnv pp pools, certState, dijkstraToConwayDelegCert delegCert)
+        TRC (Conway.ConwayDelegEnv pp pools, certState, dijkstraToConwayDelegCert delegCert)
     DijkstraTxCertPool poolCert -> do
-      newPState <- trans @(EraRule "SUBPOOL" era) $ TRC (PoolEnv currentEpoch pp, certPState, poolCert)
+      newPState <-
+        trans @(EraRule "SUBPOOL" era) $ TRC (Shelley.PoolEnv currentEpoch pp, certPState, poolCert)
       pure $ certState & certPStateL .~ newPState
     DijkstraTxCertGov govCert -> do
       trans @(EraRule "SUBGOVCERT" era) $
-        TRC (ConwayGovCertEnv pp currentEpoch committee committeeProposals, certState, govCert)
+        TRC (Conway.ConwayGovCertEnv pp currentEpoch committee committeeProposals, certState, govCert)
 
 instance
-  ( ConwayEraGov era
-  , ConwayEraCertState era
-  , EraRule "SUBCERT" era ~ DijkstraSUBCERT era
-  , EraRule "SUBDELEG" era ~ DijkstraSUBDELEG era
-  , InjectRuleFailure "SUBDELEG" ConwayDelegPredFailure era
-  , InjectRuleFailure "SUBDELEG" DijkstraSubDelegPredFailure era
+  ( STS (DijkstraSUBDELEG era)
+  , PredicateFailure (EraRule "SUBDELEG" era) ~ DijkstraSubDelegPredFailure era
   ) =>
   Embed (DijkstraSUBDELEG era) (DijkstraSUBCERT era)
   where
@@ -208,13 +198,9 @@ instance
   wrapEvent = absurd
 
 instance
-  ( ConwayEraGov era
-  , EraRule "SUBCERT" era ~ DijkstraSUBCERT era
-  , EraRule "SUBPOOL" era ~ DijkstraSUBPOOL era
-  , InjectRuleEvent "SUBPOOL" DijkstraSubPoolEvent era
-  , InjectRuleEvent "SUBPOOL" PoolEvent era
-  , InjectRuleFailure "SUBPOOL" DijkstraSubPoolPredFailure era
-  , InjectRuleFailure "SUBPOOL" ShelleyPoolPredFailure era
+  ( STS (DijkstraSUBPOOL era)
+  , PredicateFailure (EraRule "SUBPOOL" era) ~ DijkstraSubPoolPredFailure era
+  , Event (EraRule "SUBPOOL" era) ~ DijkstraSubPoolEvent era
   ) =>
   Embed (DijkstraSUBPOOL era) (DijkstraSUBCERT era)
   where
@@ -222,13 +208,9 @@ instance
   wrapEvent = SubPoolEvent
 
 instance
-  ( ConwayEraGov era
-  , ConwayEraPParams era
-  , ConwayEraCertState era
-  , EraRule "SUBCERT" era ~ DijkstraSUBCERT era
-  , EraRule "SUBGOVCERT" era ~ DijkstraSUBGOVCERT era
-  , InjectRuleFailure "SUBGOVCERT" ConwayGovCertPredFailure era
-  , InjectRuleFailure "SUBGOVCERT" DijkstraSubGovCertPredFailure era
+  ( Era era
+  , STS (DijkstraSUBGOVCERT era)
+  , PredicateFailure (EraRule "SUBGOVCERT" era) ~ DijkstraSubGovCertPredFailure era
   ) =>
   Embed (DijkstraSUBGOVCERT era) (DijkstraSUBCERT era)
   where
@@ -237,15 +219,15 @@ instance
 
 conwayToDijkstraSubCertPredFailure ::
   forall era.
-  ( InjectRuleFailure "SUBDELEG" ConwayDelegPredFailure era
-  , PredicateFailure (EraRule "DELEG" era) ~ ConwayDelegPredFailure era
-  , InjectRuleFailure "SUBPOOL" ShelleyPoolPredFailure era
-  , PredicateFailure (EraRule "POOL" era) ~ ShelleyPoolPredFailure era
+  ( InjectRuleFailure "SUBDELEG" Conway.ConwayDelegPredFailure era
+  , PredicateFailure (EraRule "DELEG" era) ~ Conway.ConwayDelegPredFailure era
+  , InjectRuleFailure "SUBPOOL" Shelley.ShelleyPoolPredFailure era
+  , PredicateFailure (EraRule "POOL" era) ~ Shelley.ShelleyPoolPredFailure era
   , InjectRuleFailure "SUBGOVCERT" DijkstraGovCertPredFailure era
   , PredicateFailure (EraRule "GOVCERT" era) ~ DijkstraGovCertPredFailure era
   ) =>
-  ConwayCertPredFailure era -> DijkstraSubCertPredFailure era
+  Conway.ConwayCertPredFailure era -> DijkstraSubCertPredFailure era
 conwayToDijkstraSubCertPredFailure = \case
-  DelegFailure f -> SubDelegFailure (injectFailure @"SUBDELEG" f)
-  PoolFailure f -> SubPoolFailure (injectFailure @"SUBPOOL" f)
-  GovCertFailure f -> SubGovCertFailure (injectFailure @"SUBGOVCERT" f)
+  Conway.DelegFailure f -> SubDelegFailure (injectFailure @"SUBDELEG" f)
+  Conway.PoolFailure f -> SubPoolFailure (injectFailure @"SUBPOOL" f)
+  Conway.GovCertFailure f -> SubGovCertFailure (injectFailure @"SUBGOVCERT" f)

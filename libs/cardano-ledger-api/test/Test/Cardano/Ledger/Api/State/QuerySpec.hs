@@ -12,6 +12,7 @@ module Test.Cardano.Ledger.Api.State.QuerySpec (spec) where
 import Cardano.Ledger.Api.Era
 import Cardano.Ledger.Api.State.Query
 import Cardano.Ledger.BaseTypes
+import Cardano.Ledger.Binary (DecCBOR, EncCBOR)
 import Cardano.Ledger.Coin
 import Cardano.Ledger.Conway.Governance (
   Committee (..),
@@ -23,6 +24,7 @@ import Cardano.Ledger.Conway.Governance (
   newEpochStateDRepPulsingStateL,
   rsEnactStateL,
  )
+import Cardano.Ledger.Conway.PParams (ConwayEraPParams)
 import Cardano.Ledger.Conway.State (
   ConwayEraCertState (..),
   vsCommitteeStateL,
@@ -31,6 +33,8 @@ import Cardano.Ledger.Credential (Credential)
 import Cardano.Ledger.Shelley.Core
 import Cardano.Ledger.Shelley.LedgerState
 import Cardano.Ledger.State
+import Data.Aeson (ToJSON)
+import Data.Char (toLower)
 import Data.Default (Default (..))
 import Data.Foldable (foldMap')
 import qualified Data.Map.Strict as Map
@@ -39,19 +43,62 @@ import Data.Set (Set)
 import qualified Data.Set as Set
 import qualified Data.VMap as VMap
 import Lens.Micro ((&), (.~), (^.))
+import Paths_cardano_ledger_api (getDataFileName)
+import System.FilePath ((<.>), (</>))
 import Test.Cardano.Ledger.Api.Arbitrary ()
+import Test.Cardano.Ledger.Api.State.Query.Examples (
+  queryAccountsDepositsExamples,
+  queryChainAccountStateExamples,
+  queryCommitteeMembersStateExamples,
+  queryConstitutionExamples,
+  queryConstitutionHashExamples,
+  queryCurrentEpochNoExamples,
+  queryCurrentPParamsExamples,
+  queryDRepDelegateesExamples,
+  queryDRepDelegationsExamples,
+  queryDRepStakeDistrExamples,
+  queryDRepStateExamples,
+  queryFuturePParamsExamples,
+  queryGovStateExamples,
+  queryPoolParametersExamples,
+  queryPoolStateExamples,
+  queryProposalsExamples,
+  queryRatifyStateExamples,
+  queryRegisteredDRepStakeDistrExamples,
+  querySPOStakeDistrExamples,
+  querySetSnapshotStakePoolDistrExamples,
+  queryStakePoolDefaultVoteExamples,
+  queryStakePoolDelegsAndRewardsExamples,
+  queryStakePoolRelaysExamples,
+  queryStakeSnapshotsExamples,
+ )
+import Test.Cardano.Ledger.Binary.Golden (cborGoldenSpec)
 import Test.Cardano.Ledger.Binary.Random
 import Test.Cardano.Ledger.Common
 import Test.Cardano.Ledger.Conway.Arbitrary ()
+import Test.Cardano.Ledger.Conway.TreeDiff ()
 import Test.Cardano.Ledger.Core.Arbitrary
 import Test.Cardano.Ledger.Core.Binary.RoundTrip (roundTripEraExpectation)
+import Test.Cardano.Ledger.Dijkstra.Era (EraTest)
 import Test.Cardano.Ledger.Shelley.Arbitrary ()
 import Test.Cardano.Slotting.Numeric ()
 
 spec :: Spec
 spec = do
-  latestErasSpec @ConwayEra
-  latestErasSpec @DijkstraEra
+  describe "QuerySpec" $ do
+    latestErasSpec @(PreviousEra LatestKnownEra)
+    latestErasSpec @LatestKnownEra
+
+goldenFilePath :: forall era. Era era => String -> String -> String
+goldenFilePath ext fname = "golden" </> (toLower <$> eraName @era) </> ext </> fname <.> ext
+
+eraLedgerStateQueryGoldenSpec ::
+  forall era q.
+  (Era era, Eq q, Show q, ToJSON q, EncCBOR q, DecCBOR q) =>
+  String -> [q] -> Spec
+eraLedgerStateQueryGoldenSpec qname xs = describe qname $ do
+  cborGoldenSpec getDataFileName (goldenFilePath @era "cbor" qname) (eraProtVerHigh @era) xs
+  itGoldenToJSON getDataFileName (goldenFilePath @era "json" qname) xs
 
 latestErasSpec ::
   forall era.
@@ -59,17 +106,55 @@ latestErasSpec ::
   , Default (StashedAVVMAddresses era)
   , GovState era ~ ConwayGovState era
   , ConwayEraCertState era
+  , ConwayEraPParams era
+  , EraTest era
   ) =>
   Spec
 latestErasSpec =
-  describe "QuerySpec" $ do
-    describe (eraName @era) $ do
-      describe "Roundtrip" $ do
-        prop "QueryPoolStateResult" $ roundTripEraExpectation @era @QueryPoolStateResult
-        prop "StakeSnapshots" $ roundTripEraExpectation @era @StakeSnapshots
-      describe "Queries" $ do
-        committeeMembersStateSpec @era
-        queryStakeSnapshotsSpec @era
+  describe (eraName @era) $ do
+    describe "Golden" $ do
+      eraLedgerStateQueryGoldenSpec @era "queryAccountsDeposits" queryAccountsDepositsExamples
+      eraLedgerStateQueryGoldenSpec @era
+        "queryChainAccountState"
+        queryChainAccountStateExamples
+      eraLedgerStateQueryGoldenSpec @era
+        "queryCommitteeMembersState"
+        queryCommitteeMembersStateExamples
+      eraLedgerStateQueryGoldenSpec @era "queryConstitution" (queryConstitutionExamples @era)
+      eraLedgerStateQueryGoldenSpec @era "queryConstitutionHash" queryConstitutionHashExamples
+      eraLedgerStateQueryGoldenSpec @era "queryCurrentEpochNo" queryCurrentEpochNoExamples
+      eraLedgerStateQueryGoldenSpec @era "queryCurrentPParams" (queryCurrentPParamsExamples @era)
+      eraLedgerStateQueryGoldenSpec @era "queryDRepDelegatees" queryDRepDelegateesExamples
+      eraLedgerStateQueryGoldenSpec @era "queryDRepDelegations" queryDRepDelegationsExamples
+      eraLedgerStateQueryGoldenSpec @era "queryDRepStakeDistr" queryDRepStakeDistrExamples
+      eraLedgerStateQueryGoldenSpec @era "queryDRepState" queryDRepStateExamples
+      eraLedgerStateQueryGoldenSpec @era "queryFuturePParams" (queryFuturePParamsExamples @era)
+      eraLedgerStateQueryGoldenSpec @era "queryGovState" (queryGovStateExamples @era)
+      eraLedgerStateQueryGoldenSpec @era "queryPoolParameters" queryPoolParametersExamples
+      eraLedgerStateQueryGoldenSpec @era "queryPoolState" queryPoolStateExamples
+      eraLedgerStateQueryGoldenSpec @era "queryProposals" (queryProposalsExamples @era)
+      eraLedgerStateQueryGoldenSpec @era "queryRatifyState" (queryRatifyStateExamples @era)
+      eraLedgerStateQueryGoldenSpec @era
+        "queryRegisteredDRepStakeDistr"
+        queryRegisteredDRepStakeDistrExamples
+      eraLedgerStateQueryGoldenSpec @era "querySPOStakeDistr" querySPOStakeDistrExamples
+      eraLedgerStateQueryGoldenSpec @era
+        "querySetSnapshotStakePoolDistr"
+        querySetSnapshotStakePoolDistrExamples
+      eraLedgerStateQueryGoldenSpec @era
+        "queryStakePoolDefaultVote"
+        queryStakePoolDefaultVoteExamples
+      eraLedgerStateQueryGoldenSpec @era
+        "queryStakePoolDelegsAndRewards"
+        queryStakePoolDelegsAndRewardsExamples
+      eraLedgerStateQueryGoldenSpec @era "queryStakePoolRelays" queryStakePoolRelaysExamples
+      eraLedgerStateQueryGoldenSpec @era "queryStakeSnapshots" queryStakeSnapshotsExamples
+    describe "Roundtrip" $ do
+      prop "QueryPoolStateResult" $ roundTripEraExpectation @era @QueryPoolStateResult
+      prop "StakeSnapshots" $ roundTripEraExpectation @era @StakeSnapshots
+    describe "Queries" $ do
+      committeeMembersStateSpec @era
+      queryStakeSnapshotsSpec @era
 
 committeeMembersStateSpec ::
   forall era.

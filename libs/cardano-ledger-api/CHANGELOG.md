@@ -1,8 +1,20 @@
 # Version history for `cardano-ledger-api`
 
-## 1.13.0.1
+## 1.13.1.0
 
-*
+* Add `ToJSON` instances for `StakeSnapshot` and `StakeSnapshots`.
+* Add `ToJSON` instance for `QueryPoolStateResult`.
+* Add `querySetSnapshotStakePoolDistr` (`GetPoolDistr2`).
+* Add `queryDRepDelegatees` (`GetFilteredVoteDelegatees`).
+* Add `queryStakePoolRelays` (`GetLedgerPeerSnapshot`).
+* Add `queryAccountsDeposits` (`GetStakeDelegDeposits`).
+* Add `queryCurrentEpochNo` (`GetEpochNo`).
+
+### `testlib`
+
+* Change constraints on `queryCurrentPParamsExamples`, `queryFuturePParamsExamples`, `queryRatifyStateExamples`, `queryGovStateExamples` to `EraTest era`.
+* Tighten `queryProposalsExamples` constraint to `ConwayEraPParams era` (via `exampleProposalProcedureParameterChange`).
+* Populate `ensCurPParams`, `cgsCurPParams`, `cgsFuturePParams` with `examplePParams`.
 
 ## 1.13.0.0
 

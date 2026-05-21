@@ -10,7 +10,7 @@
 
 module Test.Cardano.Ledger.Conway.Imp.UtxoSpec (
   spec,
-  conwayEraSpecificSpec,
+  conwayOnlySpec,
 ) where
 
 import Cardano.Ledger.Address
@@ -38,7 +38,7 @@ import Test.Cardano.Ledger.Imp.Common
 import Test.Cardano.Ledger.Plutus.Examples (alwaysSucceedsNoDatum)
 
 spec :: forall era. ConwayEraImp era => SpecWith (ImpInit (LedgerSpec era))
-spec = do
+spec = describe "UTXO" $ do
   describe "Certificates" $ do
     it "Reg/UnReg collect and refund correct amounts" $ do
       utxoStart <- getUTxO
@@ -151,13 +151,13 @@ spec = do
           ++ extraScripts
           ++ extraScripts
 
-conwayEraSpecificSpec ::
+conwayOnlySpec ::
   forall era.
   ( ConwayEraImp era
   , ShelleyEraTxCert era
   ) =>
   SpecWith (ImpInit (LedgerSpec era))
-conwayEraSpecificSpec = do
+conwayOnlySpec = describe "UTXO" $ do
   describe "Certificates" $ do
     it "Reg/UnReg collect and refund correct amounts" $ do
       utxoStart <- getUTxO

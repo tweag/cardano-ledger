@@ -66,12 +66,7 @@ import Cardano.Ledger.Plutus.Evaluate (
 import Cardano.Ledger.Rules.ValidationMode (lblStatic)
 import qualified Cardano.Ledger.Shelley.LedgerState as Shelley
 import Cardano.Ledger.Shelley.PParams (Update)
-import Cardano.Ledger.Shelley.Rules (
-  PpupEnv (..),
-  PpupEvent,
-  ShelleyPPUP,
-  ShelleyPpupPredFailure,
- )
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Cardano.Ledger.Shelley.TxCert (ShelleyTxCert)
 import Cardano.Slotting.EpochInfo.Extend (unsafeLinearExtendEpochInfo)
 import Cardano.Slotting.Slot (SlotNo)
@@ -108,7 +103,7 @@ instance
   , GovState era ~ ShelleyGovState era
   , State (EraRule "PPUP" era) ~ ShelleyGovState era
   , Embed (EraRule "PPUP" era) (AlonzoUTXOS era)
-  , Environment (EraRule "PPUP" era) ~ PpupEnv era
+  , Environment (EraRule "PPUP" era) ~ Shelley.PpupEnv era
   , Signal (EraRule "PPUP" era) ~ StrictMaybe (Update era)
   , EncCBOR (PredicateFailure (EraRule "PPUP" era)) -- Serializing the PredicateFailure,
   , Eq (EraRuleFailure "PPUP" era)
@@ -122,7 +117,7 @@ instance
   type BaseM (AlonzoUTXOS era) = ShelleyBase
   type Environment (AlonzoUTXOS era) = UtxosEnv era
   type State (AlonzoUTXOS era) = ShelleyGovState era
-  type Signal (AlonzoUTXOS era) = Tx TopTx era
+  type Signal (AlonzoUTXOS era) = StAnnTx TopTx era
   type PredicateFailure (AlonzoUTXOS era) = AlonzoUtxosPredFailure era
   type Event (AlonzoUTXOS era) = AlonzoUtxosEvent era
   transitionRules = [utxosTransition]
@@ -147,12 +142,12 @@ instance NFData (EraRuleEvent "PPUP" era) => NFData (AlonzoUtxosEvent era)
 
 instance
   ( Era era
-  , STS (ShelleyPPUP era)
-  , EraRuleFailure "PPUP" era ~ ShelleyPpupPredFailure era
-  , Event (EraRule "PPUP" era) ~ Event (ShelleyPPUP era)
-  , EraRuleEvent "PPUP" era ~ PpupEvent era
+  , STS (Shelley.ShelleyPPUP era)
+  , EraRuleFailure "PPUP" era ~ Shelley.ShelleyPpupPredFailure era
+  , Event (EraRule "PPUP" era) ~ Event (Shelley.ShelleyPPUP era)
+  , EraRuleEvent "PPUP" era ~ Shelley.PpupEvent era
   ) =>
-  Embed (ShelleyPPUP era) (AlonzoUTXOS era)
+  Embed (Shelley.ShelleyPPUP era) (AlonzoUTXOS era)
   where
   wrapFailed = UpdateFailure
   wrapEvent = AlonzoPpupToUtxosEvent
@@ -167,7 +162,7 @@ utxosTransition ::
   , EraGov era
   , GovState era ~ ShelleyGovState era
   , State (EraRule "PPUP" era) ~ ShelleyGovState era
-  , Environment (EraRule "PPUP" era) ~ PpupEnv era
+  , Environment (EraRule "PPUP" era) ~ Shelley.PpupEnv era
   , Signal (EraRule "PPUP" era) ~ StrictMaybe (Update era)
   , Embed (EraRule "PPUP" era) (AlonzoUTXOS era)
   , EncCBOR (PredicateFailure (EraRule "PPUP" era)) -- Serializing the PredicateFailure
@@ -179,7 +174,8 @@ utxosTransition ::
   ) =>
   TransitionRule (AlonzoUTXOS era)
 utxosTransition =
-  judgmentContext >>= \(TRC (_, _, tx)) -> do
+  judgmentContext >>= \(TRC (_, _, stAnnTx)) -> do
+    let tx = stAnnTx ^. txStAnnTxG
     case tx ^. isValidTxL of
       IsValid True -> alonzoEvalScriptsTxValid
       IsValid False -> alonzoEvalScriptsTxInvalid
@@ -228,7 +224,7 @@ alonzoEvalScriptsTxValid ::
   , ShelleyEraTxBody era
   , ScriptsNeeded era ~ AlonzoScriptsNeeded era
   , STS (AlonzoUTXOS era)
-  , Environment (EraRule "PPUP" era) ~ PpupEnv era
+  , Environment (EraRule "PPUP" era) ~ Shelley.PpupEnv era
   , Signal (EraRule "PPUP" era) ~ StrictMaybe (Update era)
   , Embed (EraRule "PPUP" era) (AlonzoUTXOS era)
   , State (EraRule "PPUP" era) ~ ShelleyGovState era
@@ -237,9 +233,10 @@ alonzoEvalScriptsTxValid ::
   ) =>
   TransitionRule (AlonzoUTXOS era)
 alonzoEvalScriptsTxValid = do
-  TRC (UtxosEnv slot pp certState utxo, pup, tx) <-
+  TRC (UtxosEnv slot pp certState utxo, pup, stAnnTx) <-
     judgmentContext
-  let txBody = tx ^. bodyTxL
+  let tx = stAnnTx ^. txStAnnTxG
+      txBody = tx ^. bodyTxL
       genDelegs = certState ^. certDStateL . Shelley.dsGenDelegsL
 
   () <- pure $! Debug.traceEvent validBegin ()
@@ -255,7 +252,7 @@ alonzoEvalScriptsTxValid = do
   () <- pure $! Debug.traceEvent validEnd ()
 
   trans @(EraRule "PPUP" era) $
-    TRC (PPUPEnv slot pp genDelegs, pup, txBody ^. updateTxBodyL)
+    TRC (Shelley.PPUPEnv slot pp genDelegs, pup, txBody ^. updateTxBodyL)
 
 alonzoEvalScriptsTxInvalid ::
   forall era.
@@ -267,7 +264,8 @@ alonzoEvalScriptsTxInvalid ::
   ) =>
   TransitionRule (AlonzoUTXOS era)
 alonzoEvalScriptsTxInvalid = do
-  TRC (UtxosEnv slot pp _ utxo, pup, tx) <- judgmentContext
+  TRC (UtxosEnv slot pp _ utxo, pup, stAnnTx) <- judgmentContext
+  let tx = stAnnTx ^. txStAnnTxG
 
   () <- pure $! Debug.traceEvent invalidBegin ()
 
@@ -378,7 +376,7 @@ type instance EraRuleFailure "UTXOS" AlonzoEra = AlonzoUtxosPredFailure AlonzoEr
 
 instance InjectRuleFailure "UTXOS" AlonzoUtxosPredFailure AlonzoEra
 
-instance InjectRuleFailure "UTXOS" ShelleyPpupPredFailure AlonzoEra where
+instance InjectRuleFailure "UTXOS" Shelley.ShelleyPpupPredFailure AlonzoEra where
   injectFailure = UpdateFailure
 
 instance

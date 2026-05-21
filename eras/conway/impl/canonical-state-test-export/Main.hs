@@ -7,6 +7,7 @@ module Main where
 import Cardano.Ledger.CanonicalState.Conway.Export ()
 import Cardano.Ledger.CanonicalState.Export (EraTestImp (ConwayEraTestImp), withScls)
 import Cardano.Ledger.Conway (ConwayEra)
+import Data.Proxy (Proxy (Proxy))
 import Lens.Micro ((.~))
 import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
@@ -15,7 +16,7 @@ import Test.Cardano.Ledger.Conway.Imp (conwayEraGenericSpec)
 import Test.Cardano.Ledger.Conway.ImpTest (
   iteSclsDumpBlockHookL,
   iteSclsDumpTxHookL,
-  withEachEraVersion,
+  withImpInitEachEraVersion,
  )
 
 pathVarName :: String
@@ -28,13 +29,13 @@ main =
     Just path ->
       ledgerTestMain $
         describe "Export SCLS" $ do
-          withEachEraVersion @ConwayEra
+          withImpInitEachEraVersion (Proxy @ConwayEra)
             $ withScls @ConwayEra
               ConwayEraTestImp
               (iteSclsDumpTxHookL .~)
               (iteSclsDumpBlockHookL .~)
               path
-            $ conwayEraGenericSpec @ConwayEra
+            $ conwayEraGenericSpec (Proxy @ConwayEra)
     Nothing -> do
       putStrLn $
         "No export path provided. Set the "

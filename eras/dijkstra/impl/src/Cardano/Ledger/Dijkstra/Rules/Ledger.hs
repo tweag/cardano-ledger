@@ -22,21 +22,12 @@ module Cardano.Ledger.Dijkstra.Rules.Ledger (
   conwayToDijkstraLedgerPredFailure,
 ) where
 
-import Cardano.Ledger.Allegra.Rules (AllegraUtxoPredFailure)
+import qualified Cardano.Ledger.Allegra.Rules as Allegra
 import Cardano.Ledger.Alonzo (AlonzoScript)
-import Cardano.Ledger.Alonzo.Plutus.Context (EraPlutusContext)
-import Cardano.Ledger.Alonzo.Rules (
-  AlonzoUtxoPredFailure,
-  AlonzoUtxosPredFailure,
-  AlonzoUtxowEvent,
-  AlonzoUtxowPredFailure,
- )
-import Cardano.Ledger.Alonzo.UTxO (AlonzoEraUTxO, AlonzoScriptsNeeded)
+import qualified Cardano.Ledger.Alonzo.Rules as Alonzo
+import Cardano.Ledger.Alonzo.UTxO (AlonzoScriptsNeeded)
 import Cardano.Ledger.Babbage (BabbageTxOut)
-import Cardano.Ledger.Babbage.Rules (
-  BabbageUtxoPredFailure,
-  BabbageUtxowPredFailure,
- )
+import qualified Cardano.Ledger.Babbage.Rules as Babbage
 import Cardano.Ledger.BaseTypes (
   Mismatch (..),
   Relation (..),
@@ -50,90 +41,48 @@ import Cardano.Ledger.Conway.Governance (
   ConwayEraGov (..),
   ConwayGovState,
   Proposals,
+  constitutionGuardrailsScriptHashL,
+  grCommitteeL,
+  proposalsWithPurpose,
  )
-import Cardano.Ledger.Conway.Rules (
-  CertEnv,
-  CertsEnv (..),
-  ConwayCERTS,
-  ConwayCertEvent (..),
-  ConwayCertPredFailure (..),
-  ConwayCertsEvent (..),
-  ConwayCertsPredFailure (..),
-  ConwayDELEG,
-  ConwayDelegPredFailure,
-  ConwayGovCertPredFailure,
-  ConwayGovEvent,
-  ConwayGovPredFailure,
-  ConwayLedgerPredFailure,
-  ConwayUtxoPredFailure,
-  ConwayUtxosPredFailure,
-  ConwayUtxowPredFailure,
-  GovEnv (..),
-  GovSignal (..),
-  conwayLedgerTransitionTRC,
- )
+import Cardano.Ledger.Conway.PParams (ppMaxRefScriptSizePerTxG)
 import qualified Cardano.Ledger.Conway.Rules as Conway
 import Cardano.Ledger.Conway.State
 import Cardano.Ledger.Dijkstra.Era (
   DijkstraEra,
   DijkstraGOV,
   DijkstraLEDGER,
-  DijkstraSUBCERT,
-  DijkstraSUBCERTS,
-  DijkstraSUBDELEG,
-  DijkstraSUBGOV,
-  DijkstraSUBGOVCERT,
-  DijkstraSUBUTXO,
-  DijkstraSUBUTXOW,
   DijkstraUTXOW,
  )
 import Cardano.Ledger.Dijkstra.Rules.Certs ()
 import Cardano.Ledger.Dijkstra.Rules.Gov (DijkstraGovPredFailure)
 import Cardano.Ledger.Dijkstra.Rules.GovCert (DijkstraGovCertPredFailure)
-import Cardano.Ledger.Dijkstra.Rules.SubDeleg (DijkstraSubDelegPredFailure)
-import Cardano.Ledger.Dijkstra.Rules.SubGov (DijkstraSubGovEvent, DijkstraSubGovPredFailure)
-import Cardano.Ledger.Dijkstra.Rules.SubGovCert (DijkstraSubGovCertPredFailure)
 import Cardano.Ledger.Dijkstra.Rules.SubLedger
 import Cardano.Ledger.Dijkstra.Rules.SubLedgers
-import Cardano.Ledger.Dijkstra.Rules.SubPool
-import Cardano.Ledger.Dijkstra.Rules.SubUtxow (DijkstraSubUtxowPredFailure)
-import Cardano.Ledger.Dijkstra.Rules.Utxo (DijkstraUtxoPredFailure)
+import Cardano.Ledger.Dijkstra.Rules.Utxo (DijkstraUtxoEnv (..), DijkstraUtxoPredFailure)
 import Cardano.Ledger.Dijkstra.Rules.Utxow (DijkstraUtxowPredFailure)
 import Cardano.Ledger.Dijkstra.TxBody
-import Cardano.Ledger.Dijkstra.TxCert
+import Cardano.Ledger.Dijkstra.UTxO (DijkstraEraUTxO (..), batchNonDistinctRefScriptsSize)
+import Cardano.Ledger.Rules.ValidationMode (Test, runTest)
 import Cardano.Ledger.Shelley.LedgerState (
   LedgerState (..),
   UTxOState (..),
   lsUTxOStateL,
+  utxosGovStateL,
   utxosUtxo,
  )
-import Cardano.Ledger.Shelley.Rules (
-  LedgerEnv (..),
-  PoolEvent,
-  ShelleyLEDGERS,
-  ShelleyLedgerPredFailure (..),
-  ShelleyLedgersEvent (LedgerEvent),
-  ShelleyLedgersPredFailure (LedgerFailure),
-  ShelleyPoolPredFailure,
-  ShelleyUtxoPredFailure,
-  ShelleyUtxowPredFailure,
-  UtxoEnv (..),
-  renderDepositEqualsObligationViolation,
-  shelleyLedgerAssertions,
- )
-import Cardano.Ledger.TxIn (TxId, TxIn (..))
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
+import Cardano.Ledger.Slot (epochFromSlot)
 import Control.DeepSeq (NFData)
 import Control.State.Transition.Extended
 import Data.List.NonEmpty (NonEmpty)
 import Data.Map.NonEmpty (NonEmptyMap)
-import qualified Data.Map.Strict as Map
-import qualified Data.OMap.Strict as OMap
 import Data.Sequence (Seq)
-import qualified Data.Set as Set
-import Data.Set.NonEmpty (NonEmptySet)
-import qualified Data.Set.NonEmpty as NES
+import qualified Data.Sequence.Strict as StrictSeq
+import Data.Word (Word32)
 import GHC.Generics (Generic (..))
 import Lens.Micro
+import Validation (failureUnless)
 
 data DijkstraLedgerPredFailure era
   = DijkstraUtxowFailure (PredicateFailure (EraRule "UTXOW" era))
@@ -145,7 +94,6 @@ data DijkstraLedgerPredFailure era
   | DijkstraWithdrawalsMissingAccounts Withdrawals
   | DijkstraIncompleteWithdrawals (NonEmptyMap AccountAddress (Mismatch RelEQ Coin))
   | DijkstraSubLedgersFailure (PredicateFailure (EraRule "SUBLEDGERS" era))
-  | DijkstraSpendingOutputFromSameTx (NonEmptyMap TxId (NonEmptySet TxIn))
   deriving (Generic)
 
 type instance EraRuleFailure "LEDGER" DijkstraEra = DijkstraLedgerPredFailure DijkstraEra
@@ -156,61 +104,61 @@ instance InjectRuleEvent "LEDGER" DijkstraLedgerEvent DijkstraEra
 
 instance InjectRuleFailure "LEDGER" DijkstraLedgerPredFailure DijkstraEra
 
-instance InjectRuleFailure "LEDGER" ConwayLedgerPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Conway.ConwayLedgerPredFailure DijkstraEra where
   injectFailure = conwayToDijkstraLedgerPredFailure
 
-instance InjectRuleFailure "LEDGER" ShelleyLedgerPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Shelley.ShelleyLedgerPredFailure DijkstraEra where
   injectFailure = shelleyToDijkstraLedgerPredFailure
 
 instance InjectRuleFailure "LEDGER" DijkstraUtxowPredFailure DijkstraEra where
   injectFailure = DijkstraUtxowFailure
 
-instance InjectRuleFailure "LEDGER" ConwayUtxowPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Conway.ConwayUtxowPredFailure DijkstraEra where
   injectFailure = DijkstraUtxowFailure . injectFailure
 
-instance InjectRuleFailure "LEDGER" BabbageUtxowPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Babbage.BabbageUtxowPredFailure DijkstraEra where
   injectFailure = DijkstraUtxowFailure . injectFailure
 
-instance InjectRuleFailure "LEDGER" AlonzoUtxowPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Alonzo.AlonzoUtxowPredFailure DijkstraEra where
   injectFailure = DijkstraUtxowFailure . injectFailure
 
-instance InjectRuleFailure "LEDGER" ShelleyUtxowPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Shelley.ShelleyUtxowPredFailure DijkstraEra where
   injectFailure = DijkstraUtxowFailure . injectFailure
 
 instance InjectRuleFailure "LEDGER" DijkstraUtxoPredFailure DijkstraEra where
   injectFailure = DijkstraUtxowFailure . injectFailure
 
-instance InjectRuleFailure "LEDGER" ConwayUtxoPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Conway.ConwayUtxoPredFailure DijkstraEra where
   injectFailure = DijkstraUtxowFailure . injectFailure
 
-instance InjectRuleFailure "LEDGER" BabbageUtxoPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Babbage.BabbageUtxoPredFailure DijkstraEra where
   injectFailure = DijkstraUtxowFailure . injectFailure
 
-instance InjectRuleFailure "LEDGER" AlonzoUtxoPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Alonzo.AlonzoUtxoPredFailure DijkstraEra where
   injectFailure = DijkstraUtxowFailure . injectFailure
 
-instance InjectRuleFailure "LEDGER" AlonzoUtxosPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Alonzo.AlonzoUtxosPredFailure DijkstraEra where
   injectFailure = DijkstraUtxowFailure . injectFailure
 
-instance InjectRuleFailure "LEDGER" ConwayUtxosPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Conway.ConwayUtxosPredFailure DijkstraEra where
   injectFailure = DijkstraUtxowFailure . injectFailure
 
-instance InjectRuleFailure "LEDGER" ShelleyUtxoPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Shelley.ShelleyUtxoPredFailure DijkstraEra where
   injectFailure = DijkstraUtxowFailure . injectFailure
 
-instance InjectRuleFailure "LEDGER" AllegraUtxoPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Allegra.AllegraUtxoPredFailure DijkstraEra where
   injectFailure = DijkstraUtxowFailure . injectFailure
 
-instance InjectRuleFailure "LEDGER" ConwayCertsPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Conway.ConwayCertsPredFailure DijkstraEra where
   injectFailure = DijkstraCertsFailure
 
-instance InjectRuleFailure "LEDGER" ConwayCertPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Conway.ConwayCertPredFailure DijkstraEra where
   injectFailure = DijkstraCertsFailure . injectFailure
 
-instance InjectRuleFailure "LEDGER" ConwayDelegPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Conway.ConwayDelegPredFailure DijkstraEra where
   injectFailure = DijkstraCertsFailure . injectFailure
 
-instance InjectRuleFailure "LEDGER" ShelleyPoolPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Shelley.ShelleyPoolPredFailure DijkstraEra where
   injectFailure = DijkstraCertsFailure . injectFailure
 
 instance InjectRuleFailure "LEDGER" DijkstraGovCertPredFailure DijkstraEra where
@@ -219,10 +167,10 @@ instance InjectRuleFailure "LEDGER" DijkstraGovCertPredFailure DijkstraEra where
 instance InjectRuleFailure "LEDGER" DijkstraGovPredFailure DijkstraEra where
   injectFailure = DijkstraGovFailure . injectFailure
 
-instance InjectRuleFailure "LEDGER" ConwayGovCertPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Conway.ConwayGovCertPredFailure DijkstraEra where
   injectFailure = DijkstraCertsFailure . injectFailure
 
-instance InjectRuleFailure "LEDGER" ConwayGovPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Conway.ConwayGovPredFailure DijkstraEra where
   injectFailure = DijkstraGovFailure . injectFailure
 
 instance InjectRuleFailure "LEDGER" DijkstraSubLedgersPredFailure DijkstraEra where
@@ -275,7 +223,6 @@ instance
       DijkstraWithdrawalsMissingAccounts w -> Sum DijkstraWithdrawalsMissingAccounts 7 !> To w
       DijkstraIncompleteWithdrawals w -> Sum DijkstraIncompleteWithdrawals 8 !> To w
       DijkstraSubLedgersFailure w -> Sum DijkstraSubLedgersFailure 9 !> To w
-      DijkstraSpendingOutputFromSameTx txIds -> Sum DijkstraSpendingOutputFromSameTx 10 !> To txIds
 
 instance
   ( Era era
@@ -296,7 +243,6 @@ instance
     7 -> SumD DijkstraWithdrawalsMissingAccounts <! From
     8 -> SumD DijkstraIncompleteWithdrawals <! From
     9 -> SumD DijkstraSubLedgersFailure <! From
-    10 -> SumD DijkstraSpendingOutputFromSameTx <! From
     n -> Invalid n
 
 data DijkstraLedgerEvent era
@@ -327,7 +273,7 @@ instance
   , ConwayEraTxBody era
   , ConwayEraGov era
   , DijkstraEraTxBody era
-  , EraUTxO era
+  , DijkstraEraUTxO era
   , GovState era ~ ConwayGovState era
   , Embed (EraRule "UTXOW" era) (DijkstraLEDGER era)
   , Embed (EraRule "GOV" era) (DijkstraLEDGER era)
@@ -336,24 +282,25 @@ instance
   , State (EraRule "UTXOW" era) ~ UTxOState era
   , State (EraRule "CERTS" era) ~ CertState era
   , State (EraRule "GOV" era) ~ Proposals era
-  , Environment (EraRule "UTXOW" era) ~ UtxoEnv era
-  , Environment (EraRule "CERTS" era) ~ CertsEnv era
-  , Environment (EraRule "GOV" era) ~ GovEnv era
-  , Signal (EraRule "UTXOW" era) ~ Tx TopTx era
+  , Environment (EraRule "UTXOW" era) ~ DijkstraUtxoEnv era
+  , Environment (EraRule "CERTS" era) ~ Conway.CertsEnv era
+  , Environment (EraRule "GOV" era) ~ Conway.GovEnv era
+  , Signal (EraRule "UTXOW" era) ~ StAnnTx TopTx era
   , Signal (EraRule "CERTS" era) ~ Seq (TxCert era)
-  , Signal (EraRule "GOV" era) ~ GovSignal era
+  , Signal (EraRule "GOV" era) ~ Conway.GovSignal era
+  , Signal (EraRule "SUBLEDGERS" era) ~ [StAnnTx SubTx era]
   , ConwayEraCertState era
   , EraRule "LEDGER" era ~ DijkstraLEDGER era
-  , InjectRuleFailure "LEDGER" ShelleyLedgerPredFailure era
-  , InjectRuleFailure "LEDGER" ConwayLedgerPredFailure era
+  , InjectRuleFailure "LEDGER" Shelley.ShelleyLedgerPredFailure era
+  , InjectRuleFailure "LEDGER" Conway.ConwayLedgerPredFailure era
   , InjectRuleFailure "LEDGER" DijkstraLedgerPredFailure era
   , EraRule "SUBLEDGERS" era ~ DijkstraSUBLEDGERS era
   ) =>
   STS (DijkstraLEDGER era)
   where
   type State (DijkstraLEDGER era) = LedgerState era
-  type Signal (DijkstraLEDGER era) = Tx TopTx era
-  type Environment (DijkstraLEDGER era) = LedgerEnv era
+  type Signal (DijkstraLEDGER era) = StAnnTx TopTx era
+  type Environment (DijkstraLEDGER era) = Shelley.LedgerEnv era
   type BaseM (DijkstraLEDGER era) = ShelleyBase
   type PredicateFailure (DijkstraLEDGER era) = DijkstraLedgerPredFailure era
   type Event (DijkstraLEDGER era) = DijkstraLedgerEvent era
@@ -361,24 +308,27 @@ instance
   initialRules = []
   transitionRules = [dijkstraLedgerTransition]
 
-  renderAssertionViolation = renderDepositEqualsObligationViolation
+  renderAssertionViolation = Shelley.renderDepositEqualsObligationViolation
 
-  assertions = shelleyLedgerAssertions @era @DijkstraLEDGER
+  assertions = Shelley.shelleyLedgerAssertions @era @DijkstraLEDGER
 
--- | A transaction should not be able to spend its own outputs.
--- Finds all spendable inputs in the entire transaction that are sub-transaction outputs (TxIds).
-spentSubTxOutputs ::
-  (EraTx era, DijkstraEraTxBody era) => Tx TopTx era -> Map.Map TxId (NonEmptySet TxIn)
-spentSubTxOutputs tx =
-  filterBadInputs subTxs <> filterBadInputs (Map.singleton (txIdTx tx) tx)
-  where
-    subTxs = OMap.toMap $ tx ^. bodyTxL . subTransactionsTxBodyL
-    subTxIds = Map.keysSet subTxs -- None of these should be present as a spendable input in the entire transaction
-    filterBadInputs :: EraTx era => Map.Map TxId (Tx l era) -> Map.Map TxId (NonEmptySet TxIn)
-    filterBadInputs = Map.mapMaybe $ \curTx -> do
-      let spendableInputs = curTx ^. bodyTxL . spendableInputsTxBodyF
-      NES.fromSet $
-        Set.filter (\(TxIn txId _) -> txId `Set.member` subTxIds) spendableInputs
+validateAllRefScriptSize ::
+  ( EraTx era
+  , DijkstraEraTxBody era
+  ) =>
+  PParams era ->
+  UTxO era ->
+  Tx TopTx era ->
+  Test (DijkstraLedgerPredFailure era)
+validateAllRefScriptSize pp utxo tx =
+  let totalRefScriptSize = batchNonDistinctRefScriptsSize utxo tx
+      maxRefScriptSizePerTx = fromIntegral @Word32 @Int $ pp ^. ppMaxRefScriptSizePerTxG
+   in failureUnless (totalRefScriptSize <= maxRefScriptSizePerTx) $
+        DijkstraTxRefScriptsSizeTooBig
+          Mismatch
+            { mismatchSupplied = totalRefScriptSize
+            , mismatchExpected = maxRefScriptSizePerTx
+            }
 
 dijkstraLedgerTransition ::
   forall era.
@@ -386,7 +336,7 @@ dijkstraLedgerTransition ::
   , ConwayEraCertState era
   , ConwayEraGov era
   , DijkstraEraTxBody era
-  , EraUTxO era
+  , DijkstraEraUTxO era
   , GovState era ~ ConwayGovState era
   , Embed (EraRule "UTXOW" era) (DijkstraLEDGER era)
   , Embed (EraRule "GOV" era) (DijkstraLEDGER era)
@@ -395,41 +345,114 @@ dijkstraLedgerTransition ::
   , State (EraRule "UTXOW" era) ~ UTxOState era
   , State (EraRule "CERTS" era) ~ CertState era
   , State (EraRule "GOV" era) ~ Proposals era
-  , Environment (EraRule "UTXOW" era) ~ UtxoEnv era
-  , Environment (EraRule "GOV" era) ~ GovEnv era
-  , Environment (EraRule "CERTS" era) ~ CertsEnv era
-  , Signal (EraRule "UTXOW" era) ~ Tx TopTx era
+  , Environment (EraRule "UTXOW" era) ~ DijkstraUtxoEnv era
+  , Environment (EraRule "GOV" era) ~ Conway.GovEnv era
+  , Environment (EraRule "CERTS" era) ~ Conway.CertsEnv era
+  , Signal (EraRule "UTXOW" era) ~ StAnnTx TopTx era
   , Signal (EraRule "CERTS" era) ~ Seq (TxCert era)
-  , Signal (EraRule "GOV" era) ~ GovSignal era
+  , Signal (EraRule "GOV" era) ~ Conway.GovSignal era
   , STS (DijkstraLEDGER era)
   , EraRule "LEDGER" era ~ DijkstraLEDGER era
   , EraRule "SUBLEDGERS" era ~ DijkstraSUBLEDGERS era
-  , InjectRuleFailure "LEDGER" ShelleyLedgerPredFailure era
-  , InjectRuleFailure "LEDGER" ConwayLedgerPredFailure era
+  , InjectRuleFailure "LEDGER" Shelley.ShelleyLedgerPredFailure era
+  , InjectRuleFailure "LEDGER" Conway.ConwayLedgerPredFailure era
+  , InjectRuleFailure "LEDGER" DijkstraLedgerPredFailure era
   ) =>
   TransitionRule (DijkstraLEDGER era)
 dijkstraLedgerTransition = do
-  TRC (env@(LedgerEnv slot mbCurEpochNo txIx pp chainAccountState), ledgerState, tx) <-
+  TRC (Shelley.LedgerEnv slot mbCurEpochNo txIx pp chainAccountState, ledgerState, stAnnTx) <-
     judgmentContext
+  let tx = stAnnTx ^. txStAnnTxG
 
-  failOnNonEmptyMap (spentSubTxOutputs tx) DijkstraSpendingOutputFromSameTx
+  -- Capture the original UTxO before any subtransaction processing.
+  -- This is passed through the environment to UTXOW
+  -- and SUBLEDGERS, and used for all witness/validation lookups.
+  let originalUtxo = utxosUtxo (ledgerState ^. lsUTxOStateL)
+      subStAnnTxs = subTransactionsStAnnTx stAnnTx
 
-  let utxo = utxosUtxo (ledgerState ^. lsUTxOStateL)
-      subTxs = tx ^. bodyTxL . subTransactionsTxBodyL
-      scriptsProvided =
-        ScriptsProvided $
-          Map.unions $
-            unScriptsProvided (getScriptsProvided utxo tx)
-              : map (unScriptsProvided . getScriptsProvided utxo) (OMap.elems subTxs)
-
-  ledgerStateAfterSubledgers <-
+  -- Process all subtransactions first
+  LedgerState utxoStateAfterSubLedgers certStateAfterSubLedgers <-
     trans @(EraRule "SUBLEDGERS" era) $
       TRC
-        ( SubLedgerEnv slot mbCurEpochNo txIx pp chainAccountState scriptsProvided utxo (tx ^. isValidTxL)
+        ( SubLedgerEnv
+            slot
+            mbCurEpochNo
+            txIx
+            pp
+            chainAccountState
+            originalUtxo
+            (tx ^. isValidTxL)
         , ledgerState
-        , subTxs
+        , subStAnnTxs
         )
-  conwayLedgerTransitionTRC (TRC (env, ledgerStateAfterSubledgers, tx))
+
+  curEpochNo <- maybe (liftSTS $ epochFromSlot slot) pure mbCurEpochNo
+  let LedgerState _ certState = ledgerState
+
+  (utxoStateBeforeUtxow, certStateAfterCERTS) <-
+    if tx ^. isValidTxL == IsValid True
+      then do
+        let txBody = tx ^. bodyTxL
+        runTest $ Conway.validateTreasuryValue txBody (chainAccountState ^. casTreasuryL)
+        runTest $ validateAllRefScriptSize pp originalUtxo tx
+
+        let govState = utxoStateAfterSubLedgers ^. utxosGovStateL
+            committee = govState ^. committeeGovStateL
+            proposals = govState ^. proposalsGovStateL
+            committeeProposals = proposalsWithPurpose grCommitteeL proposals
+            accounts = certState ^. certDStateL . accountsL
+
+        runTest $ Conway.validateWithdrawalsDelegated accounts tx
+
+        let withdrawals = tx ^. bodyTxL . withdrawalsTxBodyL
+        Shelley.testIncompleteAndMissingWithdrawals accounts withdrawals
+
+        certStateAfterCERTS <-
+          trans @(EraRule "CERTS" era) $
+            TRC
+              ( Conway.CertsEnv tx pp curEpochNo committee committeeProposals
+              , certState
+                  & Conway.updateDormantDRepExpiries tx curEpochNo
+                  & Conway.updateVotingDRepExpiries tx curEpochNo (pp ^. ppDRepActivityL)
+                  & certDStateL . accountsL %~ drainAccounts withdrawals
+              , StrictSeq.fromStrict $ txBody ^. certsTxBodyL
+              )
+
+        let govSignal =
+              Conway.GovSignal
+                { Conway.gsVotingProcedures = txBody ^. votingProceduresTxBodyL
+                , Conway.gsProposalProcedures = txBody ^. proposalProceduresTxBodyL
+                , Conway.gsCertificates = txBody ^. certsTxBodyL
+                }
+        proposalsState <-
+          trans @(EraRule "GOV" era) $
+            TRC
+              ( Conway.GovEnv
+                  (txIdTxBody txBody)
+                  curEpochNo
+                  pp
+                  (govState ^. constitutionGovStateL . constitutionGuardrailsScriptHashL)
+                  certStateAfterCERTS
+                  (govState ^. committeeGovStateL)
+              , proposals
+              , govSignal
+              )
+        pure
+          ( utxoStateAfterSubLedgers
+              & utxosGovStateL . proposalsGovStateL .~ proposalsState
+          , certStateAfterCERTS
+          )
+      else pure (utxoStateAfterSubLedgers, certStateAfterSubLedgers)
+
+  -- Call UTXOW with DijkstraUtxoEnv, passing the original UTxO
+  utxoStateFinal <-
+    trans @(EraRule "UTXOW" era) $
+      TRC
+        ( DijkstraUtxoEnv slot pp certState originalUtxo
+        , utxoStateBeforeUtxow
+        , stAnnTx
+        )
+  pure $ LedgerState utxoStateFinal certStateAfterCERTS
 
 instance
   ( AlonzoEraTx era
@@ -437,15 +460,15 @@ instance
   , BabbageEraTxBody era
   , Embed (EraRule "UTXO" era) (DijkstraUTXOW era)
   , State (EraRule "UTXO" era) ~ UTxOState era
-  , Environment (EraRule "UTXO" era) ~ UtxoEnv era
+  , Environment (EraRule "UTXO" era) ~ DijkstraUtxoEnv era
   , Script era ~ AlonzoScript era
   , TxOut era ~ BabbageTxOut era
   , ScriptsNeeded era ~ AlonzoScriptsNeeded era
-  , Signal (EraRule "UTXO" era) ~ Tx TopTx era
+  , Signal (EraRule "UTXO" era) ~ StAnnTx TopTx era
   , PredicateFailure (EraRule "UTXOW" era) ~ DijkstraUtxowPredFailure era
-  , Event (EraRule "UTXOW" era) ~ AlonzoUtxowEvent era
+  , Event (EraRule "UTXOW" era) ~ Alonzo.AlonzoUtxowEvent era
   , STS (DijkstraUTXOW era)
-  , Event (DijkstraUTXOW era) ~ AlonzoUtxowEvent era
+  , Event (DijkstraUTXOW era) ~ Alonzo.AlonzoUtxowEvent era
   ) =>
   Embed (DijkstraUTXOW era) (DijkstraLEDGER era)
   where
@@ -453,79 +476,19 @@ instance
   wrapEvent = UtxowEvent
 
 instance
-  ( Embed (EraRule "UTXOW" era) (DijkstraLEDGER era)
-  , Embed (EraRule "CERTS" era) (DijkstraLEDGER era)
-  , Embed (EraRule "GOV" era) (DijkstraLEDGER era)
-  , ConwayEraGov era
-  , AlonzoEraTx era
-  , AlonzoEraUTxO era
-  , ConwayEraPParams era
-  , DijkstraEraTxBody era
-  , EraPlutusContext era
-  , GovState era ~ ConwayGovState era
-  , Environment (EraRule "UTXOW" era) ~ UtxoEnv era
-  , Environment (EraRule "CERTS" era) ~ CertsEnv era
-  , Signal (EraRule "UTXOW" era) ~ Tx TopTx era
-  , Signal (EraRule "CERTS" era) ~ Seq (TxCert era)
-  , State (EraRule "UTXOW" era) ~ UTxOState era
-  , State (EraRule "CERTS" era) ~ CertState era
-  , EraRule "GOV" era ~ DijkstraGOV era
-  , ConwayEraCertState era
-  , EraRule "LEDGER" era ~ DijkstraLEDGER era
-  , EraRule "SUBLEDGERS" era ~ DijkstraSUBLEDGERS era
-  , EraRule "SUBLEDGER" era ~ DijkstraSUBLEDGER era
-  , EraRule "SUBGOV" era ~ DijkstraSUBGOV era
-  , EraRule "SUBUTXO" era ~ DijkstraSUBUTXO era
-  , EraRule "SUBUTXOW" era ~ DijkstraSUBUTXOW era
-  , EraRule "SUBCERTS" era ~ DijkstraSUBCERTS era
-  , EraRule "SUBCERT" era ~ DijkstraSUBCERT era
-  , EraRule "SUBDELEG" era ~ DijkstraSUBDELEG era
-  , EraRule "SUBPOOL" era ~ DijkstraSUBPOOL era
-  , EraRule "SUBGOVCERT" era ~ DijkstraSUBGOVCERT era
-  , InjectRuleFailure "LEDGER" ShelleyLedgerPredFailure era
-  , InjectRuleFailure "LEDGER" ConwayLedgerPredFailure era
-  , InjectRuleFailure "LEDGER" DijkstraLedgerPredFailure era
-  , InjectRuleFailure "LEDGER" DijkstraSubLedgersPredFailure era
-  , InjectRuleEvent "SUBPOOL" DijkstraSubPoolEvent era
-  , InjectRuleEvent "SUBPOOL" PoolEvent era
-  , InjectRuleFailure "SUBPOOL" DijkstraSubPoolPredFailure era
-  , InjectRuleFailure "SUBPOOL" ShelleyPoolPredFailure era
-  , InjectRuleFailure "SUBGOVCERT" DijkstraSubGovCertPredFailure era
-  , InjectRuleFailure "SUBGOVCERT" ConwayGovCertPredFailure era
-  , InjectRuleFailure "DELEG" ConwayDelegPredFailure era
-  , InjectRuleFailure "SUBDELEG" ConwayDelegPredFailure era
-  , InjectRuleFailure "SUBDELEG" DijkstraSubDelegPredFailure era
-  , InjectRuleEvent "SUBGOV" DijkstraSubGovEvent era
-  , InjectRuleEvent "SUBGOV" ConwayGovEvent era
-  , InjectRuleFailure "SUBGOV" DijkstraSubGovPredFailure era
-  , InjectRuleFailure "SUBGOV" ConwayGovPredFailure era
-  , InjectRuleFailure "SUBLEDGER" ConwayLedgerPredFailure era
-  , InjectRuleFailure "SUBUTXOW" DijkstraSubUtxowPredFailure era
-  , InjectRuleFailure "SUBUTXOW" AlonzoUtxowPredFailure era
-  , InjectRuleFailure "SUBUTXOW" ShelleyUtxowPredFailure era
-  , InjectRuleFailure "SUBUTXOW" BabbageUtxowPredFailure era
-  , InjectRuleFailure "SUBUTXO" ShelleyUtxoPredFailure era
-  , InjectRuleFailure "SUBUTXO" AllegraUtxoPredFailure era
-  , InjectRuleFailure "SUBUTXO" AlonzoUtxoPredFailure era
-  , InjectRuleFailure "SUBUTXO" BabbageUtxoPredFailure era
-  , InjectRuleFailure "SUBUTXO" DijkstraUtxoPredFailure era
-  , TxCert era ~ DijkstraTxCert era
-  , ScriptsNeeded era ~ AlonzoScriptsNeeded era
+  ( STS (DijkstraLEDGER era)
+  , PredicateFailure (EraRule "LEDGER" era) ~ DijkstraLedgerPredFailure era
+  , Event (EraRule "LEDGER" era) ~ DijkstraLedgerEvent era
   ) =>
-  Embed (DijkstraLEDGER era) (ShelleyLEDGERS era)
+  Embed (DijkstraLEDGER era) (Shelley.ShelleyLEDGERS era)
   where
-  wrapFailed = LedgerFailure
-  wrapEvent = LedgerEvent
+  wrapFailed = Shelley.LedgerFailure
+  wrapEvent = Shelley.LedgerEvent
 
 instance
-  ( ConwayEraCertState era
-  , ConwayEraTxCert era
-  , ConwayEraPParams era
-  , ConwayEraGov era
-  , EraRule "GOV" era ~ DijkstraGOV era
-  , InjectRuleFailure "GOV" ConwayGovPredFailure era
-  , InjectRuleFailure "GOV" DijkstraGovPredFailure era
-  , InjectRuleEvent "GOV" ConwayGovEvent era
+  ( STS (DijkstraGOV era)
+  , PredicateFailure (EraRule "GOV" era) ~ DijkstraGovPredFailure era
+  , Event (EraRule "GOV" era) ~ Conway.ConwayGovEvent era
   ) =>
   Embed (DijkstraGOV era) (DijkstraLEDGER era)
   where
@@ -533,7 +496,7 @@ instance
   wrapEvent = GovEvent
 
 conwayToDijkstraLedgerPredFailure ::
-  forall era. ConwayLedgerPredFailure era -> DijkstraLedgerPredFailure era
+  forall era. Conway.ConwayLedgerPredFailure era -> DijkstraLedgerPredFailure era
 conwayToDijkstraLedgerPredFailure = \case
   Conway.ConwayUtxowFailure f -> DijkstraUtxowFailure f
   Conway.ConwayCertsFailure f -> DijkstraCertsFailure f
@@ -546,92 +509,27 @@ conwayToDijkstraLedgerPredFailure = \case
   Conway.ConwayIncompleteWithdrawals ws -> DijkstraIncompleteWithdrawals ws
 
 shelleyToDijkstraLedgerPredFailure ::
-  forall era. ShelleyLedgerPredFailure era -> DijkstraLedgerPredFailure era
+  forall era. Shelley.ShelleyLedgerPredFailure era -> DijkstraLedgerPredFailure era
 shelleyToDijkstraLedgerPredFailure = \case
-  UtxowFailure x -> DijkstraUtxowFailure x
-  DelegsFailure _ -> error "Impossible: DELEGS has ben removed in Dijkstra"
-  ShelleyWithdrawalsMissingAccounts x -> DijkstraWithdrawalsMissingAccounts x
-  ShelleyIncompleteWithdrawals x -> DijkstraIncompleteWithdrawals x
+  Shelley.UtxowFailure x -> DijkstraUtxowFailure x
+  Shelley.DelegsFailure _ -> error "Impossible: DELEGS has ben removed in Dijkstra"
+  Shelley.ShelleyWithdrawalsMissingAccounts x -> DijkstraWithdrawalsMissingAccounts x
+  Shelley.ShelleyIncompleteWithdrawals x -> DijkstraIncompleteWithdrawals x
 
 instance
-  ( EraTx era
-  , ConwayEraTxBody era
-  , ConwayEraPParams era
-  , ConwayEraGov era
-  , Embed (EraRule "CERT" era) (ConwayCERTS era)
-  , State (EraRule "CERT" era) ~ CertState era
-  , Environment (EraRule "CERT" era) ~ CertEnv era
-  , Signal (EraRule "CERT" era) ~ TxCert era
-  , PredicateFailure (EraRule "CERT" era) ~ ConwayCertPredFailure era
-  , EraRuleFailure "CERT" era ~ ConwayCertPredFailure era
-  , EraRule "CERTS" era ~ ConwayCERTS era
-  , ConwayEraCertState era
+  ( STS (Conway.ConwayCERTS era)
+  , PredicateFailure (EraRule "CERTS" era) ~ Conway.ConwayCertsPredFailure era
+  , Event (EraRule "CERTS" era) ~ Conway.ConwayCertsEvent era
   ) =>
-  Embed (ConwayCERTS era) (DijkstraLEDGER era)
+  Embed (Conway.ConwayCERTS era) (DijkstraLEDGER era)
   where
   wrapFailed = DijkstraCertsFailure
   wrapEvent = CertsEvent
 
 instance
-  ( EraPParams era
-  , EraRule "DELEG" era ~ ConwayDELEG era
-  , PredicateFailure (EraRule "CERTS" era) ~ ConwayCertsPredFailure era
-  , PredicateFailure (EraRule "CERT" era) ~ ConwayCertPredFailure era
-  , Event (EraRule "CERTS" era) ~ ConwayCertsEvent era
-  , Event (EraRule "CERT" era) ~ ConwayCertEvent era
-  , ConwayEraCertState era
-  , InjectRuleFailure "DELEG" ConwayDelegPredFailure era
-  ) =>
-  Embed (ConwayDELEG era) (DijkstraLEDGER era)
-  where
-  wrapFailed = DijkstraCertsFailure . CertFailure . DelegFailure
-  wrapEvent = CertsEvent . CertEvent . DelegEvent
-
-instance
-  ( AlonzoEraTx era
-  , AlonzoEraUTxO era
-  , DijkstraEraTxBody era
-  , ConwayEraGov era
-  , ConwayEraCertState era
-  , EraPlutusContext era
-  , ConwayEraTxCert era
-  , ConwayEraPParams era
-  , EraRule "SUBLEDGERS" era ~ DijkstraSUBLEDGERS era
-  , EraRule "SUBLEDGER" era ~ DijkstraSUBLEDGER era
-  , EraRule "SUBGOV" era ~ DijkstraSUBGOV era
-  , EraRule "SUBUTXO" era ~ DijkstraSUBUTXO era
-  , EraRule "SUBUTXOW" era ~ DijkstraSUBUTXOW era
-  , EraRule "SUBCERTS" era ~ DijkstraSUBCERTS era
-  , EraRule "SUBCERT" era ~ DijkstraSUBCERT era
-  , EraRule "SUBDELEG" era ~ DijkstraSUBDELEG era
-  , EraRule "SUBPOOL" era ~ DijkstraSUBPOOL era
-  , EraRule "SUBGOVCERT" era ~ DijkstraSUBGOVCERT era
-  , Event (EraRule "LEDGER" era) ~ DijkstraLedgerEvent era
-  , InjectRuleEvent "SUBPOOL" PoolEvent era
-  , InjectRuleEvent "SUBPOOL" DijkstraSubPoolEvent era
-  , InjectRuleFailure "SUBPOOL" ShelleyPoolPredFailure era
-  , InjectRuleFailure "SUBPOOL" DijkstraSubPoolPredFailure era
-  , InjectRuleFailure "SUBGOVCERT" DijkstraSubGovCertPredFailure era
-  , InjectRuleFailure "SUBGOVCERT" ConwayGovCertPredFailure era
-  , InjectRuleFailure "DELEG" ConwayDelegPredFailure era
-  , InjectRuleFailure "SUBDELEG" ConwayDelegPredFailure era
-  , InjectRuleFailure "SUBDELEG" DijkstraSubDelegPredFailure era
-  , InjectRuleEvent "SUBGOV" DijkstraSubGovEvent era
-  , InjectRuleEvent "SUBGOV" ConwayGovEvent era
-  , InjectRuleFailure "SUBGOV" DijkstraSubGovPredFailure era
-  , InjectRuleFailure "SUBGOV" ConwayGovPredFailure era
-  , InjectRuleFailure "SUBLEDGER" ConwayLedgerPredFailure era
-  , InjectRuleFailure "SUBUTXOW" DijkstraSubUtxowPredFailure era
-  , InjectRuleFailure "SUBUTXOW" AlonzoUtxowPredFailure era
-  , InjectRuleFailure "SUBUTXOW" ShelleyUtxowPredFailure era
-  , InjectRuleFailure "SUBUTXOW" BabbageUtxowPredFailure era
-  , InjectRuleFailure "SUBUTXO" ShelleyUtxoPredFailure era
-  , InjectRuleFailure "SUBUTXO" AllegraUtxoPredFailure era
-  , InjectRuleFailure "SUBUTXO" AlonzoUtxoPredFailure era
-  , InjectRuleFailure "SUBUTXO" BabbageUtxoPredFailure era
-  , InjectRuleFailure "SUBUTXO" DijkstraUtxoPredFailure era
-  , TxCert era ~ DijkstraTxCert era
-  , ScriptsNeeded era ~ AlonzoScriptsNeeded era
+  ( STS (DijkstraSUBLEDGERS era)
+  , PredicateFailure (EraRule "SUBLEDGERS" era) ~ DijkstraSubLedgersPredFailure era
+  , Event (EraRule "SUBLEDGERS" era) ~ DijkstraSubLedgersEvent era
   ) =>
   Embed (DijkstraSUBLEDGERS era) (DijkstraLEDGER era)
   where
