@@ -2,6 +2,11 @@
 
 ## 1.16.0.0
 
+* Replace `scriptsProvided` and `scriptsNeeded` in `mkScriptIntegrity` signature with `Set Language`
+* Add `plutusLanguagesUsedStAnnTx` to `AlonzoEraUTxO` and a helper to implement it `plutusLanguagesUsedAlonzoStAnnTx`
+* Add `plutusScriptsWithContextStAnnTx` to `AlonzoEraUTxO` and a helper to implement it `plutusScriptsWithContextAlonzoStAnnTx`
+* Add `ScriptsProvided` argument to `missingRequiredDatums`
+* Add `scriptsNeededStAnnTx` to `AlonzoEraUTxO` and a helper to implement it `scriptsNeededAlonzoStAnnTx`
 * Add `AlonzoEraTxAuxData` as a superclass to `AlonzoEraTx`
 * Add `NFData` instance for `AlonzoScriptsNeeded`
 * Change `Signal` to `StAnnTx TopTx era` for: `AlonzoLEDGER`, `AlonzoUTXOW`, `AlonzoUTXO`, `AlonzoUTXOS`
@@ -44,6 +49,12 @@
 
 ### `testlib`
 
+* Add `Arbitrary` instance for `AlonzoBbodyPredFailure`
+* Add to `Test.Cardano.Ledger.Alonzo.Examples`:
+  - `exampleAlonzoPParams`
+  - `exampleAlonzoPParamsUpdate`
+  - `exampleAlonzoOnwardsEraPParams`
+  - `exampleAlonzoOnwardsEraPParamsUpdate`
 * Add `proxy era` argument to `alonzoEraSpecificSpec`
 * Make `Test.Cardano.Ledger.Alonzo.Imp.spec` accept `Proxy era`
 * Add `genDatumPresent`
@@ -51,7 +62,7 @@
 * `TranslationInstance` has a new field `tiPlutusPurpose`
 * In `Test.Cardano.Ledger.Alonzo.Examples`:
   - Remove `mkAlonzoBasedExampleTx`, `exampleAlonzoBasedShelleyTxBody`, `exampleAlonzoBasedTxBody`, `exampleRedeemer`
-  - Add `exampleAlonzoBasedTopTx`, `exampleAlonzoBasedTopTx`, `addAlonzoToConwayExampleReqSigners`
+  - Add `exampleAlonzoTx`, `exampleAlonzoBasedTopTx`, `exampleAlonzoBasedTopTx`, `addAlonzoToConwayExampleReqSigners`
 
 ## 1.15.0.0
 

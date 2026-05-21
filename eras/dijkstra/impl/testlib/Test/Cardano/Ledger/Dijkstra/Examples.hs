@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
@@ -12,8 +13,12 @@
 -- don't care, we are only interested in serialisation, not validation.
 module Test.Cardano.Ledger.Dijkstra.Examples (
   ledgerExamples,
+  exampleDijkstraTx,
   exampleDijkstraBasedTopTx,
   exampleDijkstraBasedSubTx,
+  exampleDijkstraOnwardsEraPParams,
+  exampleDijkstraOnwardsEraPParamsUpdate,
+  exampleDijkstraGenesis,
 ) where
 
 import Cardano.Ledger.Address (DirectDeposits (..))
@@ -25,12 +30,27 @@ import Cardano.Ledger.BaseTypes (
   Inclusive (..),
   Network (..),
   StrictMaybe (..),
+  boundRational,
+  knownNonZeroBounded,
  )
 import Cardano.Ledger.Coin (Coin (..))
 import Cardano.Ledger.Conway.Core
-import Cardano.Ledger.Conway.Rules (ConwayDelegPredFailure (..))
+import qualified Cardano.Ledger.Conway.Rules as Conway
 import Cardano.Ledger.Credential (Credential (..))
 import Cardano.Ledger.Dijkstra (ApplyTxError (..), DijkstraEra)
+import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis (..))
+import Cardano.Ledger.Dijkstra.PParams (
+  DijkstraEraPParams,
+  UpgradeDijkstraPParams (..),
+  ppMaxRefScriptSizePerBlockL,
+  ppMaxRefScriptSizePerTxL,
+  ppRefScriptCostMultiplierL,
+  ppRefScriptCostStrideL,
+  ppuMaxRefScriptSizePerBlockL,
+  ppuMaxRefScriptSizePerTxL,
+  ppuRefScriptCostMultiplierL,
+  ppuRefScriptCostStrideL,
+ )
 import qualified Cardano.Ledger.Dijkstra.Rules as Dijkstra
 import Cardano.Ledger.Dijkstra.Scripts (
   AccountBalanceInterval (..),
@@ -55,7 +75,7 @@ import Cardano.Ledger.Plutus.Data (
 import Cardano.Ledger.Plutus.Language (Language (..), plutusBinary)
 import qualified Data.List.NonEmpty as NE
 import qualified Data.Map.Strict as Map
-import qualified Data.MapExtras as Map
+import Data.Maybe (fromJust)
 import qualified Data.OMap.Strict as OMap
 import qualified Data.OSet.Strict as OSet
 import qualified Data.Sequence.Strict as StrictSeq
@@ -67,9 +87,14 @@ import Test.Cardano.Ledger.Alonzo.Examples (
   mkAlonzoBasedLedgerExamples,
  )
 import Test.Cardano.Ledger.Babbage.Examples (exampleBabbageNewEpochState)
-import Test.Cardano.Ledger.Conway.Examples (exampleConwayBasedTopTx, exampleConwayBasedTx)
+import Test.Cardano.Ledger.Conway.Examples (
+  exampleConwayBasedTopTx,
+  exampleConwayBasedTx,
+  exampleConwayOnwardsEraPParams,
+  exampleConwayOnwardsEraPParamsUpdate,
+ )
 import Test.Cardano.Ledger.Core.KeyPair (mkAddr)
-import Test.Cardano.Ledger.Dijkstra.ImpTest (exampleDijkstraGenesis)
+import Test.Cardano.Ledger.Core.Rational (IsRatio (..))
 import Test.Cardano.Ledger.Mary.Examples (exampleMultiAssetValue)
 import Test.Cardano.Ledger.Plutus (alwaysSucceedsPlutus)
 import Test.Cardano.Ledger.Shelley.Examples (
@@ -88,16 +113,28 @@ ledgerExamples =
         pure $
           Dijkstra.LedgerFailure $
             injectFailure $
-              DelegateeStakePoolNotRegisteredDELEG (mkKeyHash 1)
+              Conway.DelegateeStakePoolNotRegisteredDELEG (mkKeyHash 1)
     )
     exampleBabbageNewEpochState
     exampleDijkstraTx
     exampleDijkstraGenesis
-  where
-    exampleDijkstraTx :: Tx TopTx DijkstraEra
-    exampleDijkstraTx =
-      exampleDijkstraBasedTopTx
-        & addShelleyBasedTopTxExampleFee
+
+exampleDijkstraTx :: Tx TopTx DijkstraEra
+exampleDijkstraTx =
+  exampleDijkstraBasedTopTx
+    & addShelleyBasedTopTxExampleFee
+
+exampleDijkstraGenesis :: DijkstraGenesis
+exampleDijkstraGenesis =
+  DijkstraGenesis
+    { dgUpgradePParams =
+        UpgradeDijkstraPParams
+          { udppMaxRefScriptSizePerBlock = 1024 * 1024 -- 1MiB
+          , udppMaxRefScriptSizePerTx = 200 * 1024 -- 200KiB
+          , udppRefScriptCostStride = knownNonZeroBounded @25_600 -- 25 KiB
+          , udppRefScriptCostMultiplier = fromJust $ boundRational 1.2
+          }
+    }
 
 exampleDijkstraBasedTopTx ::
   forall era.
@@ -180,7 +217,11 @@ addDijkstraBasedTxFeatures tx =
   tx
     & witsTxL
       <>~ ( mkBasicTxWits
-              & scriptTxWitsL <>~ Map.fromElems hashScript [alwaysSucceeds @'PlutusV4 3]
+              -- NOTE: PlutusV4 scripts are NOT part of Dijkstra's transaction_witness_set
+              -- CDDL (only V1/V2/V3 are). Including them here would cause a roundtrip
+              -- failure as they get silently dropped during serialization. See
+              -- TODO in 'Cardano.Ledger.Dijkstra.HuddleSpec'.
+              -- & scriptTxWitsL <>~ Map.fromElems hashScript [alwaysSucceeds @'PlutusV4 3]
               & rdmrsTxWitsL <>~ redeemers
           )
     & modifyTxAuxData
@@ -219,16 +260,33 @@ exampleDirectDeposits =
   DirectDeposits $
     Map.singleton
       (AccountAddress Mainnet (AccountId $ KeyHashObj $ mkKeyHash 300))
-      (Coin 1000000)
+      (Coin 1_000_000)
 
 exampleAccountBalanceIntervals :: AccountBalanceIntervals era
 exampleAccountBalanceIntervals =
   AccountBalanceIntervals $
     Map.fromList
       [ (AccountId $ KeyHashObj $ mkKeyHash 400, AccountBalanceLowerBound (Inclusive $ Coin 500))
-      , (AccountId $ KeyHashObj $ mkKeyHash 401, AccountBalanceUpperBound (Exclusive $ Coin 10000))
+      , (AccountId $ KeyHashObj $ mkKeyHash 401, AccountBalanceUpperBound (Exclusive $ Coin 10_000))
       ,
         ( AccountId $ ScriptHashObj $ mkScriptHash 402
         , AccountBalanceBothBounds (Inclusive $ Coin 100) (Exclusive $ Coin 5000)
         )
       ]
+
+exampleDijkstraOnwardsEraPParams :: (DijkstraEraPParams era, ConwayEraPParams era) => PParams era
+exampleDijkstraOnwardsEraPParams =
+  exampleConwayOnwardsEraPParams
+    & ppMaxRefScriptSizePerBlockL .~ 1024 * 1024
+    & ppMaxRefScriptSizePerTxL .~ 200 * 1024
+    & ppRefScriptCostStrideL .~ knownNonZeroBounded @25_600
+    & ppRefScriptCostMultiplierL .~ 12 %! 10
+
+exampleDijkstraOnwardsEraPParamsUpdate ::
+  (DijkstraEraPParams era, ConwayEraPParams era) => PParamsUpdate era
+exampleDijkstraOnwardsEraPParamsUpdate =
+  exampleConwayOnwardsEraPParamsUpdate
+    & ppuMaxRefScriptSizePerBlockL .~ SJust (1024 * 1024)
+    & ppuMaxRefScriptSizePerTxL .~ SJust (200 * 1024)
+    & ppuRefScriptCostStrideL .~ SJust (knownNonZeroBounded @25_600)
+    & ppuRefScriptCostMultiplierL .~ SJust (12 %! 10)

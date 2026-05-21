@@ -51,6 +51,7 @@ import Cardano.Ledger.Alonzo.Plutus.Context (
 import Cardano.Ledger.Alonzo.Plutus.Evaluate (CollectError)
 import Cardano.Ledger.Alonzo.Plutus.TxInfo (AlonzoContextError)
 import Cardano.Ledger.Alonzo.Rules (
+  AlonzoBbodyPredFailure,
   AlonzoUtxoPredFailure (..),
   AlonzoUtxosPredFailure (..),
   AlonzoUtxowPredFailure (..),
@@ -85,7 +86,7 @@ import Cardano.Ledger.Plutus.Language (
   Language (..),
   asSLanguage,
  )
-import Cardano.Ledger.Shelley.Rules (PredicateFailure, ShelleyUtxowPredFailure)
+import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Data.Functor.Identity (Identity)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import qualified Data.List.NonEmpty as NE (toList)
@@ -340,7 +341,7 @@ instance
   ( EraTxOut era
   , Arbitrary (Value era)
   , Arbitrary (TxOut era)
-  , Arbitrary (PredicateFailure (EraRule "UTXOS" era))
+  , Arbitrary (Shelley.PredicateFailure (EraRule "UTXOS" era))
   ) =>
   Arbitrary (AlonzoUtxoPredFailure era)
   where
@@ -348,13 +349,21 @@ instance
 
 instance
   ( Era era
-  , Arbitrary (PredicateFailure (EraRule "UTXO" era))
-  , Arbitrary (ShelleyUtxowPredFailure era)
+  , Arbitrary (Shelley.PredicateFailure (EraRule "UTXO" era))
+  , Arbitrary (Shelley.ShelleyUtxowPredFailure era)
   , Arbitrary (TxCert era)
   , Arbitrary (PlutusPurpose AsItem era)
   , Arbitrary (PlutusPurpose AsIx era)
   ) =>
   Arbitrary (AlonzoUtxowPredFailure era)
+  where
+  arbitrary = genericArbitraryU
+
+instance
+  ( Era era
+  , Arbitrary (Shelley.PredicateFailure (EraRule "LEDGERS" era))
+  ) =>
+  Arbitrary (AlonzoBbodyPredFailure era)
   where
   arbitrary = genericArbitraryU
 

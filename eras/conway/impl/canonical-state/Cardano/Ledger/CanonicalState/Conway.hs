@@ -29,10 +29,8 @@ module Cardano.Ledger.CanonicalState.Conway (
   mkCanonicalGovActionId,
 ) where
 
-import Cardano.Ledger.BaseTypes (EpochNo (..))
-import Cardano.Ledger.Binary (
-  decodeFull',
- )
+import Cardano.Ledger.BaseTypes (EpochNo (..), maybeToStrictMaybe, strictMaybeToMaybe)
+import Cardano.Ledger.Binary (decodeFull')
 import Cardano.Ledger.CanonicalState.BasicTypes (
   CanonicalCoin (..),
   DecodeOnChain (..),
@@ -300,21 +298,22 @@ instance KnownNamespace "gov/proposals/v0" where
 
 fromGovActionState ::
   Word64 -> GovActionState ConwayEra -> (GovProposalIn, GovProposalOut CanonicalGovActionState)
-fromGovActionState n GovActionState {..} =
+fromGovActionState gpoProposalOrder GovActionState {..} =
   ( mkGovProposalIn gasId
   , GovProposalOut
-      ( n
-      , CanonicalGovActionState
-          { gasProposalProcedure = mkOnChain @ConwayEra gasProposalProcedure
-          , ..
-          }
-      )
+      { gpoProposalOrder
+      , gpoProposal =
+          CanonicalGovActionState
+            { gasProposalProcedure = mkOnChain @ConwayEra gasProposalProcedure
+            , ..
+            }
+      }
   )
 
 toGovActionState ::
   (GovProposalIn, GovProposalOut CanonicalGovActionState) -> (Word64, GovActionState ConwayEra)
-toGovActionState (govIn, GovProposalOut (n, CanonicalGovActionState {..})) =
-  ( n
+toGovActionState (govIn, GovProposalOut {gpoProposalOrder, gpoProposal = CanonicalGovActionState {..}}) =
+  ( gpoProposalOrder
   , GovActionState
       { gasProposalProcedure = getValue gasProposalProcedure
       , gasId = fromGovProposalIn govIn
@@ -404,8 +403,8 @@ mkCanonicalAccountState ConwayAccountState {..} =
   CanonicalAccountState
     { casBalance = CanonicalCoin casBalance
     , casDeposit = CanonicalCoin casDeposit
-    , casDRepDelegation = casDRepDelegation
-    , casStakePoolDelegation = casStakePoolDelegation
+    , casDRepDelegation = maybeToStrictMaybe casDRepDelegation
+    , casStakePoolDelegation = maybeToStrictMaybe casStakePoolDelegation
     }
 
 fromCanonicalAccountState ::
@@ -415,6 +414,6 @@ fromCanonicalAccountState CanonicalAccountState {..} =
   ConwayAccountState
     { casBalance = unCoin casBalance
     , casDeposit = unCoin casDeposit
-    , casDRepDelegation = casDRepDelegation
-    , casStakePoolDelegation = casStakePoolDelegation
+    , casDRepDelegation = strictMaybeToMaybe casDRepDelegation
+    , casStakePoolDelegation = strictMaybeToMaybe casStakePoolDelegation
     }

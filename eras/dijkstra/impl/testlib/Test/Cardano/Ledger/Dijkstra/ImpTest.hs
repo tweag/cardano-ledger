@@ -13,7 +13,6 @@
 
 module Test.Cardano.Ledger.Dijkstra.ImpTest (
   module Test.Cardano.Ledger.Conway.ImpTest,
-  exampleDijkstraGenesis,
   DijkstraEraImp,
   impDijkstraSatisfyNativeScript,
 ) where
@@ -25,18 +24,11 @@ import Cardano.Ledger.Allegra.Scripts (
 import Cardano.Ledger.BaseTypes
 import Cardano.Ledger.Compactible
 import Cardano.Ledger.Conway.Governance (ConwayEraGov (..), committeeMembersL)
-import Cardano.Ledger.Conway.Rules (
-  ConwayCertPredFailure (..),
-  ConwayCertsPredFailure (..),
-  ConwayDelegPredFailure (..),
-  PredicateFailure,
- )
+import qualified Cardano.Ledger.Conway.Rules as Conway
 import Cardano.Ledger.Conway.TxCert
 import Cardano.Ledger.Credential
 import Cardano.Ledger.Dijkstra (ApplyTxError, DijkstraEra)
 import Cardano.Ledger.Dijkstra.Core
-import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis (..))
-import Cardano.Ledger.Dijkstra.PParams (UpgradeDijkstraPParams (..))
 import Cardano.Ledger.Dijkstra.Rules (
   DijkstraLedgerPredFailure (..),
   DijkstraMempoolPredFailure,
@@ -49,7 +41,6 @@ import Cardano.Ledger.Dijkstra.Scripts (
  )
 import Cardano.Ledger.Plutus (SLanguage (..))
 import Cardano.Ledger.Shelley.LedgerState
-import Cardano.Ledger.Shelley.Rules (ShelleyDelegPredFailure)
 import qualified Cardano.Ledger.Shelley.Rules as Shelley
 import Cardano.Ledger.Shelley.Scripts (
   pattern RequireAllOf,
@@ -60,11 +51,11 @@ import Cardano.Ledger.Shelley.Scripts (
 import Cardano.Ledger.State
 import Data.List.NonEmpty (NonEmpty)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromJust)
 import qualified Data.Set as Set
 import Lens.Micro
 import Test.Cardano.Ledger.Conway.ImpTest
 import Test.Cardano.Ledger.Dijkstra.Era
+import Test.Cardano.Ledger.Dijkstra.Examples (exampleDijkstraGenesis)
 import Test.Cardano.Ledger.Imp.Common
 
 instance ShelleyEraImp DijkstraEra where
@@ -108,39 +99,27 @@ class
   , InjectRuleFailure "LEDGER" DijkstraUtxoPredFailure era
   , InjectRuleFailure "MEMPOOL" DijkstraMempoolPredFailure era
   , InjectRuleFailure "MEMPOOL" DijkstraUtxoPredFailure era
-  , Inject (NonEmpty (PredicateFailure (EraRule "MEMPOOL" era))) (ApplyTxError era)
+  , Inject (NonEmpty (Conway.PredicateFailure (EraRule "MEMPOOL" era))) (ApplyTxError era)
   ) =>
   DijkstraEraImp era
 
 instance DijkstraEraImp DijkstraEra
 
 -- Partial implementation used for checking predicate failures
-instance InjectRuleFailure "LEDGER" ShelleyDelegPredFailure DijkstraEra where
+instance InjectRuleFailure "LEDGER" Shelley.ShelleyDelegPredFailure DijkstraEra where
   injectFailure = DijkstraCertsFailure . injectFailure
 
-instance InjectRuleFailure "CERTS" ShelleyDelegPredFailure DijkstraEra where
-  injectFailure = CertFailure . injectFailure
+instance InjectRuleFailure "CERTS" Shelley.ShelleyDelegPredFailure DijkstraEra where
+  injectFailure = Conway.CertFailure . injectFailure
 
-instance InjectRuleFailure "CERT" ShelleyDelegPredFailure DijkstraEra where
-  injectFailure = DelegFailure . injectFailure
+instance InjectRuleFailure "CERT" Shelley.ShelleyDelegPredFailure DijkstraEra where
+  injectFailure = Conway.DelegFailure . injectFailure
 
-instance InjectRuleFailure "DELEG" ShelleyDelegPredFailure DijkstraEra where
-  injectFailure (Shelley.StakeKeyAlreadyRegisteredDELEG c) = StakeKeyRegisteredDELEG c
-  injectFailure (Shelley.StakeKeyNotRegisteredDELEG c) = StakeKeyNotRegisteredDELEG c
-  injectFailure (Shelley.StakeKeyNonZeroAccountBalanceDELEG c) = StakeKeyHasNonZeroAccountBalanceDELEG c
+instance InjectRuleFailure "DELEG" Shelley.ShelleyDelegPredFailure DijkstraEra where
+  injectFailure (Shelley.StakeKeyAlreadyRegisteredDELEG c) = Conway.StakeKeyRegisteredDELEG c
+  injectFailure (Shelley.StakeKeyNotRegisteredDELEG c) = Conway.StakeKeyNotRegisteredDELEG c
+  injectFailure (Shelley.StakeKeyNonZeroAccountBalanceDELEG c) = Conway.StakeKeyHasNonZeroAccountBalanceDELEG c
   injectFailure _ = error "Cannot inject ShelleyDelegPredFailure into DijkstraEra"
-
-exampleDijkstraGenesis :: DijkstraGenesis
-exampleDijkstraGenesis =
-  DijkstraGenesis
-    { dgUpgradePParams =
-        UpgradeDijkstraPParams
-          { udppMaxRefScriptSizePerBlock = 1024 * 1024 -- 1MiB
-          , udppMaxRefScriptSizePerTx = 200 * 1024 -- 200KiB
-          , udppRefScriptCostStride = knownNonZeroBounded @25_600 -- 25 KiB
-          , udppRefScriptCostMultiplier = fromJust $ boundRational 1.2
-          }
-    }
 
 impDijkstraSatisfyNativeScript ::
   ( DijkstraEraImp era
