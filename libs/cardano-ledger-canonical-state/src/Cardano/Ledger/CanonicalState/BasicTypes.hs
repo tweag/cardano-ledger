@@ -53,7 +53,7 @@ import Cardano.Ledger.Core (
   AccountId,
   KeyRoleVRF (StakePoolVRF),
   VRFVerKeyHash,
-  eraProtVerLow,
+  eraProtVerHigh,
  )
 import Cardano.Ledger.Credential (Credential (..))
 import Cardano.Ledger.Hashes (KeyHash (..), ScriptHash (..))
@@ -91,7 +91,7 @@ data OnChain (a :: Type) = OnChain {getValue :: !a, getWireEncoding :: !BS.ByteS
   deriving stock (Generic)
 
 mkOnChain :: forall era a. (Era era, EncCBOR a) => a -> OnChain a
-mkOnChain x = OnChain x $! serialize' (eraProtVerLow @era) (encCBOR x)
+mkOnChain x = OnChain x $! serialize' (eraProtVerHigh @era) (encCBOR x)
 
 instance Eq a => Eq (OnChain a) where
   (OnChain _ bs1) == (OnChain _ bs2) = bs1 == bs2

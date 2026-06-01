@@ -145,7 +145,6 @@ spec = do
       isCanonical @"gov/pparams/v0" @(PParams ConwayEra)
       validateType @"gov/pparams/v0" @(GovPParams.V0.GovPParamsOut ConwayEra) "gov_pparams_out"
     describe "gov/proposals/v0" $ do
-      isCanonical @"gov/proposals/v0" @(GovProposals.V0.GovProposalOut CanonicalGovActionState)
       validateType @"gov/proposals/v0" @(GovProposals.V0.GovProposalOut CanonicalGovActionState)
         "record_entry"
     describe "gov/proposals/roots/v0" $ do

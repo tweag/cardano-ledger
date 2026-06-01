@@ -29,7 +29,7 @@ import qualified Streaming.Prelude as S
 
 class KnownNamespace ns => ImportCanonicalNamespace era ns where
   importNamespace ::
-    Monad m =>
+    MonadFail m =>
     ExportLedgerState era ->
     Stream (Of (ChunkEntry (NamespaceKey ns) (NamespaceEntry ns))) m () ->
     m (ExportLedgerState era)
@@ -52,4 +52,4 @@ importNamespaceFromHandle h (p :: Proxy v) nes =
   withNamespacedDataHandle h (fromSymbol p) $ \s ->
     importNamespace @era @v
       nes
-      (S.mapMaybe (decodeChunkEntry p) s)
+      (S.mapM (decodeChunkEntry p) s)

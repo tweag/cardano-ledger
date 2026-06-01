@@ -45,9 +45,8 @@ import Cardano.Ledger.BaseTypes (
   epochInfoPure,
  )
 import Cardano.Ledger.Binary (
-  EncCBOR (encCBOR),
-  toLazyByteString,
-  toPlainEncoding,
+  EncCBOR,
+  serialize,
  )
 import Cardano.Ledger.Core (
   Era (eraName),
@@ -56,6 +55,7 @@ import Cardano.Ledger.Core (
   KeyHash,
   KeyRole (BlockIssuer),
   TopTx,
+  eraProtVerHigh,
  )
 import Cardano.SCLS.CDDL (knownNamespaceKeySizes)
 import Cardano.SCLS.Internal.Entry.ChunkEntry (ChunkEntry, SomeChunkEntry)
@@ -63,7 +63,7 @@ import Cardano.SCLS.Internal.Serializer.Dump.Plan (
   SerializationPlan,
   addNamespacedChunks,
  )
-import Cardano.SCLS.Internal.Serializer.External.Impl (serialize)
+import qualified Cardano.SCLS.Internal.Serializer.External.Impl as SCLSS
 import Cardano.SCLS.NamespaceCodec (KnownNamespace (..))
 import Cardano.Slotting.EpochInfo (epochInfoSize, epochInfoSlotLength, fixedEpochInfo)
 import Cardano.Slotting.Time (SlotLength)
@@ -355,7 +355,7 @@ dump ::
   IO (Either [Namespace] ())
 dump filepath (SlotNo slotNo) =
   runResourceT
-    . serialize
+    . SCLSS.serialize
       filepath
       (SSlotNo.SlotNo slotNo)
       knownNamespaceKeySizes
@@ -367,7 +367,6 @@ type BlockFailures era = NonEmpty (PredicateFailure (EraRule "BBODY" era))
 class ExportCanonicalState era where
   type ExportLedgerState era
   dumpLedgerState :: ExportLedgerState era -> SerializationPlan (SomeChunkEntry RawBytes) ResIO
-  getProtocolVersion :: ExportLedgerState era -> Version
   getEpochNo :: ExportLedgerState era -> EpochNo
 
 class ExportFailures era where
@@ -457,7 +456,7 @@ withScls eraImp setTxHook setBlockHook baseDir =
         (dumpBlock blockIssuer txs)
         (first (flip $ serializeBlockFailures @era) res)
     export path description globals slotNo nes dumpTxOrBlock res = do
-      let protocolVersion = getProtocolVersion @era nes
+      let protocolVersion = eraProtVerHigh @era
           metadataFile = baseDir </> "metadata.json"
           tmpMetadataFile = baseDir </> "metadata.tmp"
       metadata@Metadata {stateTransitions} <- do
@@ -493,7 +492,7 @@ withScls eraImp setTxHook setBlockHook baseDir =
       Right () <-
         dump (dir </> initialStateFile) slotNo $
           dumpLedgerState @era nes
-      txFiles <- dumpTxOrBlock protocolVersion stateCountStr dir
+      txFiles <- dumpTxOrBlock stateCountStr dir
       finalStateFile <-
         bimapM
           ( \serializeFailures -> do
@@ -532,33 +531,39 @@ isSameScenario m1 m2 =
     && description m1 == description m2
 
 dumpTx ::
-  EncCBOR (Tx TopTx era) =>
-  Tx TopTx era -> Version -> String -> FilePath -> IO (TxOrBlock FilePath (FilePath, [FilePath]))
-dumpTx tx protocolVersion stateCountStr dir = do
-  let txFile = "txn-" <> stateCountStr <> ".cbor"
-  BSL.writeFile
-    (dir </> txFile)
-    (toLazyByteString (toPlainEncoding protocolVersion (encCBOR tx)))
-  pure (OrTx txFile)
-
-dumpBlock ::
-  EncCBOR (Tx TopTx era) =>
-  KeyHash BlockIssuer ->
-  StrictSeq (Tx TopTx era) ->
-  Version ->
+  forall era.
+  (Era era, EncCBOR (Tx TopTx era)) =>
+  Tx TopTx era ->
   String ->
   FilePath ->
   IO (TxOrBlock FilePath (FilePath, [FilePath]))
-dumpBlock blockIssuer txs protocolVersion stateCountStr dir = do
+dumpTx tx stateCountStr dir = do
+  let txFile = "txn-" <> stateCountStr <> ".cbor"
+      protocolVersion = eraProtVerHigh @era
+  BSL.writeFile
+    (dir </> txFile)
+    (serialize protocolVersion tx)
+  pure (OrTx txFile)
+
+dumpBlock ::
+  forall era.
+  (Era era, EncCBOR (Tx TopTx era)) =>
+  KeyHash BlockIssuer ->
+  StrictSeq (Tx TopTx era) ->
+  String ->
+  FilePath ->
+  IO (TxOrBlock FilePath (FilePath, [FilePath]))
+dumpBlock blockIssuer txs stateCountStr dir = do
   let blockIssuerFile = "block-" <> stateCountStr <> "-issuer.cbor"
+      protocolVersion = eraProtVerHigh @era
   BSL.writeFile
     (dir </> blockIssuerFile)
-    (toLazyByteString (toPlainEncoding protocolVersion (encCBOR blockIssuer)))
+    (serialize protocolVersion blockIssuer)
   fmap (OrBlock . (blockIssuerFile,)) $ forM (zip [0 :: Integer ..] (toList txs)) $ \(i, tx) -> do
     let txFile = "block-" <> stateCountStr <> "-tx-" <> show i <> ".cbor"
     BSL.writeFile
       (dir </> txFile)
-      (toLazyByteString (toPlainEncoding protocolVersion (encCBOR tx)))
+      (serialize protocolVersion tx)
     pure txFile
 
 data ExportHooks era = ExportHooks

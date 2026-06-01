@@ -14,18 +14,15 @@ module Main where
 
 import Cardano.Ledger.BaseTypes (
   EpochNo,
-  Globals,
+  Globals (epochInfo, systemStart),
   ProtVer (ProtVer),
   SlotNo,
   TxIx (TxIx),
-  Version,
  )
 import Cardano.Ledger.Binary (
-  Annotator,
-  DecCBOR (decCBOR),
+  DecCBOR,
   DecoderError,
   decodeFull,
-  decodeFullAnnotator,
   decodeFullDecoder,
   serialize,
  )
@@ -53,23 +50,27 @@ import Cardano.Ledger.Conway (ConwayEra)
 import Cardano.Ledger.Conway.State (CanSetChainAccountState (chainAccountStateL))
 import Cardano.Ledger.Core (
   BlockIssuer,
-  EraBlockBody (hashBlockBody, mkBasicBlockBody, txSeqBlockBodyL),
-  EraPParams (ppProtocolVersionL),
+  Era,
+  EraBlockBody (blockBodySize, hashBlockBody, mkBasicBlockBody, txSeqBlockBodyL),
   EraRule,
   EraTx (Tx),
   KeyHash,
   TopTx,
-  bBodySize,
+  eraProtVerHigh,
   eraProtVerLow,
  )
 import Cardano.Ledger.Shelley.API (
+  ApplyTx (mkStAnnTx),
   BlockTransitionError (BlockTransitionError),
+  LedgerState (lsUTxOState),
+  UTxOState (utxosUtxo),
   applyBlockEither,
  )
 import Cardano.Ledger.Shelley.LedgerState (NewEpochState, curPParamsEpochStateL, esLStateL, nesEsL)
 import Cardano.Ledger.Shelley.Rules (
   LedgerEnv (..),
   epochFromSlot,
+  ledgerPpL,
  )
 import Cardano.SCLS.Internal.Reader (withLatestManifestFrame)
 import Cardano.SCLS.Internal.Record.Manifest (Manifest (nsInfo, rootHash))
@@ -90,11 +91,9 @@ import Data.Aeson (decodeFileStrict)
 import Data.Bifunctor (Bifunctor (bimap))
 import Data.Bitraversable (bimapM)
 import qualified Data.ByteString.Lazy as BSL
-import Data.Data (Typeable)
 import Data.Function ((&))
 import Data.Sequence.Strict (StrictSeq)
 import qualified Data.Sequence.Strict as SSeq
-import qualified Data.Text as T
 import GHC.Base (NonEmpty, when)
 import GHC.IsList (IsList (toList))
 import Lens.Micro ((.~), (^.))
@@ -113,6 +112,7 @@ import Test.Cardano.Ledger.Common (
   pendingWith,
   shouldBe,
  )
+import Test.Cardano.Ledger.Conway.Binary.Annotator ()
 import Test.Cardano.Slotting.Numeric ()
 
 dumpsPathVarName :: String
@@ -152,27 +152,28 @@ buildSpec dumpsDir testCases =
           (describe description $ runTest m)
           path
   where
+    version = eraProtVerHigh @ConwayEra
     runTest :: Metadata -> Spec
     runTest m@Metadata {..} = do
       let dir = dumpsDir </> getTestDirFromMetadata m
-      forM_ stateTransitions $ \t@StateTransition {..} ->
+      forM_ stateTransitions $ \t@StateTransition {initialState} ->
         it ("apply txn/block to " ++ initialState) $
           withSystemTempDirectory "blackbox-test-runner" $ \tmpDir -> do
             runExceptT
-              (loadTestFixture @ConwayEra dir protocolVersion t)
+              (loadTestFixture @ConwayEra dir t)
               >>= \case
                 Left err ->
-                  expectationFailure $ "Failed to deserialise transactions: " ++ show err
+                  expectationFailure $ "Failed to deserialise transaction: " ++ show err
                 Right testFixture ->
                   applyTestFixture m testFixture >>= \computedRes ->
                     case (tfFinalState testFixture, computedRes) of
                       (Left (OrBlock expectedFailures), Left (OrBlock computedFailures)) ->
-                        decodeFull protocolVersion (serialize protocolVersion computedFailures)
+                        decodeFull version (serialize version computedFailures)
                           `shouldBe` Right expectedFailures
                       (Left (OrBlock _), Left (OrTx _)) ->
                         expectationFailure "Expected block failures, but got an unexpected tx failure"
                       (Left (OrTx expectedFailures), Left (OrTx computedFailures)) ->
-                        decodeFull protocolVersion (serialize protocolVersion computedFailures)
+                        decodeFull version (serialize version computedFailures)
                           `shouldBe` Right expectedFailures
                       (Left (OrTx _), Left (OrBlock _)) ->
                         expectationFailure "Expected tx failures, but got an unexpected block failure"
@@ -192,7 +193,14 @@ buildSpec dumpsDir testCases =
                             ++ show failures
                             ++ "\nBlock applied:\n"
                             ++ show (tfTransactions testFixture)
-                      _ -> undefined
+                      (Left (OrTx failures), Right _) ->
+                        expectationFailure $
+                          "Expected tx failures, but got success. Failures should've been: "
+                            ++ show failures
+                      (Left (OrBlock failures), Right _) ->
+                        expectationFailure $
+                          "Expected block failures, but got success. Failures should've been: "
+                            ++ show failures
 
 applyTestFixture ::
   Metadata ->
@@ -233,16 +241,22 @@ applyTx slotNo globals nes tx = do
           , ledgerAccount = nes ^. chainAccountStateL
           }
   let stsState = nes ^. nesEsL . esLStateL
-  let trc = TRC (lEnv, stsState, tx)
-  let
-    assertionPolicy = AssertionsAll
-    stsOpts =
-      ApplySTSOpts
-        { asoValidation = ValidateAll
-        , asoEvents = EPReturn
-        , asoAssertions = assertionPolicy
-        }
-    act = applySTSOptsEither @(EraRule "LEDGER" ConwayEra) stsOpts trc
+      stAnnTx =
+        mkStAnnTx
+          (epochInfo globals)
+          (systemStart globals)
+          (lEnv ^. ledgerPpL)
+          (utxosUtxo (lsUTxOState stsState))
+          tx
+      trc = TRC (lEnv, stsState, stAnnTx)
+      assertionPolicy = AssertionsAll
+      stsOpts =
+        ApplySTSOpts
+          { asoValidation = ValidateAll
+          , asoEvents = EPReturn
+          , asoAssertions = assertionPolicy
+          }
+      act = applySTSOptsEither @(EraRule "LEDGER" ConwayEra) stsOpts trc
   case runReader act globals of
     Left failures -> Left failures
     Right (ledgerState, _) -> Right $ nes & nesEsL . esLStateL .~ ledgerState
@@ -260,12 +274,12 @@ applyBlock slotNo globals nes blockIssuer txs = do
     blockHeader =
       TestBlockHeader
         { tbhIssuer = blockIssuer
-        , tbhBSize = fromIntegral $ bBodySize (ProtVer (eraProtVerLow @ConwayEra) 0) blockBody
+        , tbhBSize = fromIntegral $ blockBodySize (ProtVer (eraProtVerLow @ConwayEra) 0) blockBody
         , tbhHSize = 0
         , tbhBHash = hashBlockBody blockBody
         , tbhSlot = slotNo
         , tbhPrevNonce = Nothing
-        , tbhProtVer = nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
+        , tbhProtVer = ProtVer (eraProtVerHigh @ConwayEra) 0
         }
     block = Block {blockHeader, blockBody}
   case applyBlockEither EPReturn ValidateAll globals nes block of
@@ -283,52 +297,59 @@ data TestFixture era = TestFixture
 
 loadTestFixture ::
   forall era.
-  ( Typeable era
+  ( Era era
   , ImportCanonicalState era
-  , DecCBOR (Annotator (Tx TopTx era))
   , ImportFailures era
+  , DecCBOR (Tx TopTx era)
   ) =>
   FilePath ->
-  Version ->
   StateTransition ->
   ExceptT DecoderError IO (TestFixture era)
-loadTestFixture dir protocolVersion StateTransition {..} = do
-  tfInitialState <- liftIO $ importCanonicalState @era (dir </> initialState) epochNo
-  tfTransactions <-
-    mapTxOrBlockM
-      ( \txFile ->
-          decodeTx (dir </> txFile)
-      )
-      ( \(blockIssuerFile, txFiles) -> do
-          blockIssuerBytes <- liftIO $ BSL.readFile (dir </> blockIssuerFile)
-          blockIssuer <- except $ decodeFull protocolVersion blockIssuerBytes
-          t <- forM txFiles (decodeTx . (dir </>))
-          pure (blockIssuer, SSeq.fromList t)
-      )
-      transactions
-  tfFinalState <- loadStateOrFailures
-  pure $
-    TestFixture
-      { tfEpochNo = epochNo
-      , tfInitialState
-      , tfTransactions
-      , tfFinalState
-      }
-  where
-    decodeTx filepath =
-      except . decodeFullAnnotator protocolVersion (T.pack "Tx") decCBOR
-        =<< liftIO (BSL.readFile filepath)
-
-    loadStateOrFailures ::
-      ExceptT DecoderError IO (Either (TxOrBlock (TxFailures era) (BlockFailures era)) FilePath)
-    loadStateOrFailures =
-      bimapM
-        ( \failuresFile -> ExceptT $ do
-            bs <- BSL.readFile (dir </> failuresFile)
-            pure $
-              case decodeFullDecoder protocolVersion "TxFailures" (decodeTxFailures @era) bs of
-                Left _ -> OrBlock <$> decodeFullDecoder protocolVersion "BlockFailures" (decodeBlockFailures @era) bs
-                Right txFailures -> Right (OrTx txFailures)
+loadTestFixture
+  dir
+  StateTransition
+    { epochNo
+    , initialState
+    , transactions
+    , finalState
+    } = do
+    tfInitialState <- liftIO $ importCanonicalState @era (dir </> initialState) epochNo
+    tfTransactions <-
+      mapTxOrBlockM
+        ( \txFile ->
+            decodeTx (dir </> txFile)
         )
-        pure
-        finalState
+        ( \(blockIssuerFile, txFiles) -> do
+            blockIssuerBytes <- liftIO $ BSL.readFile (dir </> blockIssuerFile)
+            blockIssuer <- except $ decodeFull ver blockIssuerBytes
+            t <- forM txFiles (decodeTx . (dir </>))
+            pure (blockIssuer, SSeq.fromList t)
+        )
+        transactions
+    tfFinalState <- loadStateOrFailures
+    pure $
+      TestFixture
+        { tfEpochNo = epochNo
+        , tfInitialState
+        , tfTransactions
+        , tfFinalState
+        }
+    where
+      ver = eraProtVerHigh @era
+      decodeTx filepath =
+        except . decodeFull ver
+          =<< liftIO (BSL.readFile filepath)
+
+      loadStateOrFailures ::
+        ExceptT DecoderError IO (Either (TxOrBlock (TxFailures era) (BlockFailures era)) FilePath)
+      loadStateOrFailures =
+        bimapM
+          ( \failuresFile -> ExceptT $ do
+              bs <- BSL.readFile (dir </> failuresFile)
+              pure $
+                case decodeFullDecoder ver "TxFailures" (decodeTxFailures @era) bs of
+                  Left _ -> OrBlock <$> decodeFullDecoder ver "BlockFailures" (decodeBlockFailures @era) bs
+                  Right txFailures -> Right (OrTx txFailures)
+          )
+          pure
+          finalState

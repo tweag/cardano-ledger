@@ -32,6 +32,10 @@ import Cardano.Ledger.CanonicalState.Import (
   importNamespaceFromHandle,
  )
 import Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 (BlockIn (BlockIn), BlockOut (BlockOut))
+import Cardano.Ledger.CanonicalState.Namespace.Dormant (
+  DormantIn (DormantIn),
+  DormantOut (DormantOut),
+ )
 import Cardano.Ledger.CanonicalState.Namespace.EntitiesAccounts.V0 (
   EntitiesAccountsIn (EntitiesAccountsIn),
   EntitiesAccountsOut (EntitiesAccountsOut),
@@ -76,6 +80,7 @@ import Cardano.Ledger.CanonicalState.Namespace.GovProposals.Roots.V0 (
   GovProposalsRootsIn (..),
   GovProposalsRootsOut (..),
  )
+import Cardano.Ledger.CanonicalState.Namespace.GovProposals.V0 (GovProposalOut (..))
 import Cardano.Ledger.CanonicalState.Namespace.UTxO.V0 (
   UtxoIn (UtxoKeyIn),
   UtxoOut (UtxoOut),
@@ -98,7 +103,6 @@ import Cardano.Ledger.Conway.Governance (
   pRootsL,
   toPrevGovActionIds,
  )
-import Cardano.Ledger.Conway.Rules (updateDormantDRepExpiry)
 import Cardano.Ledger.Conway.State (
   CanSetAccounts (accountsL),
   CanSetUTxO (utxoL),
@@ -114,6 +118,7 @@ import Cardano.Ledger.Conway.State (
   psVRFKeyHashesL,
   vsCommitteeStateL,
   vsDRepsL,
+  vsNumDormantEpochsL,
  )
 import Cardano.Ledger.Shelley.LedgerState (
   NewEpochState (..),
@@ -140,12 +145,11 @@ import Cardano.SCLS.Internal.Record.Manifest (Manifest (..))
 import qualified Cardano.Types.SlotNo as SSlotNo
 import Data.Data (Proxy (Proxy))
 import Data.Default (def)
-import Data.Functor ((<&>))
 import Data.List (sortOn)
 import qualified Data.Map as Map
 import qualified Data.OMap.Strict as OMap
 import GHC.TypeLits (KnownSymbol)
-import Lens.Micro ((%~), (&), (.~), (^.))
+import Lens.Micro ((&), (.~), (^.))
 import qualified Streaming.Prelude as S
 import System.IO (Handle, IOMode (ReadMode), withBinaryFile)
 
@@ -208,6 +212,21 @@ instance ImportCanonicalNamespace ConwayEra "gov/constitution/v0" where
       )
       <$> S.head_ s
 
+instance ImportCanonicalNamespace ConwayEra "entities/dormant_epochs/v0" where
+  importNamespace nes s =
+    maybe
+      nes
+      ( \(ChunkEntry DormantIn (DormantOut dormantEpochNo)) ->
+          nes
+            & nesEpochStateL
+            . esLStateL
+            . lsCertStateL
+            . certVStateL
+            . vsNumDormantEpochsL
+            .~ dormantEpochNo
+      )
+      <$> S.head_ s
+
 instance ImportCanonicalNamespace ConwayEra "gov/pparams/v0" where
   importNamespace nes =
     S.fold_
@@ -223,10 +242,13 @@ instance ImportCanonicalNamespace ConwayEra "gov/pparams/v0" where
 instance ImportCanonicalNamespace ConwayEra "gov/proposals/v0" where
   importNamespace nes s = do
     proposals <-
-      S.map (\(ChunkEntry govIn govOut) -> toGovActionState (govIn, govOut)) s
+      S.map
+        ( \(ChunkEntry govIn (GovProposalOut {..})) -> (gpoProposalOrder, toGovActionState (govIn, gpoProposal))
+        )
+        s
         & S.toList_
-        <&> OMap.fromFoldable . map snd . sortOn fst
-    pure $ nes & newEpochStateGovStateL . cgsProposalsL . pPropsL .~ proposals
+    let proposalsMap = OMap.fromFoldable . map snd . sortOn fst $ proposals
+    pure $ nes & newEpochStateGovStateL . cgsProposalsL . pPropsL .~ proposalsMap
 
 instance ImportCanonicalNamespace ConwayEra "gov/proposals/roots/v0" where
   importNamespace nes = do
@@ -371,40 +393,21 @@ instance ImportCanonicalState ConwayEra where
       withBinaryFile filepath ReadMode $ \h ->
         importNs @"utxo/v0" h defaultNes
           >>= importNs @"blocks/v0" h
-          >>= importNs @"entities/committee/v0" h
           >>= importNs @"gov/committee/v0" h
           >>= importNs @"gov/constitution/v0" h
+          >>= importNs @"gov/pparams/v0" h
           >>= importNs @"gov/proposals/roots/v0" h
           >>= importNs @"gov/proposals/v0" h
-          >>= importNs @"gov/pparams/v0" h
           >>= importNs @"entities/accounts/v0" h
-          >>= importNs @"entities/stake_pools/v0" h
           >>= importNs @"entities/dreps/v0" h
+          >>= importNs @"entities/committee/v0" h
+          >>= importNs @"entities/stake_pools/v0" h
           >>= importNs @"entities/stake_pools/vrf_key_hashes/v0" h
+          >>= importNs @"entities/dormant_epochs/v0" h
           >>= \nes -> do
             -- Finalize the state with the data that requires computation/cross-namespace data
-            let govState = nes ^. newEpochStateGovStateL
-                certState = nes ^. nesEsL . esLStateL . lsCertStateL
-                proposalsMap = govState ^. cgsProposalsL . pPropsL
-                prevActionsIds = toPrevGovActionIds (govState ^. cgsProposalsL . pRootsL)
-            -- TODO: dormant epochs
-            proposals <- mkProposals prevActionsIds proposalsMap
-            let nes' =
-                  nes
-                    & nesEsL
-                    . esLStateL
-                    . lsUTxOStateL
-                    . utxosDepositedL
-                    .~ totalObligation certState govState
-                    & newEpochStateGovStateL
-                    . cgsProposalsL
-                    .~ proposals
-                    & nesEsL
-                    . esLStateL
-                    . lsCertStateL
-                    . certVStateL
-                    %~ updateDormantDRepExpiry epochNo
-             in pure (SlotNo (SSlotNo.unSlotNo slotNo), nes')
+            nes' <- computeTotalObligation <$> recreateProposals nes
+            pure (SlotNo (SSlotNo.unSlotNo slotNo), nes')
     where
       importNs ::
         forall v.
@@ -415,6 +418,21 @@ instance ImportCanonicalState ConwayEra where
         (def @(NewEpochState ConwayEra))
           { nesEL = epochNo
           }
+      recreateProposals nes = do
+        let govState = nes ^. newEpochStateGovStateL
+            proposalsMap = govState ^. cgsProposalsL . pPropsL
+            prevActionsIds = toPrevGovActionIds (govState ^. cgsProposalsL . pRootsL)
+        proposals <- mkProposals prevActionsIds proposalsMap
+        pure (nes & newEpochStateGovStateL . cgsProposalsL .~ proposals)
+      computeTotalObligation nes =
+        let certState = nes ^. nesEsL . esLStateL . lsCertStateL
+            govState = nes ^. newEpochStateGovStateL
+         in nes
+              & nesEsL
+              . esLStateL
+              . lsUTxOStateL
+              . utxosDepositedL
+              .~ totalObligation certState govState
 
 instance ImportFailures ConwayEra where
   decodeTxFailures = decCBOR

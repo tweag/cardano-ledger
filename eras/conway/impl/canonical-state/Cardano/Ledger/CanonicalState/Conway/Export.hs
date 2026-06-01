@@ -10,7 +10,7 @@
 
 module Cardano.Ledger.CanonicalState.Conway.Export () where
 
-import Cardano.Ledger.BaseTypes (ProtVer (..), StrictMaybe (..), strictMaybeToMaybe)
+import Cardano.Ledger.BaseTypes (StrictMaybe (..), strictMaybeToMaybe)
 import Cardano.Ledger.Binary (serialize)
 import Cardano.Ledger.CanonicalState.Conway (
   fromGovActionState,
@@ -25,6 +25,10 @@ import Cardano.Ledger.CanonicalState.Export (
   addNamespaceToPlan,
  )
 import Cardano.Ledger.CanonicalState.Namespace.Blocks.V0 (BlockIn (BlockIn), BlockOut (BlockOut))
+import Cardano.Ledger.CanonicalState.Namespace.Dormant (
+  DormantIn (DormantIn),
+  DormantOut (DormantOut),
+ )
 import Cardano.Ledger.CanonicalState.Namespace.EntitiesAccounts.V0 (
   EntitiesAccountsIn (EntitiesAccountsIn),
   EntitiesAccountsOut (EntitiesAccountsOut),
@@ -84,6 +88,7 @@ import Cardano.Ledger.Conway.Governance (
   proposalsActions,
   toPrevGovActionIds,
  )
+-- import Cardano.Ledger.Conway.Rules (updateDormantDRepExpiry)
 import Cardano.Ledger.Conway.State (
   CanGetUTxO (utxoG),
   CanSetAccounts (accountsL),
@@ -99,8 +104,8 @@ import Cardano.Ledger.Conway.State (
   psVRFKeyHashesL,
   vsCommitteeStateL,
   vsDRepsL,
+  vsNumDormantEpochsL,
  )
-import Cardano.Ledger.Core (EraPParams (ppProtocolVersionL))
 import Cardano.Ledger.Shelley.LedgerState (
   NewEpochState,
   curPParamsEpochStateL,
@@ -191,7 +196,7 @@ instance ExportCanonicalNamespace ConwayEra "gov/pparams/v0" where
           ++ futureDefinitePParams
 
 instance ExportCanonicalNamespace ConwayEra "gov/proposals/v0" where
-  exportNamespace nes =
+  exportNamespace nes = do
     S.each
       [ uncurry ChunkEntry $ fromGovActionState n govActionState
       | (n, govActionState) <-
@@ -199,6 +204,13 @@ instance ExportCanonicalNamespace ConwayEra "gov/proposals/v0" where
             [0 ..]
             (toList $ proposalsActions (nes ^. newEpochStateGovStateL . cgsProposalsL))
       ]
+
+instance ExportCanonicalNamespace ConwayEra "entities/dormant_epochs/v0" where
+  exportNamespace nes =
+    S.yield (ChunkEntry DormantIn (DormantOut dormantEpochNo))
+    where
+      dormantEpochNo =
+        nes ^. nesEsL . esLStateL . lsCertStateL . certVStateL . vsNumDormantEpochsL
 
 instance ExportCanonicalNamespace ConwayEra "gov/proposals/roots/v0" where
   exportNamespace nes =
@@ -349,20 +361,29 @@ instance ExportCanonicalState ConwayEra where
   type ExportLedgerState ConwayEra = NewEpochState ConwayEra
   dumpLedgerState nes =
     defaultSerializationPlan
-      & addNamespaceToPlan @ConwayEra @"utxo/v0" nes
-      & addNamespaceToPlan @ConwayEra @"blocks/v0" nes
-      & addNamespaceToPlan @ConwayEra @"gov/committee/v0" nes
-      & addNamespaceToPlan @ConwayEra @"gov/constitution/v0" nes
-      & addNamespaceToPlan @ConwayEra @"gov/pparams/v0" nes
-      & addNamespaceToPlan @ConwayEra @"gov/proposals/v0" nes
-      & addNamespaceToPlan @ConwayEra @"gov/proposals/roots/v0" nes
-      & addNamespaceToPlan @ConwayEra @"entities/accounts/v0" nes
-      & addNamespaceToPlan @ConwayEra @"entities/dreps/v0" nes
-      & addNamespaceToPlan @ConwayEra @"entities/committee/v0" nes
-      & addNamespaceToPlan @ConwayEra @"entities/stake_pools/v0" nes
-      & addNamespaceToPlan @ConwayEra @"entities/stake_pools/vrf_key_hashes/v0" nes
-  getProtocolVersion nes =
-    pvMajor $ nes ^. nesEsL . curPParamsEpochStateL . ppProtocolVersionL
+      & addNamespaceToPlan @ConwayEra @"utxo/v0" updatedNes
+      & addNamespaceToPlan @ConwayEra @"blocks/v0" updatedNes
+      & addNamespaceToPlan @ConwayEra @"gov/committee/v0" updatedNes
+      & addNamespaceToPlan @ConwayEra @"gov/constitution/v0" updatedNes
+      & addNamespaceToPlan @ConwayEra @"gov/pparams/v0" updatedNes
+      & addNamespaceToPlan @ConwayEra @"gov/proposals/v0" updatedNes
+      & addNamespaceToPlan @ConwayEra @"gov/proposals/roots/v0" updatedNes
+      & addNamespaceToPlan @ConwayEra @"entities/accounts/v0" updatedNes
+      & addNamespaceToPlan @ConwayEra @"entities/dreps/v0" updatedNes
+      & addNamespaceToPlan @ConwayEra @"entities/committee/v0" updatedNes
+      & addNamespaceToPlan @ConwayEra @"entities/stake_pools/v0" updatedNes
+      & addNamespaceToPlan @ConwayEra @"entities/stake_pools/vrf_key_hashes/v0" updatedNes
+      & addNamespaceToPlan @ConwayEra @"entities/dormant_epochs/v0" updatedNes
+    where
+      -- epochNo = nes ^. nesELL
+      updatedNes = nes
+
+  -- nes
+  --   & nesEpochStateL
+  --   . esLStateL
+  --   . lsCertStateL
+  --   . certVStateL
+  --   %~ updateDormantDRepExpiry epochNo
   getEpochNo nes = nes ^. nesELL
 
 instance ExportFailures ConwayEra where

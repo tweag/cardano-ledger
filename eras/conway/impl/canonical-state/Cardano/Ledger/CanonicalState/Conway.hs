@@ -9,10 +9,8 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
@@ -70,6 +68,7 @@ import Data.Map (Map)
 import Data.Text (Text)
 import Data.Word (Word64, Word8)
 import Lens.Micro
+import Cardano.Ledger.CanonicalState.Namespace.Dormant (DormantIn, DormantOut)
 
 type instance NamespaceEra "blocks/v0" = ConwayEra
 
@@ -92,6 +91,8 @@ type instance NamespaceEra "gov/pparams/v0" = ConwayEra
 type instance NamespaceEra "gov/proposals/v0" = ConwayEra
 
 type instance NamespaceEra "gov/proposals/roots/v0" = ConwayEra
+
+type instance NamespaceEra "entities/dormant_epochs/v0" = ConwayEra
 
 type instance NamespaceEra "utxo/v0" = ConwayEra
 
@@ -177,67 +178,67 @@ instance FromCanonicalCBOR "gov/pparams/v0" (PParams ConwayEra) where
       Versioned $
         emptyPParams @ConwayEra
           & ppTxFeePerByteL
-            .~ CoinPerByte (unCoin txFeePerByte)
+          .~ CoinPerByte (unCoin txFeePerByte)
           & ppTxFeeFixedCompactL
-            .~ unCoin txFeeFixedCompact
+          .~ unCoin txFeeFixedCompact
           & ppMaxBBSizeL
-            .~ maxBBSize
+          .~ maxBBSize
           & ppMaxTxSizeL
-            .~ maxTxSize
+          .~ maxTxSize
           & ppMaxBHSizeL
-            .~ maxBHSize
+          .~ maxBHSize
           & ppKeyDepositCompactL
-            .~ unCoin keyDepositCompact
+          .~ unCoin keyDepositCompact
           & ppPoolDepositCompactL
-            .~ unCoin poolDepositCompact
+          .~ unCoin poolDepositCompact
           & ppEMaxL
-            .~ eMax
+          .~ eMax
           & ppNOptL
-            .~ nOpt
+          .~ nOpt
           & ppA0L
-            .~ a0
+          .~ a0
           & ppRhoL
-            .~ rho
+          .~ rho
           & ppTauL
-            .~ tau
+          .~ tau
           & ppMinPoolCostCompactL
-            .~ unCoin minPoolCostCompact
+          .~ unCoin minPoolCostCompact
           & ppCoinsPerUTxOByteL
-            .~ CoinPerByte (unCoin coinsPerUTxOByte)
+          .~ CoinPerByte (unCoin coinsPerUTxOByte)
           & ppCostModelsL
-            .~ costModels
+          .~ costModels
           & ppPricesL
-            .~ fromCanonicalPrices prices
+          .~ fromCanonicalPrices prices
           & ppMaxTxExUnitsL
-            .~ fromCanonicalExUnits maxTxExUnits
+          .~ fromCanonicalExUnits maxTxExUnits
           & ppMaxBlockExUnitsL
-            .~ fromCanonicalExUnits maxBlockExUnits
+          .~ fromCanonicalExUnits maxBlockExUnits
           & ppMaxValSizeL
-            .~ maxValSize
+          .~ maxValSize
           & ppCollateralPercentageL
-            .~ collateralPercentage
+          .~ collateralPercentage
           & ppMaxCollateralInputsL
-            .~ maxCollateralInputs
+          .~ maxCollateralInputs
           & ppPoolVotingThresholdsL
-            .~ poolVotingThresholds
+          .~ poolVotingThresholds
           & ppDRepVotingThresholdsL
-            .~ dRepVotingThresholds
+          .~ dRepVotingThresholds
           & ppCommitteeMinSizeL
-            .~ committeeMinSize
+          .~ committeeMinSize
           & ppCommitteeMaxTermLengthL
-            .~ committeeMaxTermLength
+          .~ committeeMaxTermLength
           & ppGovActionLifetimeL
-            .~ govActionLifetime
+          .~ govActionLifetime
           & ppGovActionDepositCompactL
-            .~ unCoin govActionDepositCompact
+          .~ unCoin govActionDepositCompact
           & ppDRepDepositCompactL
-            .~ unCoin dRepDepositCompact
+          .~ unCoin dRepDepositCompact
           & ppDRepActivityL
-            .~ dRepActivity
+          .~ dRepActivity
           & ppMinFeeRefScriptCostPerByteL
-            .~ minFeeRefScriptCostPerByte
+          .~ minFeeRefScriptCostPerByte
           & ppProtocolVersionL
-            .~ protVer
+          .~ protVer
     where
 
 instance ToCanonicalCBOR "gov/pparams/v0" DRepVotingThresholds where
@@ -296,6 +297,10 @@ instance KnownNamespace "gov/proposals/v0" where
   type NamespaceKey "gov/proposals/v0" = GovProposalIn
   type NamespaceEntry "gov/proposals/v0" = GovProposalOut CanonicalGovActionState
 
+instance KnownNamespace "entities/dormant_epochs/v0" where
+  type NamespaceKey "entities/dormant_epochs/v0" = DormantIn
+  type NamespaceEntry "entities/dormant_epochs/v0" = DormantOut
+
 fromGovActionState ::
   Word64 -> GovActionState ConwayEra -> (GovProposalIn, GovProposalOut CanonicalGovActionState)
 fromGovActionState gpoProposalOrder GovActionState {..} =
@@ -311,15 +316,13 @@ fromGovActionState gpoProposalOrder GovActionState {..} =
   )
 
 toGovActionState ::
-  (GovProposalIn, GovProposalOut CanonicalGovActionState) -> (Word64, GovActionState ConwayEra)
-toGovActionState (govIn, GovProposalOut {gpoProposalOrder, gpoProposal = CanonicalGovActionState {..}}) =
-  ( gpoProposalOrder
-  , GovActionState
-      { gasProposalProcedure = getValue gasProposalProcedure
-      , gasId = fromGovProposalIn govIn
-      , ..
-      }
-  )
+  (GovProposalIn, CanonicalGovActionState) -> GovActionState ConwayEra
+toGovActionState (govIn, CanonicalGovActionState {..}) =
+  GovActionState
+    { gasProposalProcedure = getValue gasProposalProcedure
+    , gasId = fromGovProposalIn govIn
+    , ..
+    }
 
 mkCanonicalGovActionId :: GovActionId -> CanonicalGovActionId
 mkCanonicalGovActionId GovActionId {gaidGovActionIx = GovActionIx idx, gaidTxId} =

@@ -521,17 +521,12 @@ instance EraPParams era => NFData (ProposalProcedure era)
 
 instance EraPParams era => DecCBOR (ProposalProcedure era) where
   decCBOR =
-    ifDecoderVersionAtLeast (natVersion @12) decodeProposalProcedure $
-      decode $
-        RecD ProposalProcedure
-          <! From
-          <! From
-          <! From
-          <! From
-    where
-      decodeProposalProcedure =
-        decodeRecordNamed "ProposalProcedure" (const 4) $
-          ProposalProcedure <$> decCBOR <*> decCBOR <*> decCBOR <*> decCBOR
+    decode $
+      RecD ProposalProcedure
+        <! From
+        <! From
+        <! From
+        <! From
   {-# INLINE decCBOR #-}
 
 instance EraPParams era => EncCBOR (ProposalProcedure era) where
