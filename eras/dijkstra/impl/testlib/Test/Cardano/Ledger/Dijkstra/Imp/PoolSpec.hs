@@ -6,16 +6,40 @@
 
 module Test.Cardano.Ledger.Dijkstra.Imp.PoolSpec (spec) where
 
+import Cardano.Crypto.DSIGN (
+  BLS12381MinSigDSIGN,
+  DSIGNAggregatable (createPossessionProofDSIGN),
+  DSIGNAlgorithm (deriveVerKeyDSIGN, genKeyDSIGNWithContext),
+  seedSizeDSIGN,
+ )
+import Cardano.Crypto.DSIGN.BLS12381.Internal (minSigPoPDST)
+import Cardano.Crypto.Seed (mkSeedFromBytes)
 import Cardano.Ledger.BaseTypes (StrictMaybe (..))
 import Cardano.Ledger.Coin (Coin (..))
 import Cardano.Ledger.Credential (Credential (..))
 import Cardano.Ledger.Dijkstra.Core
 import Cardano.Ledger.Dijkstra.PParams (ppMaxPledgeLeverageL)
-import Cardano.Ledger.Shelley.LedgerState (nesEsL)
-import Cardano.Ledger.State (EraCertState, StakePoolParams (..), casReservesL, chainAccountStateL)
+import Cardano.Ledger.Shelley.LedgerState (esLStateL, lsCertStateL, nesEsL)
+import Cardano.Ledger.Shelley.Rules (ShelleyPoolPredFailure (BlsKeyPossessionProofInvalidPOOL))
+import Cardano.Ledger.State (
+  BlsKey (..),
+  EraCertState,
+  PState (..),
+  StakePoolParams (..),
+  StakePoolState (..),
+  casReservesL,
+  certPStateL,
+  chainAccountStateL,
+ )
+import qualified Data.ByteString as Strict
 import Data.Coerce (coerce)
 import Data.Foldable (fold)
+import Data.List.NonEmpty (NonEmpty ((:|)))
+import qualified Data.Map.Strict as Map
+import Data.Proxy (Proxy (..))
+import qualified Data.Sequence.Strict as SSeq
 import qualified Data.Set as Set
+import Data.Word (Word8)
 import Lens.Micro ((&), (.~))
 import Test.Cardano.Ledger.Core.Rational ((%!))
 import Test.Cardano.Ledger.Dijkstra.ImpTest
@@ -30,6 +54,27 @@ ownerStake = Coin 10_000_000_000_000
 
 delegatorStake :: Coin
 delegatorStake = Coin 90_000_000_000_000
+
+blsKeyFromSeed :: Word8 -> BlsKey
+blsKeyFromSeed seedByte =
+  BlsKey
+    { blsPubKey = deriveVerKeyDSIGN sk
+    , blsPossessionProof = createPossessionProofDSIGN minSigPoPDST sk
+    }
+  where
+    seed =
+      mkSeedFromBytes $
+        Strict.replicate (fromIntegral $ seedSizeDSIGN (Proxy @BLS12381MinSigDSIGN)) seedByte
+    sk = genKeyDSIGNWithContext @BLS12381MinSigDSIGN Nothing seed
+
+validBlsKey :: BlsKey
+validBlsKey = blsKeyFromSeed 42
+
+invalidBlsKey :: BlsKey
+invalidBlsKey =
+  validBlsKey
+    { blsPossessionProof = blsPossessionProof (blsKeyFromSeed 43)
+    }
 
 registerPoolWithPledge ::
   DijkstraEraImp era =>
@@ -103,6 +148,35 @@ rewardsOfWellAndOverPledgedPools = do
 
 spec :: forall era. DijkstraEraImp era => SpecWith (ImpInit (LedgerSpec era))
 spec = describe "POOL" $ do
+  describe "BLS proof of possession" $ do
+    it "accepts a valid proof when registering a pool" $ do
+      poolId <- freshKeyHash
+      accountAddress <- registerAccountAddress
+      poolParams <- freshPoolParams poolId accountAddress
+      submitTx_ $ registerPoolTx poolParams {sppBlsKey = SJust validBlsKey}
+      pools <- psStakePools <$> getPState
+      spsBlsKey <$> Map.lookup poolId pools `shouldBe` Just (SJust validBlsKey)
+
+    it "rejects an invalid proof when registering a pool" $ do
+      poolId <- freshKeyHash
+      accountAddress <- registerAccountAddress
+      poolParams <- freshPoolParams poolId accountAddress
+      submitFailingTx
+        (registerPoolTx poolParams {sppBlsKey = SJust invalidBlsKey})
+        (injectFailure (BlsKeyPossessionProofInvalidPOOL poolId) :| [])
+      Map.lookup poolId . psStakePools <$> getPState `shouldReturn` Nothing
+
+    it "rejects an invalid proof when re-registering a pool without changing pool state" $ do
+      poolId <- freshKeyHash
+      accountAddress <- registerAccountAddress
+      poolParams <- freshPoolParams poolId accountAddress
+      submitTx_ $ registerPoolTx poolParams {sppBlsKey = SJust validBlsKey}
+      pStateBefore <- getPState
+      submitFailingTx
+        (registerPoolTx poolParams {sppBlsKey = SJust invalidBlsKey})
+        (injectFailure (BlsKeyPossessionProofInvalidPOOL poolId) :| [])
+      getPState `shouldReturn` pStateBefore
+
   describe "maxPledgeLeverage" $ do
     -- The pledge influence factor also rewards a pool for pledging more, which would
     -- make the two pools below earn different rewards for a reason that has nothing to
@@ -128,3 +202,10 @@ spec = describe "POOL" $ do
       -- the well pledged pool earns. It is not cut off from the rewards entirely.
       overLeveragedRewards `shouldSatisfy` (> Coin 0)
       Coin (100 * unCoin overLeveragedRewards) `shouldSatisfy` (< wellPledgedRewards)
+  where
+    registerPoolTx :: StakePoolParams -> Tx TopTx era
+    registerPoolTx poolParams =
+      mkBasicTx mkBasicTxBody
+        & bodyTxL . certsTxBodyL .~ SSeq.singleton (RegPoolTxCert poolParams :: TxCert era)
+    getPState :: ImpTestM era (PState era)
+    getPState = getsNES @era $ nesEsL . esLStateL . lsCertStateL . certPStateL

@@ -2,6 +2,7 @@
 
 ## 1.20.0.0
 
+* Add `BlsKeyPossessionProofInvalidPOOL` constructor to `ShelleyPoolPredFailure`
 * Replace `StakeKeyAlreadyRegisteredDELEG` constructor with `DelegAccountAlreadyRegistered` in `ShelleyDelegPredFailure`, which wraps the new `AccountAlreadyRegistered` type instead of `Credential Staking`
 * Add `AccountAlreadyRegistered` predicate failure together with `checkAccountAlreadyRegistered`
 * Add `EncCBOR`, `ToCBOR` for `Block`

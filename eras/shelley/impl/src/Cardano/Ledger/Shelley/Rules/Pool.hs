@@ -23,6 +23,8 @@ module Cardano.Ledger.Shelley.Rules.Pool (
   poolTransition,
 ) where
 
+import Cardano.Crypto.DSIGN (DSIGNAggregatable (verifyPossessionProofDSIGN))
+import Cardano.Crypto.DSIGN.BLS12381.Internal (minSigPoPDST)
 import Cardano.Crypto.Hash.Class (hashSize)
 import Cardano.Ledger.BaseTypes (
   EpochNo,
@@ -65,6 +67,7 @@ import Control.State.Transition (
   tellEvent,
   (?!),
  )
+import Data.Either (isRight)
 import qualified Data.Map as Map
 import Data.Primitive.ByteArray (sizeofByteArray)
 import Data.Word (Word8)
@@ -111,6 +114,10 @@ data ShelleyPoolPredFailure era
       (KeyHash StakePool)
       -- | VRF key attempted to use, that has already been registered
       (VRFVerKeyHash StakePoolVRF)
+  | -- | The proof of possession supplied with a BLS key does not verify
+    BlsKeyPossessionProofInvalidPOOL
+      -- | Stake Pool ID
+      (KeyHash StakePool)
   deriving (Eq, Ord, Show, Generic)
 
 type instance EraRuleFailure "POOL" ShelleyEra = ShelleyPoolPredFailure ShelleyEra
@@ -168,6 +175,8 @@ instance Era era => EncCBOR (ShelleyPoolPredFailure era) where
       encodeListLen 3 <> encCBOR (5 :: Word8) <> encCBOR a <> encCBOR b
     VRFKeyHashAlreadyRegistered a b ->
       encodeListLen 3 <> encCBOR (6 :: Word8) <> encCBOR a <> encCBOR b
+    BlsKeyPossessionProofInvalidPOOL a ->
+      encodeListLen 2 <> encCBOR (7 :: Word8) <> encCBOR a
 
 -- `ShelleyPoolPredFailure` is used in Conway POOL rule, so we need to keep the serialization unchanged
 instance Era era => DecCBOR (ShelleyPoolPredFailure era) where
@@ -204,6 +213,9 @@ instance Era era => DecCBOR (ShelleyPoolPredFailure era) where
         poolID <- decCBOR
         vrfKeyHash <- decCBOR
         pure (3, VRFKeyHashAlreadyRegistered poolID vrfKeyHash)
+      7 -> do
+        poolID <- decCBOR
+        pure (2, BlsKeyPossessionProofInvalidPOOL poolID)
       k -> invalidKey k
 
 poolTransition ::
@@ -228,6 +240,9 @@ poolTransition = do
   case poolCert of
     RegPool stakePoolParams@StakePoolParams {sppId, sppVrf, sppAccountAddress, sppMetadata, sppCost} -> do
       let pv = pp ^. ppProtocolVersionL
+      forM_ (sppBlsKey stakePoolParams) $ \BlsKey {blsPubKey, blsPossessionProof} ->
+        isRight (verifyPossessionProofDSIGN minSigPoPDST blsPubKey blsPossessionProof)
+          ?! injectFailure (BlsKeyPossessionProofInvalidPOOL sppId)
       when (hardforkAlonzoValidatePoolAccountAddressNetID pv) $ do
         actualNetID <- liftSTS $ asks networkId
         let suppliedNetID = aaNetworkId sppAccountAddress
