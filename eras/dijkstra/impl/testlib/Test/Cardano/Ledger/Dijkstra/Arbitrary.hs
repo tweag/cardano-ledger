@@ -29,7 +29,6 @@ import Cardano.Ledger.BaseTypes (StrictMaybe (..))
 import qualified Cardano.Ledger.Conway.Rules as Conway
 import Cardano.Ledger.Dijkstra (ApplyTxError (DijkstraApplyTxError), DijkstraEra)
 import Cardano.Ledger.Dijkstra.Block.Endorser
-import Cardano.Ledger.Dijkstra.BlockBody (PerasCert (..))
 import Cardano.Ledger.Dijkstra.Core
 import Cardano.Ledger.Dijkstra.Genesis (DijkstraGenesis (..))
 import Cardano.Ledger.Dijkstra.PParams (
@@ -349,9 +348,6 @@ instance
   Arbitrary (DijkstraSubUtxowPredFailure era)
   where
   arbitrary = genericArbitraryU
-
-instance Arbitrary PerasCert where
-  arbitrary = PerasCert <$> arbitrary
 
 instance
   (Arbitrary (Tx TopTx era), SafeToHash (Tx TopTx era)) =>
