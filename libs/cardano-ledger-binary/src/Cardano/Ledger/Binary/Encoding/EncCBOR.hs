@@ -82,7 +82,6 @@ import Data.ByteString.Short.Internal (ShortByteString(SBS))
 import Cardano.Base.IP (IPv4, IPv6)
 import qualified Cardano.Binary as Plain (Encoding, ToCBOR (..))
 import Cardano.Crypto.Leios (BitField (..), LeiosCert (..), LeiosCommittee (..), LeiosSeat (..))
-
 import Cardano.Crypto.Peras (
   PerasBlockRef (..),
   PerasBoostedBlock (..),
@@ -91,7 +90,7 @@ import Cardano.Crypto.Peras (
   PerasSignature (..),
   PerasVRFOutput (..),
  )
-import Cardano.Crypto.Peras.Cert (PerasCert (..), PerasCertVoters (..))
+import Cardano.Crypto.Peras.Cert (PerasCert (..), PerasCertVoters (..), PerasVotersBitmap (..))
 import Data.Bitmap (Bitmap (..))
 import Data.Fixed (Fixed (..))
 import Data.Foldable (toList)
@@ -525,7 +524,8 @@ instance EncCBOR PerasSignature where
 instance EncCBOR PerasVRFOutput where
   encCBOR = encCBOR . unPerasVRFOutput
 
-instance Plain.ToCBOR a => EncCBOR (Bitmap a)
+instance EncCBOR PerasVotersBitmap where
+  encCBOR (UnsafePerasVotersBitmap maxIx bs) = encodeListLen 2 <> encCBOR maxIx <> encCBOR bs
 
 instance EncCBOR PerasCertVoters where
   encCBOR (UnsafePerasCertVoters bitmap vrfOutputs) =
