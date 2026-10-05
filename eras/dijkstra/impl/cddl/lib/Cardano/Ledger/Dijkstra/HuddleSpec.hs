@@ -36,7 +36,7 @@ module Cardano.Ledger.Dijkstra.HuddleSpec (
 
 import Cardano.Crypto.Leios (leiosSignatureSize, leiosSignatureToBytes)
 import Cardano.Crypto.Peras (perasSignatureSize, perasSignatureToBytes, perasVRFOutputToBytes)
-import Cardano.Crypto.Peras.Cert (PerasCertVoters (..))
+import Cardano.Crypto.Peras.Cert (PerasCertVoters (..), PerasVotersBitmap (..))
 import Cardano.Ledger.Binary (maxLeiosCertSignersBytes, rawEncodeFixedSized)
 import Cardano.Ledger.Conway.HuddleSpec hiding (poolParamsGroup)
 import Cardano.Ledger.Dijkstra (DijkstraEra)
@@ -68,7 +68,6 @@ import Cardano.Ledger.State (
  )
 import Codec.CBOR.Term (Term (..))
 import Control.Monad (replicateM, unless, when)
-import Data.Bitmap qualified as Bitmap
 import Data.Bits (finiteBitSize)
 import Data.Containers.ListUtils (nubOrd)
 import Data.Foldable (traverse_)
@@ -1195,8 +1194,8 @@ instance HuddleRule "peras_voters" DijkstraEra where
         let bitmap = perasCertVotersBitmap voters
         bitmapTerm <-
           genArrayTerm
-            [ TInteger (toInteger (Bitmap.logicalUpperBound bitmap))
-            , TBytes (Bitmap.rawSerialise bitmap)
+            [ TInteger (toInteger (perasVotersMaxIndex bitmap))
+            , TBytes (perasVotersBits bitmap)
             ]
         vrfTerm <-
           genArrayTerm (TBytes . perasVRFOutputToBytes <$> perasCertNonPersistentVRFOutputs voters)
