@@ -525,7 +525,7 @@ instance EncCBOR PerasVRFOutput where
   encCBOR = encCBOR . unPerasVRFOutput
 
 instance EncCBOR PerasVotersBitmap where
-  encCBOR (UnsafePerasVotersBitmap maxIx bs) = encodeListLen 2 <> encCBOR maxIx <> encCBOR bs
+  encCBOR (UnsafePerasVotersBitmap maxIx bs) = encodeListLen 2 <> encCBOR maxIx <> encCBOR (bitmapBytes bs)
 
 instance EncCBOR PerasCertVoters where
   encCBOR (UnsafePerasCertVoters bitmap vrfOutputs) =

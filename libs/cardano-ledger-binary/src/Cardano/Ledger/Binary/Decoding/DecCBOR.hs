@@ -797,7 +797,7 @@ instance DecCBOR PerasVotersBitmap where
   decCBOR = decodeRecordNamed "PerasVotersBitmap" (const 2) $ do
     maxIx <- decCBOR
     bs <- decodeBytes
-    case mkPerasVotersBitmap maxIx bs of
+    case mkPerasVotersBitmap maxIx (Bitmap bs) of
       Nothing -> fail "PerasVotersBitmap: payload length does not match the upper bound, or bits set above it"
       Just bitmap -> pure bitmap
 

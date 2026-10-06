@@ -256,6 +256,7 @@ library cddl
     cardano-ledger-conway:cddl,
     cardano-ledger-core:{cardano-ledger-core, cddl, testlib},
     cardano-ledger-dijkstra,
+    cardano-strict-containers,
     cborg,
     containers,
     heredoc,
