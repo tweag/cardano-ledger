@@ -250,6 +250,7 @@ library cddl
   build-depends:
     antigen,
     base,
+    bytestring,
     cardano-crypto-leios:{cardano-crypto-leios, testlib},
     cardano-crypto-peras:{cardano-crypto-peras, testlib},
     cardano-ledger-binary,
