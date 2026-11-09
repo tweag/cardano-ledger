@@ -2,6 +2,7 @@
 
 ## 1.10.2.0
 
+* Adapt `BitField` codecs to `cardano-crypto-leios-0.4`, where it wraps a `Bitmap`
 * Add `decodeNonEmptyMapNoDuplicatesAnn`
 * Rename `decodeMapTraverse` to `decodeMapTraverseWithDuplicates`
 
