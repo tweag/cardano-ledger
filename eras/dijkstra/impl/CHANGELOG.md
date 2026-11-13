@@ -31,11 +31,13 @@
 * Add `Embed (SNAP era) (TICKF era)` instance, so that `TICKF` runs the Dijkstra `SNAP` rule
 * Change `eraMaxLanguage` to `PlutusV4`
 * Rename `requiredTopLevelGuardsL` to `requiredTopLevelGuardsTxBodyL`
+* Replace the placeholder `PerasCert` in `DijkstraBlockBody` with `PerasCert` from `cardano-crypto-peras`; `PerasCertValidationFailed` now carries that type
 
 ### `cddl`
 
 * Add the `nonempty_omap` generic rule, with `nonemptyOMap` and a `HuddleRule2 "nonempty_omap"` instance
 * Add the `eb_references` rule, a `nonempty_omap` from transaction hash to transaction size
+* Change `peras_certificate` from `bytes` to its structural definition and add the `peras_boosted_block`, `peras_voters`, `peras_signature` and `peras_vrf_output` rules
 
 ### `testlib`
 
@@ -44,6 +46,7 @@
 * Replace the `EraBlockBody era`, `AlonzoEraTx era` and `SafeToHash (TxWits era)` constraints on `Arbitrary (DijkstraBlockBody era)` with `SafeToHash (Tx TopTx era)`
 * Add `Arbitrary` instance for `EbReferences`
 * Add `DijkstraEraForecast` superclass to `DijkstraEraImp`
+* Remove `Arbitrary PerasCert`, now provided by `cardano-ledger-binary:testlib`
 
 ## 0.4.0.0
 
