@@ -94,7 +94,7 @@ fixedCommittee n =
   ( sks
   , mkLeiosCommittee
       ( V.fromList
-          [ ( SJust (deriveVerKeyDSIGN sk, createPossessionProofDSIGN leiosSignContext sk)
+          [ ( SJust (deriveVerKeyDSIGN sk, createPossessionProofDSIGN sk)
             , 1 / fromIntegral @Int @Weight n
             )
           | sk <- toList sks
@@ -114,4 +114,4 @@ fixedCommittee n =
 signContribs :: BS.ByteString -> [(Int, LeiosSigningKey)] -> Map LeiosSeatId LeiosSignature
 signContribs msg pairs =
   Map.fromList
-    [(LeiosSeatId (fromIntegral @Int @Word16 i), signDSIGN leiosSignContext msg sk) | (i, sk) <- pairs]
+    [(LeiosSeatId (fromIntegral @Int @Word16 i), signDSIGN () msg sk) | (i, sk) <- pairs]
