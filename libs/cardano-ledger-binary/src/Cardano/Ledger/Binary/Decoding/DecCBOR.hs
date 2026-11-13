@@ -59,6 +59,7 @@ import Cardano.Slotting.Slot (
   SlotInterval (..),
   SlotNo (..),
   WithOrigin (..),
+  withOriginFromMaybe,
  )
 import Cardano.Slotting.Time (SystemStart (..))
 import Codec.CBOR.ByteArray.Sliced (SlicedByteArray, fromByteArray)
@@ -69,6 +70,7 @@ import qualified Data.ByteString.Lazy as BSL
 import GHC.TypeLits (KnownNat)
 #if MIN_VERSION_bytestring(0,11,1)
 import Data.ByteString.Short (ShortByteString(SBS))
+import qualified Data.ByteString.Short as SBS
 #else
 import Data.ByteString.Short.Internal (ShortByteString(SBS))
 #endif
@@ -80,8 +82,26 @@ import Cardano.Crypto.Leios (
   LeiosSeat (..),
   maxLeiosCommitteeSize,
  )
+import Cardano.Crypto.Peras (
+  PerasBlockRef (..),
+  PerasBoostedBlock (..),
+  PerasRoundNo (..),
+  PerasSeatIndex (..),
+  PerasSignature (..),
+  PerasVRFOutput (..),
+  mkPerasBlockRef,
+  perasBlockHashSize,
+ )
+import Cardano.Crypto.Peras.Cert (
+  PerasCert (..),
+  PerasCertVoters,
+  PerasVotersBitmap,
+  mkPerasCertVoters,
+  mkPerasVotersBitmap,
+ )
 import Control.Monad (when)
 import Data.Binary.Get (Get, getWord32be, getWord32le, runGetOrFail)
+import Data.Bitmap (Bitmap (..))
 import Data.Fixed (Fixed (..))
 import Data.Int (Int16, Int32, Int64, Int8)
 import qualified Data.IntMap as IntMap
@@ -743,3 +763,54 @@ instance DecCBOR LeiosSeat where
 -- which a seated committee no longer carries.
 instance DecCBOR LeiosCommittee where
   decCBOR = UnsafeLeiosCommittee . VStrict.fromList <$> decCBOR
+
+instance DecCBOR PerasRoundNo where
+  decCBOR = PerasRoundNo <$> decCBOR
+
+instance DecCBOR PerasSeatIndex where
+  decCBOR = PerasSeatIndex <$> decCBOR
+
+instance DecCBOR PerasBlockRef where
+  decCBOR = decodeRecordNamed "PerasBlockRef" (const 2) $ do
+    slot <- decCBOR
+    hash <- SBS.toShort <$> decodeBytes
+    case mkPerasBlockRef slot hash of
+      Just ref -> pure ref
+      Nothing ->
+        fail $
+          "PerasBlockRef: expected a hash of "
+            <> show perasBlockHashSize
+            <> " bytes, got "
+            <> show (SBS.length hash)
+
+instance DecCBOR PerasBoostedBlock where
+  decCBOR = PerasBoostedBlock . withOriginFromMaybe <$> decodeMaybe decCBOR
+
+instance DecCBOR PerasSignature where
+  decCBOR = PerasSignature <$> decCBOR
+
+instance DecCBOR PerasVRFOutput where
+  decCBOR = PerasVRFOutput <$> decCBOR
+
+instance DecCBOR PerasVotersBitmap where
+  decCBOR = decodeRecordNamed "PerasVotersBitmap" (const 2) $ do
+    maxIx <- decCBOR
+    ba <- decCBOR
+    case mkPerasVotersBitmap maxIx (Bitmap ba) of
+      Nothing -> fail "PerasVotersBitmap: payload length does not match the upper bound, or bits set above it"
+      Just bitmap -> pure bitmap
+
+instance DecCBOR PerasCertVoters where
+  decCBOR = decodeRecordNamed "PerasCertVoters" (const 2) $ do
+    bitmap <- decCBOR
+    vrfOutputs <- decodeList decCBOR
+    either fail pure (mkPerasCertVoters bitmap vrfOutputs)
+
+instance DecCBOR PerasCert where
+  decCBOR =
+    decodeRecordNamed "PerasCert" (const 4) $
+      PerasCert
+        <$> decCBOR
+        <*> decCBOR
+        <*> decCBOR
+        <*> decCBOR
