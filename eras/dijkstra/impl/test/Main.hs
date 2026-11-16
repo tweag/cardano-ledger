@@ -29,6 +29,7 @@ import qualified Test.Cardano.Ledger.Dijkstra.GenesisSpec as GenesisSpec
 import qualified Test.Cardano.Ledger.Dijkstra.GoldenSpec as GoldenSpec
 import qualified Test.Cardano.Ledger.Dijkstra.Imp as Imp
 import Test.Cardano.Ledger.Dijkstra.ImpTest ()
+import qualified Test.Cardano.Ledger.Dijkstra.PerasCertValidationSpec as PerasCertValidationSpec
 import qualified Test.Cardano.Ledger.Dijkstra.Plutus.PlutusSpec as PlutusSpec
 import qualified Test.Cardano.Ledger.Dijkstra.TxInfoSpec as DijkstraTxInfoSpec
 import Test.Cardano.Ledger.Era
@@ -66,3 +67,4 @@ main =
       DijkstraTxInfoSpec.spec @DijkstraEra
     GoldenBinary.spec @DijkstraEra
     PlutusSpec.spec
+    PerasCertValidationSpec.spec

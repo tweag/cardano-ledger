@@ -24,6 +24,10 @@ module Cardano.Ledger.Shelley.API.Validation (
   ApplyBlock (..),
   applyBlockEither,
   applyBlockEitherNoEvents,
+  applyBlockEitherWithPerasContext,
+  applyBlockEitherNoEventsWithPerasContext,
+  PerasBlockContext (..),
+  PerasEpochInfo (..),
   applyBlockNoValidaton,
   applyTickNoEvents,
   BlockTransitionError (BlockTransitionError),
@@ -41,6 +45,7 @@ import Cardano.Ledger.Shelley.LedgerState (LedgerState (..), NewEpochState, curP
 import qualified Cardano.Ledger.Shelley.LedgerState as LedgerState
 import Cardano.Ledger.Shelley.PParams ()
 import qualified Cardano.Ledger.Shelley.Rules as STS
+import Cardano.Ledger.Shelley.Rules.Bbody (PerasBlockContext (..), PerasEpochInfo (..))
 import Cardano.Ledger.Slot (SlotNo)
 import Control.DeepSeq (NFData, deepseq)
 import Control.Monad.Except
@@ -98,12 +103,19 @@ class
 
   mkBlockEnv :: NewEpochState era -> BlockEnv era
 
+  -- | Same as 'mkBlockEnv', with the block application context needed to validate Peras
+  -- certificates (see 'PerasBlockContext'). Eras before Dijkstra ignore it.
+  mkBlockEnvWithPerasContext :: Maybe PerasBlockContext -> NewEpochState era -> BlockEnv era
+  mkBlockEnvWithPerasContext _ = mkBlockEnv @h
+
   wrapBlockSignal :: Block h era -> Signal (EraRule "BBODY" era)
 
   -- | Run the `BBODY` rule with `globalAssertionPolicy`. This function always succeeds, but
   -- whenever validation is turned on it is necessary to check for presence of predicate failures
   -- before a call can be marked successful. Therefore it is recommended to call `applyBlockEither`
   -- instead.
+  --
+  -- Same as 'applyBlockWithPerasContext' without a Peras block context.
   applyBlock ::
     SingEP ep ->
     ValidationPolicy ->
@@ -111,20 +123,34 @@ class
     NewEpochState era ->
     Block h era ->
     (NewEpochState era, [PredicateFailure (EraRule "BBODY" era)], [Event (EraRule "BBODY" era)])
-  default applyBlock ::
-    ( STS (EraRule "BBODY" era)
-    , BaseM (EraRule "BBODY" era) ~ ShelleyBase
-    , Environment (EraRule "BBODY" era) ~ BlockEnv era
-    , State (EraRule "BBODY" era) ~ STS.ShelleyBbodyState era
-    , State (EraRule "LEDGERS" era) ~ LedgerState era
-    ) =>
+  applyBlock = applyBlockWithPerasContext Nothing
+
+  -- | Same as 'applyBlock', with the block application context needed to
+  -- validate Peras certificates (see 'PerasBlockContext'). Eras before Dijkstra
+  -- ignore it.
+  applyBlockWithPerasContext ::
+    Maybe PerasBlockContext ->
     SingEP ep ->
     ValidationPolicy ->
     Globals ->
     NewEpochState era ->
     Block h era ->
     (NewEpochState era, [PredicateFailure (EraRule "BBODY" era)], [Event (EraRule "BBODY" era)])
-  applyBlock eventsPolicy validationPolicy globals newEpochState block =
+  default applyBlockWithPerasContext ::
+    ( STS (EraRule "BBODY" era)
+    , BaseM (EraRule "BBODY" era) ~ ShelleyBase
+    , Environment (EraRule "BBODY" era) ~ BlockEnv era
+    , State (EraRule "BBODY" era) ~ STS.ShelleyBbodyState era
+    , State (EraRule "LEDGERS" era) ~ LedgerState era
+    ) =>
+    Maybe PerasBlockContext ->
+    SingEP ep ->
+    ValidationPolicy ->
+    Globals ->
+    NewEpochState era ->
+    Block h era ->
+    (NewEpochState era, [PredicateFailure (EraRule "BBODY" era)], [Event (EraRule "BBODY" era)])
+  applyBlockWithPerasContext perasContext eventsPolicy validationPolicy globals newEpochState block =
     (updateNewEpochState newEpochState stsResultState, stsResultFailures, stsResultEvents)
     where
       opts =
@@ -136,7 +162,7 @@ class
       STSResult {stsResultState, stsResultFailures, stsResultEvents} =
         flip runReader globals $
           applySTSOptsResult @(EraRule "BBODY" era) opts $
-            TRC (mkBlockEnv @h newEpochState, bBodyState, wrapBlockSignal block)
+            TRC (mkBlockEnvWithPerasContext @h perasContext newEpochState, bBodyState, wrapBlockSignal block)
       bBodyState =
         STS.BbodyState
           (LedgerState.esLState $ LedgerState.nesEs newEpochState)
@@ -152,13 +178,26 @@ applyBlockEither ::
   NewEpochState era ->
   Block h era ->
   Either (BlockTransitionError era) (NewEpochState era, [Event (EraRule "BBODY" era)])
-applyBlockEither eventsPolicy validationPolicy globals newEpochState block =
+applyBlockEither = applyBlockEitherWithPerasContext Nothing
+
+-- | Same as 'applyBlockEither', with the block application context needed to
+-- validate Peras certificates (see 'PerasBlockContext').
+applyBlockEitherWithPerasContext ::
+  ApplyBlock h era =>
+  Maybe PerasBlockContext ->
+  SingEP ep ->
+  ValidationPolicy ->
+  Globals ->
+  NewEpochState era ->
+  Block h era ->
+  Either (BlockTransitionError era) (NewEpochState era, [Event (EraRule "BBODY" era)])
+applyBlockEitherWithPerasContext perasContext eventsPolicy validationPolicy globals newEpochState block =
   case failure of
     [] -> Right (newEpochStateResult, events)
     f : fs -> Left $ BlockTransitionError $ f :| fs
   where
     (newEpochStateResult, failure, events) =
-      applyBlock eventsPolicy validationPolicy globals newEpochState block
+      applyBlockWithPerasContext perasContext eventsPolicy validationPolicy globals newEpochState block
 
 applyBlockEitherNoEvents ::
   ApplyBlock h era =>
@@ -167,8 +206,27 @@ applyBlockEitherNoEvents ::
   NewEpochState era ->
   Block h era ->
   Either (BlockTransitionError era) (NewEpochState era)
-applyBlockEitherNoEvents validationPolicy globals newEpochState block =
-  fst <$> applyBlockEither EPDiscard validationPolicy globals newEpochState block
+applyBlockEitherNoEvents = applyBlockEitherNoEventsWithPerasContext Nothing
+
+-- | Same as 'applyBlockEitherNoEvents', with the block application context
+-- needed to validate Peras certificates (see 'PerasBlockContext').
+applyBlockEitherNoEventsWithPerasContext ::
+  ApplyBlock h era =>
+  Maybe PerasBlockContext ->
+  ValidationPolicy ->
+  Globals ->
+  NewEpochState era ->
+  Block h era ->
+  Either (BlockTransitionError era) (NewEpochState era)
+applyBlockEitherNoEventsWithPerasContext perasContext validationPolicy globals newEpochState block =
+  fst
+    <$> applyBlockEitherWithPerasContext
+      perasContext
+      EPDiscard
+      validationPolicy
+      globals
+      newEpochState
+      block
 
 -- | Re-apply a ledger block to the same state it has been applied to before.
 --

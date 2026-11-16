@@ -41,6 +41,13 @@
 * Add `SafeToHash` instance for `DijkstraBlockBody`
 * Add the `EB` and `EBLEDGERS` rules
 * Add `mkBasicEndorserBlock` to `EraEndorserBlock`
+* Validate the Peras certificate of a block body with `cardano-crypto-peras`, against the voting committee of the epoch of its round (the epoch of the block or the one before it), built from the stake distribution and protocol parameters of that epoch and the nonce supplied in the `PerasBlockContext`:
+  - add `bbePeras` to `BbodyEnv`, and `PerasBbodyEnv`
+  - add `mkDijkstraBlockEnvWithPerasContext`, and `mkBlockEnvWithPerasContext` to the `ApplyBlock h DijkstraEra` instance
+  - add `validatePerasCertInBlock` and `perasStakeDistrFromPoolDistr`
+  - add a `Text` field with the `cardano-crypto-peras` error to `PerasCertValidationFailed`
+  - add the `PerasCertBlockContextMissing` and `PerasCertRoundOutsideEpochs` constructors to `DijkstraBbodyPredFailure`
+  - remove `PerasKey` and `validatePerasCert`
 * Remove the `StakePoolCostTooLowPOOL` predicate failure
 * Add `getDijkstraMinFeeTxUtxo` and use it in `getMinFeeTxUtxo`
 * Add `DecCBOR (Annotator (DijkstraEbReferences era))` and `ToCBOR (DijkstraEbReferences era)`, so that `DijkstraEbReferences` can be decoded without the full input at hand, eg from the network

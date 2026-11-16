@@ -145,6 +145,9 @@ instance ToExpr (DijkstraTxBodyRaw l DijkstraEra) where
 
 instance ToExpr (TxBody l DijkstraEra)
 
+instance ToExpr PerasRoundNo where
+  toExpr = toExpr . unPerasRoundNo
+
 instance ToExpr PerasCert where
   toExpr PerasCert {pcRoundNo, pcBoostedBlock, pcVoters, pcSignature} =
     Rec "PerasCert" $

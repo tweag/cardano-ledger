@@ -26,6 +26,8 @@ module Cardano.Ledger.Shelley.Rules.Bbody (
   BBODY,
   ShelleyBbodyState (..),
   BbodyEnv (..),
+  PerasBlockContext (..),
+  PerasEpochInfo (..),
   ShelleyBbodyPredFailure (..),
   ShelleyBbodyEvent (..),
   State,
@@ -33,12 +35,15 @@ module Cardano.Ledger.Shelley.Rules.Bbody (
   validateBlockBodyHash,
 ) where
 
+import Cardano.Crypto.Peras (PerasRoundNo)
 import Cardano.Ledger.BaseTypes (
   BlocksMade,
   Mismatch (..),
+  Nonce,
   ProtVer,
   Relation (..),
   ShelleyBase,
+  StrictMaybe,
  )
 import Cardano.Ledger.Binary (DecCBOR (..), EncCBOR (..))
 import Cardano.Ledger.Binary.Coders (
@@ -95,6 +100,34 @@ data BbodyEnv era = BbodyEnv
   { bbodyPp :: PParams era
   , bbodyAccount :: ChainAccountState
   }
+
+-- | Information about the epochs of a certificate's round that the ledger does
+-- not track itself, and that must therefore be supplied by the caller (i.e.
+-- consensus) to validate Peras certificates in the Dijkstra era.
+data PerasBlockContext = PerasBlockContext
+  { pbcEpoch :: !PerasEpochInfo
+  -- ^ The epoch of the block
+  , pbcPrevEpoch :: !(StrictMaybe PerasEpochInfo)
+  -- ^ The epoch before it, if Peras was enabled in it
+  }
+  deriving (Eq, Show, Generic)
+
+instance NFData PerasBlockContext
+
+-- | The epoch nonce and Peras rounds of an epoch.
+data PerasEpochInfo = PerasEpochInfo
+  { peiNonce :: !Nonce
+  -- ^ Epoch nonce (consensus: @praosStateEpochNonce@ for the epoch of the
+  -- block, @praosStatePreviousEpochNonce@ for the one before it)
+  , peiStartRound :: !PerasRoundNo
+  -- ^ First Peras round of the epoch (inclusive)
+  , peiEndRound :: !PerasRoundNo
+  -- ^ First Peras round of the next epoch (exclusive bound), as in consensus's
+  -- @EpochToPerasRoundInfo@
+  }
+  deriving (Eq, Show, Generic)
+
+instance NFData PerasEpochInfo
 
 data ShelleyBbodyPredFailure era
   = -- | `mismatchSupplied` ~ Actual body size.

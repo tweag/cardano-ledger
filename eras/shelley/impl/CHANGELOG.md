@@ -13,6 +13,8 @@
 * Change the `STS` state of `LEDGER` rule to `LedgerStateWithLimits`
 * Add `LedgerStateWithLimits`, `lswlLedgerState`, `lswlBlockBodyLimits`, `lswlLedgerStateL`, `lswlBlockBodyLimitsL`
 * Add `ShelleyBlockBodyLimits` and `sbblTxsSize`
+* Add `PerasBlockContext` and `PerasEpochInfo`: the epoch nonces and Peras rounds that the Dijkstra `BBODY` rule needs to validate Peras certificates, for the epoch of the block and the one before it
+* Add `mkBlockEnvWithPerasContext` and `applyBlockWithPerasContext` to `ApplyBlock`, and `applyBlockEitherWithPerasContext` and `applyBlockEitherNoEventsWithPerasContext`; `applyBlock`, `applyBlockEither` and `applyBlockEitherNoEvents` apply blocks without a Peras block context
 * Add `fvMinPoolCost` and `fvMinPoolMargin` fields to `Cardano.Ledger.Shelley.RewardUpdate.FreeVars`
 * Remove deprecated `leaderRew`, `memberRew` and `nonMyopicMemberRew` functions
 * Add `lsLastEbAnnouncement` field to `LedgerState` and `lsLastEbAnnouncementL`:
