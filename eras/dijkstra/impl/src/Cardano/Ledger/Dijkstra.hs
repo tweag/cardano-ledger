@@ -21,6 +21,7 @@ module Cardano.Ledger.Dijkstra (
   InvalidEndorserBlockReferences (..),
   EndorserBlockTransitionError (EndorserBlockTransitionError),
   mkDijkstraBlockEnv,
+  mkDijkstraBlockEnvWithPerasContext,
   mkDijkstraStAnnTopTx,
   DijkstraForecast (..),
   DijkstraEraForecast (..),
@@ -83,6 +84,7 @@ import Cardano.Ledger.Shelley.API (
   ApplyBlock (..),
   ApplyTick (..),
   ApplyTx (..),
+  PerasBlockContext,
   defaultApplyTxWithValidation,
   defaultReapplyValidatedTx,
  )
@@ -114,6 +116,7 @@ instance ApplyTick DijkstraEra
 instance (EraBlockHeader h DijkstraEra, LeiosEraBlockHeader h DijkstraEra) => ApplyBlock h DijkstraEra where
   type BlockEnv DijkstraEra = Dijkstra.BbodyEnv DijkstraEra
   mkBlockEnv = mkDijkstraBlockEnv
+  mkBlockEnvWithPerasContext = mkDijkstraBlockEnvWithPerasContext
   wrapBlockSignal = LeiosBbodySignal
 
 instance
@@ -132,11 +135,28 @@ mkDijkstraBlockEnv ::
   EraGov era =>
   NewEpochState era ->
   Dijkstra.BbodyEnv era
-mkDijkstraBlockEnv NewEpochState {nesEs} =
+mkDijkstraBlockEnv = mkDijkstraBlockEnvWithPerasContext Nothing
+
+-- | Same as 'mkDijkstraBlockEnv', with the block application context needed to
+-- validate Peras certificates (see 'PerasBlockContext').
+mkDijkstraBlockEnvWithPerasContext ::
+  EraGov era =>
+  Maybe PerasBlockContext ->
+  NewEpochState era ->
+  Dijkstra.BbodyEnv era
+mkDijkstraBlockEnvWithPerasContext perasContext nes@NewEpochState {nesEs} =
   Dijkstra.BbodyEnv
     { Dijkstra.bbePParams = nesEs ^. curPParamsEpochStateL
     , Dijkstra.bbeChainAccountState = esChainAccountState nesEs
     , Dijkstra.bbeLeiosCommittee = nesEs ^. esSnapshotsL . ssStakeSetL . ssLeiosCommitteeL
+    , -- Lazy: only forced when a block carries a Peras certificate
+      Dijkstra.bbePeras =
+        Dijkstra.PerasBbodyEnv
+          { Dijkstra.pbePerasContext = perasContext
+          , Dijkstra.pbePoolDistr = nes ^. nesStakePoolDistrG
+          , Dijkstra.pbePrevPParams = nesEs ^. prevPParamsEpochStateL
+          , Dijkstra.pbePrevPoolDistr = calculatePoolDistr . gsSnapShot . ssStakeGo $ esSnapshots nesEs
+          }
     }
 
 mkDijkstraStAnnTopTx ::

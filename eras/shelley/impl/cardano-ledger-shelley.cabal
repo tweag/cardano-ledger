@@ -120,6 +120,7 @@ library
     bytestring,
     cardano-base >=0.1.1.0,
     cardano-crypto-class >=2.3 && <2.7,
+    cardano-crypto-peras,
     cardano-crypto-wrapper,
     cardano-data ^>=1.4,
     cardano-ledger-binary ^>=1.10,

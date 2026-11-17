@@ -20,6 +20,7 @@ module Test.Cardano.Ledger.Dijkstra.Arbitrary (
   genSmallDijkstraCertBlockBody,
 ) where
 
+import Cardano.Crypto.Peras (PerasRoundNo (..))
 import Cardano.Ledger.Allegra.Scripts (
   pattern RequireTimeExpire,
   pattern RequireTimeStart,
@@ -211,6 +212,9 @@ instance
   Arbitrary (DijkstraContextError era)
   where
   arbitrary = genericArbitraryU
+
+instance Arbitrary PerasRoundNo where
+  arbitrary = PerasRoundNo <$> arbitrary
 
 instance
   ( Era era

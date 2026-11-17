@@ -32,14 +32,11 @@ module Cardano.Ledger.Dijkstra.BlockBody.Internal (
   mkBasicBlockBodyDijkstra,
   DijkstraEraBlockBody (..),
   PerasCert (..),
-  PerasKey (..),
-  validatePerasCert,
 ) where
 
 import Cardano.Crypto.Leios (LeiosCert)
 import Cardano.Crypto.Peras.Cert (PerasCert (..))
 import Cardano.Ledger.Alonzo.Tx (AlonzoEraTx (..))
-import Cardano.Ledger.BaseTypes (Nonce)
 import Cardano.Ledger.Binary (
   Annotator (..),
   DecCBOR (..),
@@ -219,23 +216,3 @@ deriving via
     , DecCBOR (Annotator (TxWits era))
     ) =>
     DecCBOR (Annotator (DijkstraBlockBody era))
-
--- | Placeholder for Peras public keys
---
--- NOTE: The real type will be brought from 'cardano-base' once it's ready.
-data PerasKey = PerasKey
-  deriving (Eq, Show, Generic, NoThunks)
-
--- | Mocked-up Peras certificate validation routine
---
--- NOTE: this function will be replaced with the real implementation from
--- 'cardano-base' once it's ready.
---
--- IMPORTANT: Until Peras is implemented this function must return False, which
--- effectively disables Peras certificate additon to the block body, hence
--- disables Peras all together
---
--- WARNING: re-enabled for Peras testnet. All validation still happens on the
--- Consensus side.
-validatePerasCert :: Nonce -> PerasKey -> PerasCert -> Bool
-validatePerasCert _ _ _ = True

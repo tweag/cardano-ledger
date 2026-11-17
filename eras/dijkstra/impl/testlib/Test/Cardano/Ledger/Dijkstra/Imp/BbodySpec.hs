@@ -12,7 +12,6 @@ import Cardano.Ledger.Block (
   blockBodyContainsLeiosCertBlockHeaderL,
   blockHeaderHashBlockHeaderG,
   ebReferencesAnnouncementBlockHeaderL,
-  prevNonceBlockHeaderL,
   slotNoBlockHeaderL,
   versionInfoBlockHeaderL,
  )
@@ -33,18 +32,17 @@ spec ::
   ) =>
   SpecWith (ImpInit (LedgerSpec era))
 spec = describe "BBODY" $ do
-  it "PerasCertValidationFailed" $ do
+  -- The Imp tests apply blocks without a Peras block context (see
+  -- 'Cardano.Ledger.Shelley.API.applyBlockEither'), so any certificate is
+  -- rejected. Certificate validation proper is tested in
+  -- "Test.Cardano.Ledger.Dijkstra.PerasCertValidationSpec".
+  it "PerasCertBlockContextMissing" $ do
     protVer <- getProtVer
     perasCert <- arbitrary
     withTxsInModifiedFailingBlockM
       (modifyBlockBody protVer $ perasCertBlockBodyL .~ SJust perasCert)
       (submitAnyTx_ $ mkBasicTx mkBasicTxBody)
-      $ \block ->
-        pure
-          [ injectFailure $
-              PerasCertValidationFailed perasCert $
-                block ^. prevNonceBlockHeaderL
-          ]
+      $ \_ -> pure [injectFailure $ PerasCertBlockContextMissing perasCert]
 
   it "HeaderProtVerTooLow" $ do
     ProtVer curMajor _ <- getProtVer
