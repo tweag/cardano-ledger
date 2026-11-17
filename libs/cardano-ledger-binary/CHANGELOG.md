@@ -5,6 +5,11 @@
 * Adapt `BitField` codecs to `cardano-crypto-leios-0.4`, where it wraps a `Bitmap`
 * Add `decodeNonEmptyMapNoDuplicatesAnn`
 * Rename `decodeMapTraverse` to `decodeMapTraverseWithDuplicates`
+* Add `EncCBOR` and `DecCBOR` instances for `PerasCert` and its component types from `cardano-crypto-peras`, and for `Bitmap` from `cardano-strict-containers`
+
+### `testlib`
+
+* Add `Arbitrary` instance for `PerasCert`
 
 ## 1.10.1.0
 

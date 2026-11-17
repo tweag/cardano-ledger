@@ -71,11 +71,13 @@
 * Change `eraMaxLanguage` to `PlutusV4`
 * Rename `requiredTopLevelGuardsL` to `requiredTopLevelGuardsTxBodyL`
 * Export `transGuardingTopTxInfo`, `transProposal`, `transVotingProcedures`, `transTxInInfoV4`, `transTxOutV4`, `transWithdrawals` and `transDirectDeposits` from `Cardano.Ledger.Dijkstra.TxInfo`
+* Replace the placeholder `PerasCert` in `DijkstraBlockBody` with `PerasCert` from `cardano-crypto-peras`; `PerasCertValidationFailed` now carries that type
 
 ### `cddl`
 
 * Add the `nonempty_omap` generic rule, with `nonemptyOMap` and a `HuddleRule2 "nonempty_omap"` instance
 * Add the `eb_references` rule, a `nonempty_omap` from transaction hash to transaction size
+* Change `peras_certificate` from `bytes` to its structural definition and add the `peras_boosted_block`, `peras_voters`, `peras_signature` and `peras_vrf_output` rules
 
 ### `testlib`
 
@@ -107,6 +109,7 @@
 * Add `Arbitrary` instance for `DijkstraEbReferences DijkstraEra`
 * Add `DijkstraEraForecast` superclass to `DijkstraEraImp`
 * Add `Test.Cardano.Ledger.Dijkstra.Translation.TranslatableGen` module with `genTranslatableTxWithNestedTxs`
+* Remove `Arbitrary PerasCert`, now provided by `cardano-ledger-binary:testlib`
 
 ## 0.5.0.0
 
