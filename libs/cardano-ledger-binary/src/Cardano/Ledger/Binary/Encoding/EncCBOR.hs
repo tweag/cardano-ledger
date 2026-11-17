@@ -81,6 +81,7 @@ import Data.ByteString.Short.Internal (ShortByteString(SBS))
 import Cardano.Base.IP (IPv4, IPv6)
 import qualified Cardano.Binary as Plain (Encoding, ToCBOR (..))
 import Cardano.Crypto.Leios (BitField (..), LeiosCert (..), LeiosCommittee (..), LeiosSeat (..))
+import Data.Bitmap (Bitmap (..))
 import Data.Fixed (Fixed (..))
 import Data.Foldable (toList)
 import Data.Int (Int16, Int32, Int64, Int8)
@@ -476,7 +477,7 @@ instance EncCBOR PV4.ScriptContext where
 --------------------------------------------------------------------------------
 
 instance EncCBOR BitField where
-  encCBOR (BitField ba) = encCBOR ba
+  encCBOR (BitField (Bitmap ba)) = encCBOR ba
 
 instance EncCBOR LeiosCert where
   encCBOR (LeiosCert bf sig) =

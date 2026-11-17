@@ -82,6 +82,7 @@ import Cardano.Crypto.Leios (
  )
 import Control.Monad (when)
 import Data.Binary.Get (Get, getWord32be, getWord32le, runGetOrFail)
+import Data.Bitmap (Bitmap (..), sizeInBytes)
 import Data.Fixed (Fixed (..))
 import Data.Int (Int16, Int32, Int64, Int8)
 import qualified Data.IntMap as IntMap
@@ -716,7 +717,7 @@ maxLeiosCertSignersBytes :: Int
 maxLeiosCertSignersBytes = (maxLeiosCommitteeSize + 7) `div` 8
 
 instance DecCBOR BitField where
-  decCBOR = BitField <$> decCBOR
+  decCBOR = BitField . Bitmap <$> decCBOR
 
 instance DecCBOR LeiosCert where
   decCBOR =
@@ -727,7 +728,7 @@ instance DecCBOR LeiosCert where
     where
       decodeSigners = do
         signers <- decCBOR
-        let numBytes = Prim.sizeofByteArray (bitFieldBytes signers)
+        let numBytes = sizeInBytes (bitFieldBitmap signers)
         when (numBytes > maxLeiosCertSignersBytes) $
           fail $
             "LeiosCert signers of "
